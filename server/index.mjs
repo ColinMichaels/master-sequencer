@@ -7,10 +7,11 @@ import { scanAudioLibrary, sourceKey } from "./audio-library.mjs";
 import { addAudioSource, loadConfig, projectRoot, removeAudioSource } from "./config-store.mjs";
 import { BASE_SECURITY_HEADERS, isStateChangingMethod, requestHostIsAllowed, requestOriginIsAllowed } from "./http-utils.mjs";
 import { contentTypeFor, sendJson, streamFile } from "./http-response.mjs";
-import { chooseAudioPaths, chooseProjectAssetPaths } from "./native-picker.mjs";
+import { chooseAudioPaths, chooseProjectAssetPaths, revealInFinder } from "./native-picker.mjs";
 import { createProjectAssetReferences } from "./project-assets.mjs";
 import { createRenderJobService } from "./render-job-service.mjs";
 import { createStateStore } from "./state-store.mjs";
+import { createTechnicalAnalysisService } from "./technical-analysis.mjs";
 import { createWaveformService } from "./waveform.mjs";
 
 const development = process.argv.includes("--dev");
@@ -29,6 +30,7 @@ let libraryByKey = new Map();
 let scanPromise = null;
 const outputRoot = configuredPath("PROJECT_SEQUENCER_EXPORTS_PATH", path.join(projectRoot, "exports"));
 const waveformService = createWaveformService();
+const technicalAnalysisService = createTechnicalAnalysisService();
 
 const publicFile = (file) => ({
   key: file.key,
@@ -131,6 +133,7 @@ const handleApi = createApiRouter({
   stateStore,
   renderJobs,
   waveformService,
+  technicalAnalysisService,
   getLibrary: () => library,
   getLibraryFile: (key) => libraryByKey.get(key),
   getConfig: () => config,
@@ -142,6 +145,12 @@ const handleApi = createApiRouter({
   chooseAudioPaths,
   chooseProjectAssetPaths,
   createProjectAssetReferences,
+  revealRenderResult: async (renderId) => {
+    const result = renderJobs.result(renderId);
+    if (!result?.audioPath) return null;
+    await revealInFinder({ filePath: result.audioPath });
+    return { revealed: true };
+  },
 });
 
 let vite;

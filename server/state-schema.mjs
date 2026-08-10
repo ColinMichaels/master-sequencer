@@ -3,6 +3,7 @@ import { MASTERING_LIMITS, normalizeMasterBus } from "../src/lib/mastering.js";
 export const CURRENT_SCHEMA_VERSION = 4;
 
 const DEFAULT_PROJECT_ARTIST = "Untitled Artist";
+const deliveryProfileIds = new Set(["", "archive-wav", "distribution-wav", "review-mp3"]);
 
 const validateAssetReference = (reference, label) => {
   if (!reference || typeof reference !== "object" || typeof reference.rootId !== "string" || !reference.rootId || typeof reference.relativePath !== "string" || !reference.relativePath) {
@@ -126,6 +127,11 @@ export const validateState = (state) => {
     albumIds.add(album.id);
     if (album.orderApproved !== undefined && typeof album.orderApproved !== "boolean") throw new Error(`${album.title} orderApproved must be a boolean.`);
     validateMasterBus(album.masterBus, `${album.title} MASTER bus`);
+    if (album.delivery !== undefined) {
+      if (!album.delivery || typeof album.delivery !== "object" || Array.isArray(album.delivery)) throw new Error(`${album.title} delivery record must be an object.`);
+      if (!deliveryProfileIds.has(album.delivery.profileId || "")) throw new Error(`${album.title} has an unsupported delivery profile.`);
+      for (const field of ["masterApproved", "readyToPublish"]) if (album.delivery[field] !== undefined && typeof album.delivery[field] !== "boolean") throw new Error(`${album.title} ${field} must be a boolean.`);
+    }
     if (album.coverRef) validateAssetReference(album.coverRef, `${album.title} cover`);
     validateVisualAssets(album.visualAssets, album.title);
     const trackIds = new Set();
@@ -231,6 +237,9 @@ const migrations = new Map([
     albums: Array.isArray(state.albums) ? state.albums.map((album) => ({
       ...album,
       masterBus: normalizeMasterBus(album?.masterBus),
+      delivery: album.delivery && typeof album.delivery === "object" && !Array.isArray(album.delivery)
+        ? album.delivery
+        : { profileId: "", masterApproved: false, readyToPublish: false },
       sequenceVersions: Array.isArray(album.sequenceVersions) ? album.sequenceVersions : [],
       transitionNotebook: Array.isArray(album.transitionNotebook) ? album.transitionNotebook : [],
     })) : state.albums,

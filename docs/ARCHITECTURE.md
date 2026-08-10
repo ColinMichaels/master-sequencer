@@ -17,6 +17,7 @@ Local Node server (127.0.0.1)
   |-- audio index -------------> ignored data/audio-index-cache.json
   |-- range media service -----> already-indexed source audio (read-only)
   |-- waveform service --------> compact in-memory peak arrays
+  |-- analysis service --------> compact rebuildable mastering measurements
   |-- project asset service ---> configured-root images and lyric text (read-only)
   |-- render-job service ------> bounded FFmpeg queue and result discovery
   `-- audio renderer ----------> ignored exports/YYYY-MM-DD derivatives
@@ -51,6 +52,9 @@ Every feature must preserve these rules:
    not mutate track mastering or source-choice authority.
 10. Album templates contain structure and non-destructive mastering settings,
     never source references, artwork, candidate decisions, or approvals.
+11. A delivery profile validates a print request and its documentation. It does
+    not imply an approved master or publication readiness; those remain
+    separate explicit album fields.
 
 ## Server modules
 
@@ -65,6 +69,7 @@ Every feature must preserve these rules:
 | `server/state-store.mjs` | Serialize atomic state writes and maintain a validated last-known-good snapshot |
 | `server/http-utils.mjs` | Byte-range parsing, local Host/Origin guards, and response security headers |
 | `server/waveform.mjs` | Bound FFmpeg analysis and maintain an in-memory LRU-style waveform cache |
+| `server/technical-analysis.mjs` | Run optional bounded FFmpeg loudness/peak/DC/silence analysis and cache compact rebuildable measurements |
 | `server/render-job-service.mjs` | Queue one bounded render at a time, report progress, cancel work, clean partials, and discover completed results after restart |
 | `server/audio-renderer.mjs` | Normalize edit instructions, build FFmpeg graphs, enforce timeout/cancellation, and atomically publish documented derivatives |
 | `server/project-assets.mjs` | Convert selected images/lyrics into safe configured-root references |
@@ -130,6 +135,11 @@ Schema version 3 adds sequence versions, transition notebooks, explicit human
 approval, candidate comparison queues, and media-free album templates. The
 version 2 migration initializes only the new collections; it does not infer any
 decision or approval.
+
+Schema version 4 adds the delivery record. Optional technical analysis remains
+outside project authority in an in-memory, rebuildable cache. Render history is
+rediscovered from completed manifests below `exports/`; the UI can compare
+manifests and reveal a server-resolved result in Finder, but cannot delete one.
 
 ## Adding a feature safely
 

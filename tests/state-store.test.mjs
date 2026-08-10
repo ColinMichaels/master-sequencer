@@ -44,6 +44,7 @@ test("version 1 project state migrates to the current schema without changing al
   assert.equal(migrated.activeAlbumId, legacy.activeAlbumId);
   assert.deepEqual(migrated.albums[0].tracks, legacy.albums[0].tracks);
   assert.deepEqual(migrated.albums[0].masterBus, normalizeMasterBus());
+  assert.deepEqual(migrated.albums[0].delivery, { profileId: "", masterApproved: false, readyToPublish: false });
   assert.deepEqual(migrated.albums[0].sequenceVersions, []);
   assert.deepEqual(migrated.albums[0].transitionNotebook, []);
   assert.deepEqual(migrated.settings.project, { artistName: "Untitled Artist", setupComplete: true });
@@ -60,6 +61,7 @@ test("version 2 project state inherits its artist without interrupting an existi
   assert.deepEqual(migrated.settings.project, { artistName: "Legacy Ensemble", setupComplete: true });
   assert.deepEqual(migrated.albums[0].tracks, legacy.albums[0].tracks);
   assert.deepEqual(migrated.albums[0].masterBus, normalizeMasterBus());
+  assert.deepEqual(migrated.albums[0].delivery, { profileId: "", masterApproved: false, readyToPublish: false });
 });
 
 test("version 3 project state gains a neutral MASTER bus without changing track authority", () => {
@@ -72,6 +74,7 @@ test("version 3 project state gains a neutral MASTER bus without changing track 
   assert.equal(migrated.schemaVersion, 4);
   assert.deepEqual(migrated.albumTemplates, []);
   assert.deepEqual(migrated.albums[0].masterBus, normalizeMasterBus());
+  assert.deepEqual(migrated.albums[0].delivery, { profileId: "", masterApproved: false, readyToPublish: false });
   assert.deepEqual(migrated.albums[0].sequenceVersions, []);
   assert.deepEqual(migrated.albums[0].transitionNotebook, []);
   assert.equal(migrated.albums[0].tracks[0].masterCandidateId, "");
@@ -256,4 +259,13 @@ test("state validation requires a portable project artist and setup status", () 
   const invalidSetup = structuredClone(seed);
   invalidSetup.settings.project.setupComplete = "yes";
   assert.throws(() => validateState(invalidSetup), /Project setup status/);
+});
+
+test("state validation keeps delivery profile, master approval, and publish readiness separate", () => {
+  const valid = structuredClone(seed);
+  valid.albums[0].delivery = { profileId: "archive-wav", masterApproved: false, readyToPublish: true };
+  assert.equal(validateState(valid), valid);
+  const invalid = structuredClone(valid);
+  invalid.albums[0].delivery.profileId = "automatic-publisher";
+  assert.throws(() => validateState(invalid), /unsupported delivery profile/);
 });

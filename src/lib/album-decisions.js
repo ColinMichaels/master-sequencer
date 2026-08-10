@@ -163,6 +163,7 @@ export const createAlbumFromTemplate = (state, templateId, title) => {
     era: template.era,
     status: "empty",
     orderApproved: false,
+    delivery: { profileId: "", masterApproved: false, readyToPublish: false },
     baselineTrackOrder: tracks.map((track) => track.id),
     sequenceVersions: [],
     transitionNotebook: [],
