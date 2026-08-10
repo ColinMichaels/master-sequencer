@@ -638,3 +638,55 @@
 .loading-screen small { color: var(--bone-muted); font-family: var(--ui); text-transform: none; }
 .loading-wave { width: 80px; height: 28px; background: repeating-linear-gradient(90deg, var(--lime) 0 3px, transparent 3px 8px); animation: pulse 1s steps(4) infinite; mask: linear-gradient(90deg, transparent, #000 20% 80%, transparent); }
 .loading-screen.is-error strong { color: var(--orange); }
+
+.comparison-toggle { grid-column: 1 / -1; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 0.15rem 0.55rem; align-items: center; padding: 0.65rem 0.85rem; border-top: 1px solid var(--line-soft); color: var(--bone); font-family: var(--ui); font-size: 0.68rem; }
+.comparison-toggle input { grid-row: 1 / 3; width: 18px; height: 18px; accent-color: var(--lime); }
+.comparison-toggle small { color: var(--bone-muted); font-size: 0.58rem; }
+
+.decisions-workspace { width: 100%; max-width: 100%; min-width: 0; height: 100%; padding: 1rem; overflow-x: hidden; overflow-y: auto; }
+.decisions-heading { display: flex; justify-content: space-between; margin-bottom: 1rem; padding: 0.3rem 0.25rem 0.9rem; border-bottom: 1px solid var(--line); }
+.decisions-heading h2 { margin: 0; font-size: 1.55rem; }
+.decisions-heading h2 span { color: var(--bone-muted); font-weight: 500; }
+.decisions-heading p, .decision-module header p { margin: 0.35rem 0 0; color: var(--bone-muted); font-family: var(--ui); font-size: 0.7rem; line-height: 1.45; }
+.decision-module { width: 100%; max-width: 100%; min-width: 0; margin-bottom: 1rem; border: 1px solid var(--line); background: rgb(var(--bone-rgb) / 1%); }
+.decision-module > header { display: flex; gap: 1rem; align-items: center; justify-content: space-between; min-height: 68px; padding: 0.75rem; border-bottom: 1px solid var(--line); }
+.decision-module h3 { margin: 0; color: var(--lime); font-size: 1rem; }
+.decision-module input, .decision-module select, .decision-module textarea { min-height: 38px; padding: 0.45rem 0.55rem; border: 1px solid var(--line); border-radius: 0; background: var(--ink); color: var(--bone); }
+.decision-module > header form { display: flex; gap: 0.45rem; }
+.module-empty { margin: 0; padding: 1rem; color: var(--bone-muted); font-family: var(--ui); font-size: 0.72rem; }
+.version-list, .comparison-queue ol { margin: 0; padding: 0; list-style: none; }
+.version-list li, .comparison-queue li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 0.5rem; align-items: center; padding: 0.65rem 0.75rem; border-bottom: 1px solid var(--line-soft); }
+.version-list li div, .comparison-queue li div { display: grid; gap: 0.18rem; }
+.version-list small, .comparison-queue small { color: var(--bone-muted); font-family: var(--ui); font-size: 0.6rem; }
+.version-compare-controls { display: flex; gap: 0.5rem; padding: 0.75rem; }
+.version-compare-controls label { display: grid; flex: 1; gap: 0.25rem; color: var(--bone-muted); font-size: 0.6rem; text-transform: uppercase; }
+.version-comparison { margin: 0 0.75rem 0.75rem; border: 1px solid var(--line-soft); }
+.version-comparison > div { display: grid; grid-template-columns: 50px minmax(0, 1fr) 50px; min-height: 34px; align-items: center; border-top: 1px solid var(--line-soft); }
+.version-comparison > div:first-child { border-top: 0; }
+.version-comparison span { color: var(--lime); text-align: center; }
+.transition-notes { display: grid; gap: 0.35rem; padding: 0.75rem; color: var(--bone-muted); font-size: 0.62rem; text-transform: uppercase; }
+.transition-notes textarea { min-height: 90px; resize: vertical; font-family: var(--ui); line-height: 1.5; text-transform: none; }
+.transition-markers { padding: 0 0.75rem 0.75rem; }
+.transition-markers form { display: grid; grid-template-columns: minmax(160px, 1fr) 120px auto; gap: 0.45rem; }
+.transition-markers ul { margin: 0.5rem 0 0; padding: 0; list-style: none; }
+.transition-markers li { display: grid; grid-template-columns: 70px minmax(0, 1fr) auto; gap: 0.5rem; align-items: center; padding: 0.4rem; border-top: 1px solid var(--line-soft); font-family: var(--ui); font-size: 0.65rem; }
+.transition-markers li span { color: var(--yellow); }
+.transition-markers li button { border: 0; background: transparent; color: var(--orange); cursor: pointer; font-size: 0.58rem; }
+.transition-variants { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; padding: 0 0.75rem 0.75rem; }
+.transition-variant { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin: 0; padding: 0.75rem; border: 1px solid var(--line-soft); }
+.transition-variant legend { padding: 0 0.35rem; color: var(--yellow); font-family: var(--display); text-transform: uppercase; }
+.transition-variant label { display: grid; gap: 0.25rem; color: var(--bone-muted); font-size: 0.58rem; text-transform: uppercase; }
+.transition-variant button { grid-column: 1 / -1; }
+.readiness-table { min-width: 900px; }
+.readiness-inspector { max-width: 100%; overflow-x: auto; }
+.readiness-head, .readiness-row { display: grid; grid-template-columns: minmax(170px, 1.4fr) repeat(8, minmax(64px, 0.6fr)); min-height: 42px; align-items: center; border-top: 1px solid var(--line-soft); }
+.readiness-head { color: var(--bone-muted); font-size: 0.55rem; text-align: center; text-transform: uppercase; }
+.readiness-head strong, .readiness-row > strong { padding-left: 0.75rem; text-align: left; }
+.readiness-row > span, .readiness-row > label { display: grid; height: 100%; border-left: 1px solid var(--line-soft); color: var(--orange); cursor: default; place-items: center; }
+.readiness-row > label { cursor: pointer; }
+.readiness-row > label input { position: absolute; opacity: 0; }
+.readiness-row .is-ready { color: var(--lime); }
+.template-actions { display: grid; grid-template-columns: 0.8fr 1.2fr; gap: 0.75rem; padding: 0.75rem; }
+.template-actions form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.5rem; align-items: end; padding: 0.75rem; border: 1px solid var(--line-soft); }
+.template-actions form:last-child { grid-template-columns: minmax(130px, 0.7fr) minmax(160px, 1fr) auto; }
+.template-actions label { display: grid; gap: 0.25rem; color: var(--bone-muted); font-size: 0.58rem; text-transform: uppercase; }

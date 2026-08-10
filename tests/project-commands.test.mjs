@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { addAlbum, addBlankTrack, addTracksFromFiles, projectArtistName, restoreBaselineOrder, selectAlbum, setTrackInSequence, updateAlbum, updateProjectIdentity } from "../src/lib/project-commands.js";
+import { addAlbum, addBlankTrack, addTracksFromFiles, deleteTrackRecord, projectArtistName, restoreBaselineOrder, selectAlbum, setTrackInSequence, updateAlbum, updateProjectIdentity } from "../src/lib/project-commands.js";
 import { normalizeMasterBus } from "../src/lib/mastering.js";
 
 const project = () => ({
@@ -27,6 +27,7 @@ test("album and blank-track commands create unique stable ids", () => {
   assert.deepEqual(state.albums.at(-1).masterBus, normalizeMasterBus());
   const album = state.albums[0];
   assert.equal(addBlankTrack(album, "A"), "a-2");
+  assert.equal(album.tracks.at(-1).humanApproved, false);
   assert.equal(album.baselineTrackOrder.at(-1), "a-2");
   assert.equal(album.orderApproved, false);
 });
@@ -39,6 +40,16 @@ test("project identity is authoritative for existing layouts and future albums",
   assert.equal(state.albums[0].artist, "New Ensemble");
   addAlbum(state, { title: "Next Record", era: "future" });
   assert.equal(state.albums.at(-1).artist, "New Ensemble");
+});
+
+test("deleting a track record removes stale version and transition references", () => {
+  const album = project().albums[0];
+  album.sequenceVersions = [{ id: "version", name: "Version", trackOrder: ["a", "b"] }];
+  album.transitionNotebook = [{ id: "a--b", fromTrackId: "a", toTrackId: "b" }];
+  assert.equal(deleteTrackRecord(album, "a"), true);
+  assert.deepEqual(album.sequenceVersions[0].trackOrder, ["b"]);
+  assert.deepEqual(album.transitionNotebook, []);
+  assert.equal(album.orderApproved, false);
 });
 
 test("track import, sequence membership, and baseline restoration preserve records", () => {

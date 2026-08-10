@@ -41,6 +41,8 @@ export const addAlbum = (state, { title, era }) => {
     orderApproved: false,
     masterBus: normalizeMasterBus(),
     baselineTrackOrder: [],
+    sequenceVersions: [],
+    transitionNotebook: [],
     visualAssets: [],
     tracks: [],
   });
@@ -65,7 +67,7 @@ export const addBlankTrack = (album, title) => {
   let id = baseId;
   let suffix = 2;
   while (album.tracks.some((track) => track.id === id)) id = `${baseId}-${suffix++}`;
-  album.tracks.push({ id, title: title.trim(), decisionStatus: "missing", masterCandidateId: "", auditionCandidateId: "", notes: "", visualAssets: [], candidates: [] });
+  album.tracks.push({ id, title: title.trim(), decisionStatus: "missing", masterCandidateId: "", auditionCandidateId: "", humanApproved: false, comparisonQueue: [], notes: "", visualAssets: [], candidates: [] });
   album.baselineTrackOrder = [...(album.baselineTrackOrder || []), id];
   album.orderApproved = false;
   return id;
@@ -89,6 +91,16 @@ export const restoreBaselineOrder = (album) => {
 };
 
 export const setTrackInSequence = (album, trackId, inSequence) => setTrackSequenced(album, trackId, inSequence);
+
+export const deleteTrackRecord = (album, trackId) => {
+  if (!album.tracks.some((track) => track.id === trackId)) return false;
+  album.tracks = album.tracks.filter((track) => track.id !== trackId);
+  album.baselineTrackOrder = (album.baselineTrackOrder || []).filter((id) => id !== trackId);
+  album.sequenceVersions = (album.sequenceVersions || []).map((version) => ({ ...version, trackOrder: version.trackOrder.filter((id) => id !== trackId) }));
+  album.transitionNotebook = (album.transitionNotebook || []).filter((entry) => entry.fromTrackId !== trackId && entry.toTrackId !== trackId);
+  album.orderApproved = false;
+  return true;
+};
 
 export const updateAppearance = (state, patch) => {
   state.settings ||= {};

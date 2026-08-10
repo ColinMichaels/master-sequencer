@@ -6,7 +6,7 @@ import { calculateProgramTimeline, normalizeMasterBus, normalizeMastering } from
 import { sourceKey } from "./audio-library.mjs";
 
 const AUDIO_FORMATS = new Set(["wav", "mp3"]);
-const RENDER_SCOPES = new Set(["album", "track", "preview"]);
+const RENDER_SCOPES = new Set(["album", "track", "preview", "comparison"]);
 const PREVIEW_PARTS = new Set(["start", "end", "transition"]);
 
 const slugify = (value) => value
@@ -102,6 +102,18 @@ const resolveTrackEntry = (track, getLibraryFile) => {
     file,
     sourceDuration: file.duration,
     mastering: track.mastering || {},
+  } : null;
+};
+
+const resolveCandidateEntry = (track, candidateId, getLibraryFile) => {
+  const candidate = track?.candidates.find((item) => item.id === candidateId);
+  const file = candidate ? getLibraryFile(sourceKey(candidate.sourceRef)) : null;
+  return file ? {
+    track,
+    candidate,
+    file,
+    sourceDuration: file.duration,
+    mastering: { trimStart: 0, trimEnd: Math.min(file.duration, 30), endMode: "natural", gapAfter: 0 },
   } : null;
 };
 
@@ -252,7 +264,7 @@ export const buildPreviewEntries = (entries, selectedIndex, previewPart) => {
   return [previewSelected, { ...next, mastering: { ...next.mastering, trimStart: nextSettings.trimStart, trimEnd: nextPreviewEnd, fadeIn: nextSettings.fadeIn } }];
 };
 
-export const renderAudio = async ({ album, scope, trackId, format, previewPart = "end", getLibraryFile, outputRoot, signal, timeoutMs, onProgress = () => {} }) => {
+export const renderAudio = async ({ album, scope, trackId, candidateId = "", format, previewPart = "end", getLibraryFile, outputRoot, signal, timeoutMs, onProgress = () => {} }) => {
   throwIfCancelled(signal);
   if (!album?.id || !Array.isArray(album.tracks)) throw new Error("Choose a valid album to render.");
   if (!RENDER_SCOPES.has(scope)) throw new Error("Choose a valid render scope.");
@@ -266,18 +278,24 @@ export const renderAudio = async ({ album, scope, trackId, format, previewPart =
     if (!entry) missing.push(track.title);
     return entry ? [entry] : [];
   });
-  if (!playable.length) throw new Error("This album has no playable sequenced tracks.");
+  const comparisonEntry = scope === "comparison"
+    ? resolveCandidateEntry(album.tracks.find((track) => track.id === trackId), candidateId, getLibraryFile)
+    : null;
+  if (scope === "comparison" && !comparisonEntry) throw new Error("Choose an indexed comparison candidate.");
+  if (!playable.length && scope !== "comparison") throw new Error("This album has no playable sequenced tracks.");
 
   const selectedIndex = playable.findIndex((entry) => entry.track.id === trackId);
   let entries;
   if (scope === "album") entries = playable;
   else if (scope === "preview") entries = buildPreviewEntries(playable, selectedIndex, previewPart);
+  else if (scope === "comparison") entries = [comparisonEntry];
   else {
     if (selectedIndex < 0) throw new Error("The selected track has no playable audition source.");
     entries = [playable[selectedIndex]];
   }
 
-  const renderFormat = scope === "preview" ? "mp3" : format;
+  const previewDerivative = ["preview", "comparison"].includes(scope);
+  const renderFormat = previewDerivative ? "mp3" : format;
   const singleTrack = entries.length === 1;
   const graph = buildRenderGraph(entries, { singleTrack, masterBus: album.masterBus });
   const timeline = calculateProgramTimeline(entries);
@@ -287,8 +305,8 @@ export const renderAudio = async ({ album, scope, trackId, format, previewPart =
   const day = createdAt.slice(0, 10);
   const time = createdAt.slice(11, 19).replaceAll(":", "");
   const previewName = previewPart === "start" ? "start" : previewPart === "transition" ? "transition" : "ending";
-  const scopeName = scope === "album" ? "album-program" : scope === "track" ? slugify(entries[0].track.title) : `${previewName}-preview`;
-  const directory = scope === "preview"
+  const scopeName = scope === "album" ? "album-program" : scope === "track" ? slugify(entries[0].track.title) : scope === "comparison" ? "matched-comparison-preview" : `${previewName}-preview`;
+  const directory = previewDerivative
     ? path.join(outputRoot, ".previews", id)
     : path.join(outputRoot, day, `${slugify(album.title)}-${scopeName}-${time}-${id.slice(0, 6)}`);
   onProgress(5, "preparing");
@@ -300,9 +318,13 @@ export const renderAudio = async ({ album, scope, trackId, format, previewPart =
   try {
     const argumentsList = ["-hide_banner", "-loglevel", "error", "-y"];
     entries.forEach((entry) => argumentsList.push("-i", entry.file.absolutePath));
-    argumentsList.push("-filter_complex", graph.filterComplex, "-map", `[${graph.outputLabel}]`, "-vn");
+    const filterComplex = scope === "comparison"
+      ? `${graph.filterComplex};[${graph.outputLabel}]loudnorm=I=-18:TP=-2:LRA=11[matched]`
+      : graph.filterComplex;
+    const outputLabel = scope === "comparison" ? "matched" : graph.outputLabel;
+    argumentsList.push("-filter_complex", filterComplex, "-map", `[${outputLabel}]`, "-vn");
     if (renderFormat === "wav") argumentsList.push("-c:a", "pcm_s24le", "-ar", "48000");
-    else argumentsList.push("-c:a", "libmp3lame", "-b:a", scope === "preview" ? "192k" : "320k", "-ar", "48000", "-id3v2_version", "3");
+    else argumentsList.push("-c:a", "libmp3lame", "-b:a", previewDerivative ? "192k" : "320k", "-ar", "48000", "-id3v2_version", "3");
     argumentsList.push("-metadata", `artist=${album.artist}`, "-metadata", `album=${album.title}`, "-metadata", `title=${scope === "album" ? `${album.title} — Album Program` : entries[0].track.title}`, temporaryPath);
     onProgress(10, "rendering");
     await runFfmpeg(argumentsList, { signal, timeoutMs, expectedDuration, onProgress });
@@ -313,7 +335,7 @@ export const renderAudio = async ({ album, scope, trackId, format, previewPart =
     const warnings = missing.length && scope === "album" ? [`Skipped missing audio: ${missing.join(", ")}.`] : [];
     let cuePath = "";
     let manifestPath = "";
-    if (scope !== "preview") {
+    if (!previewDerivative) {
       cuePath = path.join(directory, `${path.basename(audioName, `.${renderFormat}`)}-cue-sheet.txt`);
       manifestPath = path.join(directory, `${path.basename(audioName, `.${renderFormat}`)}-render-manifest.json`);
       await writeFile(cuePath, createCueSheet({ album, timeline, masterBus: graph.masterBus, audioName, format: renderFormat, createdAt, warnings }));
@@ -347,7 +369,7 @@ export const renderAudio = async ({ album, scope, trackId, format, previewPart =
     throwIfCancelled(signal);
     const fileStat = await stat(audioPath);
     onProgress(100, "completed");
-    return { id, scope, format: renderFormat, audioPath, cuePath, manifestPath, outputDirectory: directory, audioName, size: fileStat.size, warnings, createdAt };
+    return { id, scope, format: renderFormat, audioPath, cuePath, manifestPath, outputDirectory: directory, audioName, size: fileStat.size, warnings, createdAt, derivativeLabel: scope === "comparison" ? "Loudness-matched preview derivative" : "" };
   } catch (error) {
     await rm(directory, { recursive: true, force: true });
     throw error;

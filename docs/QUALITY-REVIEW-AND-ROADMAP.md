@@ -84,8 +84,8 @@ risk reduction and user value rather than feature count.
 | Round | Status | Branch | Evidence |
 | --- | --- | --- | --- |
 | P1 — confidence foundation | Complete | `codex/p1-confidence-foundation` | Repository Playwright coverage, generated-audio FFmpeg integration test, render-job lifecycle, schema migration/recovery, and composition-hub splits |
-| P2 — album decisions | Next | `codex/p2-album-decisions` | Sequence versions, transition notebook, readiness, comparison previews, and safe templates |
-| P3 — mastering review | Planned | `codex/p3-mastering-review` | Technical analysis, chapter preview, delivery profiles, and render history |
+| P2 — album decisions | Complete | `codex/p2-album-decisions` | Sequence versions, transition notebook, readiness, comparison previews, and safe templates |
+| P3 — mastering review | Next | `codex/p3-mastering-review` | Technical analysis, chapter preview, delivery profiles, and render history |
 | P4 — scale and portability | Planned | `codex/p4-scale-portability` | Incremental indexing, saved filters, undoable commands, and JSON/checksum bundles |
 
 ### P1 — confidence before feature expansion
@@ -109,18 +109,20 @@ Completed in the P1 branch:
 
 ### P2 — high-value album decisions
 
-1. Sequence versions: name, duplicate, compare, and restore alternate orders
+Completed in the P2 branch:
+
+1. Added sequence versions that can be named, duplicated, compared, and restored
    without changing track records or approvals.
-2. Transition notebook: attach listening notes and markers to each track pair;
+2. Added a transition notebook with listening notes and markers for each track pair,
    support A/B preview of two non-destructive transition settings.
-3. Readiness inspector: show separate gates for playable source, audition choice,
+3. Added a readiness inspector with separate gates for playable source, audition choice,
    master choice, disposition, lyrics, artwork, ordering, and human approval.
    Never infer one gate from another.
-4. Candidate comparison queue: user-chosen loudness-matched *preview derivatives*
-   may be added, but the originals and master decisions must stay untouched and
-   the UI must label every derivative clearly.
-5. Album templates and duplication: copy organizational structure and settings
-   without copying media or carrying approvals into a new album.
+4. Added an explicit candidate comparison queue. Its bounded FFmpeg previews
+   are loudness matched and labeled as derivatives; originals, audition choices,
+   and master decisions stay untouched.
+5. Added album templates that copy track organization and mastering instructions
+   without copying media, artwork, source choices, or approvals.
 
 ### P3 — deeper mastering review
 

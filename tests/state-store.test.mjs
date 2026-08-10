@@ -8,6 +8,7 @@ import { normalizeMasterBus } from "../src/lib/mastering.js";
 
 const seed = {
   schemaVersion: 4,
+  albumTemplates: [],
   activeAlbumId: "album",
   settings: { project: { artistName: "Test Artist", setupComplete: true }, revealPrivateFilenames: false },
   albums: [{ id: "album", title: "Album", masterBus: normalizeMasterBus(), tracks: [{ id: "track", title: "Track", candidates: [] }] }],
@@ -39,9 +40,12 @@ test("version 1 project state migrates to the current schema without changing al
   delete legacy.settings.project;
   const migrated = migrateState(legacy);
   assert.equal(migrated.schemaVersion, 4);
+  assert.deepEqual(migrated.albumTemplates, []);
   assert.equal(migrated.activeAlbumId, legacy.activeAlbumId);
   assert.deepEqual(migrated.albums[0].tracks, legacy.albums[0].tracks);
   assert.deepEqual(migrated.albums[0].masterBus, normalizeMasterBus());
+  assert.deepEqual(migrated.albums[0].sequenceVersions, []);
+  assert.deepEqual(migrated.albums[0].transitionNotebook, []);
   assert.deepEqual(migrated.settings.project, { artistName: "Untitled Artist", setupComplete: true });
 });
 
@@ -52,6 +56,7 @@ test("version 2 project state inherits its artist without interrupting an existi
   delete legacy.settings.project;
   const migrated = migrateState(legacy);
   assert.equal(migrated.schemaVersion, 4);
+  assert.deepEqual(migrated.albumTemplates, []);
   assert.deepEqual(migrated.settings.project, { artistName: "Legacy Ensemble", setupComplete: true });
   assert.deepEqual(migrated.albums[0].tracks, legacy.albums[0].tracks);
   assert.deepEqual(migrated.albums[0].masterBus, normalizeMasterBus());
@@ -65,7 +70,10 @@ test("version 3 project state gains a neutral MASTER bus without changing track 
   legacy.albums[0].tracks[0].auditionCandidateId = "";
   const migrated = migrateState(legacy);
   assert.equal(migrated.schemaVersion, 4);
+  assert.deepEqual(migrated.albumTemplates, []);
   assert.deepEqual(migrated.albums[0].masterBus, normalizeMasterBus());
+  assert.deepEqual(migrated.albums[0].sequenceVersions, []);
+  assert.deepEqual(migrated.albums[0].transitionNotebook, []);
   assert.equal(migrated.albums[0].tracks[0].masterCandidateId, "");
   assert.equal(migrated.albums[0].tracks[0].auditionCandidateId, "");
 });

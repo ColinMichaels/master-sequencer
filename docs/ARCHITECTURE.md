@@ -46,6 +46,11 @@ Every feature must preserve these rules:
    never writes a sidecar beside audio.
 8. Machine-specific source paths belong only in ignored local configuration or
    `PROJECT_SEQUENCER_AUDIO_PATHS`.
+9. Sequence versions snapshot track IDs and membership only. Transition A/B
+   variants and loudness-matched comparisons are preview instructions; they do
+   not mutate track mastering or source-choice authority.
+10. Album templates contain structure and non-destructive mastering settings,
+    never source references, artwork, candidate decisions, or approvals.
 
 ## Server modules
 
@@ -120,6 +125,11 @@ by media clients. Malformed, multiple, reversed, and out-of-bounds ranges return
 - Invalid imported JSON never replaces the open project.
 - `data/audio-index-cache.json` can be deleted and rebuilt; it is not authority
   for album decisions.
+
+Schema version 3 adds sequence versions, transition notebooks, explicit human
+approval, candidate comparison queues, and media-free album templates. The
+version 2 migration initializes only the new collections; it does not infer any
+decision or approval.
 
 ## Adding a feature safely
 
