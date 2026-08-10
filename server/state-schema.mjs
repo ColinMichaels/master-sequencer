@@ -1,4 +1,5 @@
 import { MASTERING_LIMITS, normalizeMasterBus } from "../src/lib/mastering.js";
+import { MASTERING_PRESET_TYPES } from "../src/lib/mastering-presets.js";
 
 export const CURRENT_SCHEMA_VERSION = 5;
 
@@ -49,33 +50,73 @@ const validateEqBand = (band, frequencyLimits, label, { includeQ = false } = {})
   if (includeQ) validateNumberRange(band.q, MASTERING_LIMITS.midBandQ, `${label} q`);
 };
 
+const validateEqSettings = (eq, label) => {
+  validateObject(eq, label);
+  validateBoolean(eq.enabled, `${label} enabled`);
+  validateEqBand(eq.lowShelf, MASTERING_LIMITS.lowShelfFrequencyHz, `${label} low shelf`);
+  validateEqBand(eq.midBand, MASTERING_LIMITS.midBandFrequencyHz, `${label} mid band`, { includeQ: true });
+  validateEqBand(eq.highShelf, MASTERING_LIMITS.highShelfFrequencyHz, `${label} high shelf`);
+};
+
+const validateCompressorSettings = (compressor, label) => {
+  validateObject(compressor, label);
+  validateBoolean(compressor.enabled, `${label} enabled`);
+  validateNumberRange(compressor.thresholdDb, MASTERING_LIMITS.compressorThresholdDb, `${label} thresholdDb`);
+  validateNumberRange(compressor.ratio, MASTERING_LIMITS.compressorRatio, `${label} ratio`);
+  validateNumberRange(compressor.attackMs, MASTERING_LIMITS.compressorAttackMs, `${label} attackMs`);
+  validateNumberRange(compressor.releaseMs, MASTERING_LIMITS.compressorReleaseMs, `${label} releaseMs`);
+  validateNumberRange(compressor.knee, MASTERING_LIMITS.compressorKnee, `${label} knee`);
+  validateNumberRange(compressor.makeupGainDb, MASTERING_LIMITS.compressorMakeupGainDb, `${label} makeupGainDb`);
+  validateNumberRange(compressor.mix, MASTERING_LIMITS.compressorMix, `${label} mix`);
+  if (!["average", "maximum"].includes(compressor.link)) throw new Error(`${label} link must be average or maximum.`);
+  if (!["peak", "rms"].includes(compressor.detection)) throw new Error(`${label} detection must be peak or rms.`);
+};
+
+const validateLimiterSettings = (limiter, label) => {
+  validateObject(limiter, label);
+  validateBoolean(limiter.enabled, `${label} enabled`);
+  validateNumberRange(limiter.ceilingDbfs, MASTERING_LIMITS.limiterCeilingDbfs, `${label} ceilingDbfs`);
+  validateNumberRange(limiter.attackMs, MASTERING_LIMITS.limiterAttackMs, `${label} attackMs`);
+  validateNumberRange(limiter.releaseMs, MASTERING_LIMITS.limiterReleaseMs, `${label} releaseMs`);
+};
+
 const validateMasterBus = (masterBus, label) => {
   validateObject(masterBus, label);
   validateBoolean(masterBus.bypass, `${label} bypass`);
-  validateObject(masterBus.eq, `${label} EQ`);
-  validateBoolean(masterBus.eq.enabled, `${label} EQ enabled`);
-  validateEqBand(masterBus.eq.lowShelf, MASTERING_LIMITS.lowShelfFrequencyHz, `${label} low shelf`);
-  validateEqBand(masterBus.eq.midBand, MASTERING_LIMITS.midBandFrequencyHz, `${label} mid band`, { includeQ: true });
-  validateEqBand(masterBus.eq.highShelf, MASTERING_LIMITS.highShelfFrequencyHz, `${label} high shelf`);
-
-  validateObject(masterBus.compressor, `${label} compressor`);
-  validateBoolean(masterBus.compressor.enabled, `${label} compressor enabled`);
-  validateNumberRange(masterBus.compressor.thresholdDb, MASTERING_LIMITS.compressorThresholdDb, `${label} compressor thresholdDb`);
-  validateNumberRange(masterBus.compressor.ratio, MASTERING_LIMITS.compressorRatio, `${label} compressor ratio`);
-  validateNumberRange(masterBus.compressor.attackMs, MASTERING_LIMITS.compressorAttackMs, `${label} compressor attackMs`);
-  validateNumberRange(masterBus.compressor.releaseMs, MASTERING_LIMITS.compressorReleaseMs, `${label} compressor releaseMs`);
-  validateNumberRange(masterBus.compressor.knee, MASTERING_LIMITS.compressorKnee, `${label} compressor knee`);
-  validateNumberRange(masterBus.compressor.makeupGainDb, MASTERING_LIMITS.compressorMakeupGainDb, `${label} compressor makeupGainDb`);
-  validateNumberRange(masterBus.compressor.mix, MASTERING_LIMITS.compressorMix, `${label} compressor mix`);
-  if (!["average", "maximum"].includes(masterBus.compressor.link)) throw new Error(`${label} compressor link must be average or maximum.`);
-  if (!["peak", "rms"].includes(masterBus.compressor.detection)) throw new Error(`${label} compressor detection must be peak or rms.`);
-
+  validateEqSettings(masterBus.eq, `${label} EQ`);
+  validateCompressorSettings(masterBus.compressor, `${label} compressor`);
   validateNumberRange(masterBus.outputGainDb, MASTERING_LIMITS.outputGainDb, `${label} outputGainDb`);
-  validateObject(masterBus.limiter, `${label} limiter`);
-  validateBoolean(masterBus.limiter.enabled, `${label} limiter enabled`);
-  validateNumberRange(masterBus.limiter.ceilingDbfs, MASTERING_LIMITS.limiterCeilingDbfs, `${label} limiter ceilingDbfs`);
-  validateNumberRange(masterBus.limiter.attackMs, MASTERING_LIMITS.limiterAttackMs, `${label} limiter attackMs`);
-  validateNumberRange(masterBus.limiter.releaseMs, MASTERING_LIMITS.limiterReleaseMs, `${label} limiter releaseMs`);
+  validateLimiterSettings(masterBus.limiter, `${label} limiter`);
+};
+
+const validateMasteringPresets = (library) => {
+  // This optional version-5 root keeps existing local projects readable while new saves gain presets.
+  if (library === undefined) return;
+  validateObject(library, "Mastering presets");
+  const unknownTypes = Object.keys(library).filter((type) => !MASTERING_PRESET_TYPES.includes(type));
+  if (unknownTypes.length) throw new Error(`Unsupported mastering preset type: ${unknownTypes[0]}.`);
+  for (const type of MASTERING_PRESET_TYPES) {
+    const presets = library[type];
+    if (presets === undefined) continue;
+    if (!Array.isArray(presets)) throw new Error(`${type} mastering presets must be an array.`);
+    const ids = new Set();
+    const names = new Set();
+    for (const preset of presets) {
+      if (!preset || typeof preset !== "object" || Array.isArray(preset) || typeof preset.id !== "string" || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(preset.id) || preset.id.length > 120 || typeof preset.name !== "string" || preset.name !== preset.name.trim() || !preset.name || preset.name.length > 80) throw new Error(`Every ${type} mastering preset needs a safe id and a trimmed name up to 80 characters.`);
+      if (ids.has(preset.id)) throw new Error(`Duplicate ${type} mastering preset id: ${preset.id}`);
+      ids.add(preset.id);
+      const normalizedName = preset.name.toLocaleLowerCase();
+      if (names.has(normalizedName)) throw new Error(`Duplicate ${type} mastering preset name: ${preset.name}`);
+      names.add(normalizedName);
+      if (type === "eq") validateEqSettings(preset.settings, `${preset.name} EQ preset`);
+      else if (type === "compressor") validateCompressorSettings(preset.settings, `${preset.name} compressor preset`);
+      else if (type === "output") {
+        validateObject(preset.settings, `${preset.name} output preset`);
+        validateNumberRange(preset.settings.outputGainDb, MASTERING_LIMITS.outputGainDb, `${preset.name} output preset gain`);
+      } else if (type === "limiter") validateLimiterSettings(preset.settings, `${preset.name} limiter preset`);
+      else validateMasterBus(preset.settings, `${preset.name} MASTER preset`);
+    }
+  }
 };
 
 const appearanceOptions = {
@@ -129,6 +170,7 @@ export const validateState = (state) => {
   if (!Array.isArray(state.albums)) throw new Error("Project state must contain an albums array.");
   validateSettings(state.settings);
   validateAlbumTemplates(state.albumTemplates);
+  validateMasteringPresets(state.masteringPresets);
   const albumIds = new Set();
   for (const album of state.albums) {
     if (!album.id || !album.title || !Array.isArray(album.tracks)) throw new Error("Every album needs an id, title, and tracks array.");

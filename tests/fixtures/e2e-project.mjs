@@ -1,8 +1,10 @@
 import { normalizeMasterBus } from "../../src/lib/mastering.js";
+import { createMasteringPresetLibrary } from "../../src/lib/mastering-presets.js";
 
 export const e2eProjectState = {
   schemaVersion: 5,
   albumTemplates: [],
+  masteringPresets: createMasteringPresetLibrary(),
   activeAlbumId: "fixture-album",
   settings: {
     project: { artistName: "Fixture Artist", setupComplete: true },

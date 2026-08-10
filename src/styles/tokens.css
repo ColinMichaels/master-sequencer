@@ -80,8 +80,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 button:disabled { cursor: not-allowed; opacity: 0.32; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .icon { display: inline-block; flex: 0 0 auto; vertical-align: middle; }
-button[data-tooltip] { position: relative; }
-button[data-tooltip]::after {
+button[data-tooltip], .master-module-switch[data-tooltip] { position: relative; }
+button[data-tooltip]::after, .master-module-switch[data-tooltip]::after {
   position: absolute;
   z-index: 100;
   top: calc(100% + 0.45rem);
@@ -106,7 +106,9 @@ button[data-tooltip]::after {
   white-space: nowrap;
 }
 button[data-tooltip]:hover::after,
-button[data-tooltip]:focus-visible::after { display: block; }
+button[data-tooltip]:focus-visible::after,
+.master-module-switch[data-tooltip]:hover::after,
+.master-module-switch[data-tooltip]:focus-within::after { display: block; }
 .panel-toggle--right[data-tooltip]::after,
 .transport-actions button:last-child[data-tooltip]::after { right: 0; left: auto; transform: none; }
 

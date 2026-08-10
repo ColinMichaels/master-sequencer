@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { normalizeMasterBus } from "../src/lib/mastering.js";
+import { createMasteringPresetLibrary } from "../src/lib/mastering-presets.js";
 import { CURRENT_SCHEMA_VERSION, migrateState, validateState } from "./state-schema.mjs";
 
 const readJson = async (filePath) => JSON.parse(await readFile(filePath, "utf8"));
@@ -42,6 +43,7 @@ const freshProjectState = ({ artistName, firstAlbumTitle, era, appearance }) => 
   const albumId = slugify(firstAlbumTitle);
   return validateState({
     schemaVersion: CURRENT_SCHEMA_VERSION,
+    masteringPresets: createMasteringPresetLibrary(),
     activeAlbumId: albumId,
     settings: {
       project: { artistName, setupComplete: true },

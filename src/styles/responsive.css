@@ -154,6 +154,8 @@
   .mastering-heading > .primary-button { width: 100%; }
   .master-bus-heading { grid-template-columns: 1fr; }
   .master-bus-actions { justify-content: flex-start; }
+  .master-preset-controls--prominent .master-preset-menu { grid-template-columns: 1fr; }
+  .master-preset-controls--prominent .master-preset-notice { grid-column: 1; }
   .master-metering-grid { grid-template-columns: 1fr; }
   .master-module-grid { grid-template-columns: 1fr; grid-template-areas: "eq" "compressor" "output" "limiter"; }
   .master-module-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -231,6 +233,9 @@
   .master-bus-title > span { width: 62px; }
   .master-bus-actions { display: grid; grid-template-columns: 1fr 1fr; }
   .master-bus-status { grid-column: 1 / -1; }
+  .master-preset-recall { grid-template-columns: minmax(0, 1fr) auto; }
+  .master-preset-recall button:last-child { grid-column: 1 / -1; }
+  .master-preset-save { grid-template-columns: 1fr; }
   .master-metering-console { position: static; }
   .master-metering-console > header { align-items: flex-start; flex-direction: column; }
   .master-metering-status { width: 100%; justify-content: space-between; }

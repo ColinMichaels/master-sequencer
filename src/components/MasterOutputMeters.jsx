@@ -111,7 +111,8 @@ export const MasterOutputMeters = memo(function MasterOutputMeters({ meteringRef
   useEffect(() => {
     if (!playing) {
       smoothedRef.current = { left: MASTER_METER_FLOOR_DB, right: MASTER_METER_FLOOR_DB };
-      setFrame((current) => current.active ? { ...current, active: false, leftRmsDb: MASTER_METER_FLOOR_DB, rightRmsDb: MASTER_METER_FLOOR_DB, spectrum: EMPTY_SPECTRUM } : current);
+      // Peak holds remain useful after playback, but live clip status must clear with the stopped signal.
+      setFrame((current) => current.active ? { ...current, active: false, leftRmsDb: MASTER_METER_FLOOR_DB, rightRmsDb: MASTER_METER_FLOOR_DB, leftPeakDb: MASTER_METER_FLOOR_DB, rightPeakDb: MASTER_METER_FLOOR_DB, spectrum: EMPTY_SPECTRUM } : current);
       return undefined;
     }
 

@@ -9,6 +9,7 @@ import { normalizeMasterBus } from "../src/lib/mastering.js";
 const seed = {
   schemaVersion: 5,
   albumTemplates: [],
+  masteringPresets: { eq: [], compressor: [], output: [], limiter: [], master: [] },
   activeAlbumId: "album",
   settings: { project: { artistName: "Test Artist", setupComplete: true }, revealPrivateFilenames: false },
   albums: [{ id: "album", title: "Album", masterBus: normalizeMasterBus(), tracks: [{ id: "track", title: "Track", candidates: [] }] }],
@@ -293,6 +294,31 @@ test("state validation accepts a complete MASTER bus and rejects unsafe DSP valu
   const missingBus = structuredClone(seed);
   delete missingBus.albums[0].masterBus;
   assert.throws(() => validateState(missingBus), /MASTER bus must be an object/);
+});
+
+test("state validation accepts component and full MASTER presets and rejects unsafe preset values", () => {
+  const valid = structuredClone(seed);
+  const bus = normalizeMasterBus({ eq: { enabled: true, lowShelf: { gainDb: 2 } }, outputGainDb: -1 });
+  valid.masteringPresets.eq.push({ id: "warm", name: "Warm", settings: bus.eq });
+  valid.masteringPresets.output.push({ id: "quiet", name: "Quiet", settings: { outputGainDb: -4 } });
+  valid.masteringPresets.master.push({ id: "complete", name: "Complete", settings: bus });
+  assert.equal(validateState(valid), valid);
+
+  const unsafe = structuredClone(valid);
+  unsafe.masteringPresets.master[0].settings.limiter.ceilingDbfs = 1;
+  assert.throws(() => validateState(unsafe), /ceilingDbfs must be between -9 and 0/);
+
+  const duplicate = structuredClone(valid);
+  duplicate.masteringPresets.eq.push(structuredClone(duplicate.masteringPresets.eq[0]));
+  assert.throws(() => validateState(duplicate), /Duplicate eq mastering preset id/);
+
+  const duplicateName = structuredClone(valid);
+  duplicateName.masteringPresets.eq.push({ ...structuredClone(duplicateName.masteringPresets.eq[0]), id: "warm-copy", name: "WARM" });
+  assert.throws(() => validateState(duplicateName), /Duplicate eq mastering preset name/);
+
+  const unsafeId = structuredClone(valid);
+  unsafeId.masteringPresets.output[0].id = "../quiet";
+  assert.throws(() => validateState(unsafeId), /needs a safe id/);
 });
 
 test("state validation accepts appearance preferences and rejects unsupported choices", () => {

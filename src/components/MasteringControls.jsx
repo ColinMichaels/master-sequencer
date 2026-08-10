@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { MASTERING_LIMITS } from "../lib/mastering.js";
 import { MasterOutputMeters } from "./MasterOutputMeters.jsx";
+import { MasteringPresetControls } from "./MasteringPresetControls.jsx";
 
 export function MasteringNumberField({ label, value, minimum = 0, maximum, step = 0.1, suffix = "seconds", onCommit, disabled = false }) {
   const [draft, setDraft] = useState(String(value));
@@ -17,11 +18,12 @@ const NumberField = ({ limits, minimum, maximum, ...props }) => (
   <MasteringNumberField minimum={limits?.minimum ?? minimum} maximum={limits?.maximum ?? maximum} {...props} />
 );
 
+const EMPTY_PRESET_LIBRARY = Object.freeze({});
+
 const ModuleSwitch = ({ label, checked, onChange }) => (
-  <label className={`master-module-switch ${checked ? "is-enabled" : ""}`}>
-    <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
-    <span>{label}</span>
-    <strong>{checked ? "In" : "Out"}</strong>
+  <label className={`master-module-switch ${checked ? "is-enabled" : ""}`} data-tooltip={checked ? label.replace(/^Enable/, "Disable") : label}>
+    <input type="checkbox" checked={checked} aria-label={label} onChange={(event) => onChange(event.target.checked)} />
+    <span aria-hidden="true"><i /></span>
   </label>
 );
 
@@ -143,10 +145,10 @@ function LimiterTransferGraph({ limiter }) {
 }
 
 const ManualValues = ({ children }) => (
-  <section className="manual-control-bank">
-    <header><strong>Manual values</strong><small>Type exact settings</small></header>
-    {children}
-  </section>
+  <details className="manual-control-bank">
+    <summary><strong>Exact values</strong><small><span>Show text controls</span><span>Hide text controls</span></small></summary>
+    <div className="manual-control-content">{children}</div>
+  </details>
 );
 
 export function TrackLevelControl({ value, onChange }) {
@@ -165,7 +167,7 @@ export function TrackLevelControl({ value, onChange }) {
   );
 }
 
-export function MasterBusControls({ bus, onChange, onReset, meteringRef, meteringAvailable, playing, monitorLabel }) {
+export function MasterBusControls({ bus, presets = EMPTY_PRESET_LIBRARY, onChange, onReset, onSavePreset, onLoadPreset, onDeletePreset, meteringRef, meteringAvailable, playing, monitorLabel }) {
   const processors = useMemo(() => [
     bus.eq.enabled && "EQ",
     bus.compressor.enabled && "Compressor",
@@ -188,6 +190,7 @@ export function MasterBusControls({ bus, onChange, onReset, meteringRef, meterin
           <span aria-hidden="true">MASTER</span>
           <div><h3 id="master-bus-title">Album Master Bus</h3><p>Every preview and exported track passes through this shared chain.</p></div>
         </div>
+        <MasteringPresetControls type="master" label="MASTER chain" presets={presets.master} prominent inline onSave={onSavePreset} onLoad={onLoadPreset} onDelete={onDeletePreset} />
         <div className="master-bus-actions">
           <span className="master-bus-status">{status}</span>
           <label className={`master-bypass-switch ${bus.bypass ? "is-enabled" : ""}`}><input type="checkbox" checked={bus.bypass} onChange={(event) => onChange(["bypass"], event.target.checked)} /><span>Bypass MASTER</span></label>
@@ -201,7 +204,7 @@ export function MasterBusControls({ bus, onChange, onReset, meteringRef, meterin
 
       <div className="master-module-grid">
         <section className={`master-module master-module--eq ${bus.eq.enabled ? "is-enabled" : ""}`}>
-          <header><div><span>01</span><h4>Equalizer</h4></div><ModuleSwitch label="Enable MASTER EQ" checked={bus.eq.enabled} onChange={(value) => onChange(["eq", "enabled"], value)} /></header>
+          <header><div><span>01</span><h4>Equalizer</h4></div><MasteringPresetControls type="eq" label="EQ" presets={presets.eq} inline onSave={onSavePreset} onLoad={onLoadPreset} onDelete={onDeletePreset} /><ModuleSwitch label="Enable MASTER EQ" checked={bus.eq.enabled} onChange={(value) => onChange(["eq", "enabled"], value)} /></header>
           <div className="analog-faceplate analog-faceplate--eq">
             <EqResponseGraph eq={bus.eq} />
             <div className="eq-band-bank">
@@ -222,7 +225,7 @@ export function MasterBusControls({ bus, onChange, onReset, meteringRef, meterin
         </section>
 
         <section className={`master-module master-module--compressor ${bus.compressor.enabled ? "is-enabled" : ""}`}>
-          <header><div><span>02</span><h4>Compressor</h4></div><ModuleSwitch label="Enable MASTER compressor" checked={bus.compressor.enabled} onChange={(value) => onChange(["compressor", "enabled"], value)} /></header>
+          <header><div><span>02</span><h4>Compressor</h4></div><MasteringPresetControls type="compressor" label="Compressor" presets={presets.compressor} inline onSave={onSavePreset} onLoad={onLoadPreset} onDelete={onDeletePreset} /><ModuleSwitch label="Enable MASTER compressor" checked={bus.compressor.enabled} onChange={(value) => onChange(["compressor", "enabled"], value)} /></header>
           <div className="analog-faceplate analog-faceplate--compressor">
             <CompressorTransferGraph compressor={bus.compressor} />
             <div className="rotary-control-bank rotary-control-bank--compressor">
@@ -249,7 +252,7 @@ export function MasterBusControls({ bus, onChange, onReset, meteringRef, meterin
         </section>
 
         <section className={`master-module master-module--output ${Math.abs(bus.outputGainDb) > 0.0001 ? "is-enabled" : ""}`}>
-          <header><div><span>03</span><h4>Output</h4></div><small>Post compression</small></header>
+          <header><div><span>03</span><h4>Output</h4></div><MasteringPresetControls type="output" label="Output" presets={presets.output} inline onSave={onSavePreset} onLoad={onLoadPreset} onDelete={onDeletePreset} /><small>Post compression</small></header>
           <div className="analog-faceplate analog-faceplate--output">
             <RotaryControl label="MASTER output gain" value={bus.outputGainDb} limits={MASTERING_LIMITS.outputGainDb} step={0.1} suffix="dB" precision={1} disabled={bus.bypass} onChange={(value) => onChange(["outputGainDb"], value)} />
             <p>Final gain before the safety limiter</p>
@@ -260,7 +263,7 @@ export function MasterBusControls({ bus, onChange, onReset, meteringRef, meterin
         </section>
 
         <section className={`master-module master-module--limiter ${bus.limiter.enabled ? "is-enabled" : ""}`}>
-          <header><div><span>04</span><h4>Limiter</h4></div><ModuleSwitch label="Enable MASTER limiter" checked={bus.limiter.enabled} onChange={(value) => onChange(["limiter", "enabled"], value)} /></header>
+          <header><div><span>04</span><h4>Limiter</h4></div><MasteringPresetControls type="limiter" label="Limiter" presets={presets.limiter} inline onSave={onSavePreset} onLoad={onLoadPreset} onDelete={onDeletePreset} /><ModuleSwitch label="Enable MASTER limiter" checked={bus.limiter.enabled} onChange={(value) => onChange(["limiter", "enabled"], value)} /></header>
           <div className="analog-faceplate analog-faceplate--limiter">
             <LimiterTransferGraph limiter={bus.limiter} />
             <div className="rotary-control-bank rotary-control-bank--limiter">

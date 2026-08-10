@@ -267,15 +267,19 @@ test("mastering analysis, chapter cues, and delivery authority remain explicit",
   };
 
   await commitNumber(/Track gain/, -3.5);
+  await page.locator(".master-module--eq .manual-control-bank > summary").click();
   await page.getByLabel("Enable MASTER EQ").check();
   await page.getByRole("slider", { name: "Low shelf gain graphical control" }).fill("1.5");
   await expect(page.getByRole("spinbutton", { name: "Low shelf gain" })).toHaveValue("1.5");
+  await page.locator(".master-module--compressor .manual-control-bank > summary").click();
   await page.getByLabel("Enable MASTER compressor").check();
   await page.getByRole("slider", { name: "Threshold graphical control" }).fill("-22");
   await expect(page.getByRole("spinbutton", { name: "Threshold" })).toHaveValue("-22");
   await commitNumber(/Ratio/, 2.5);
   await expect(page.getByRole("slider", { name: "Ratio graphical control" })).toHaveAttribute("aria-valuetext", "2.5:1");
+  await page.locator(".master-module--output .manual-control-bank > summary").click();
   await commitNumber(/MASTER output gain/, -1);
+  await page.locator(".master-module--limiter .manual-control-bank > summary").click();
   await page.getByLabel("Enable MASTER limiter").check();
   await page.getByRole("slider", { name: "Ceiling graphical control" }).fill("-1");
   await expect(page.getByRole("spinbutton", { name: "Ceiling" })).toHaveValue("-1");
@@ -323,6 +327,92 @@ test("mastering analysis, chapter cues, and delivery authority remain explicit",
   await expect(page.getByText("Archive WAV", { exact: true })).toBeVisible();
   await expect(page.getByRole("radio", { name: /MP3 for Review/ })).toBeDisabled();
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
+});
+
+test("component and full MASTER presets save, recall, delete, undo, and persist", async ({ page, request }) => {
+  await page.getByRole("button", { name: "Mastering", exact: true }).click();
+  const commitNumber = async (name, value) => {
+    const input = page.getByRole("spinbutton", { name });
+    await input.fill(String(value));
+    await input.press("Enter");
+  };
+
+  const eqModule = page.locator(".master-module--eq");
+  await expect(eqModule.getByRole("spinbutton", { name: "Low shelf gain" })).not.toBeVisible();
+  await eqModule.locator(".manual-control-bank > summary").click();
+  await expect(eqModule.getByRole("spinbutton", { name: "Low shelf gain" })).toBeVisible();
+  const eqToggle = page.getByLabel("Enable MASTER EQ");
+  await expect(eqToggle.locator("..")).toHaveAttribute("data-tooltip", "Enable MASTER EQ");
+  await expect(eqModule.locator("header")).not.toContainText("Enable MASTER EQ");
+  await page.getByLabel("Enable MASTER EQ").check();
+  await expect(eqToggle.locator("..")).toHaveAttribute("data-tooltip", "Disable MASTER EQ");
+  await commitNumber("Low shelf gain", 2.5);
+  const eqPresets = page.getByRole("region", { name: "EQ presets" });
+  expect(await eqPresets.evaluate((element) => element.parentElement?.tagName)).toBe("HEADER");
+  await expect(eqPresets.locator("summary")).not.toContainText("Manage");
+  await expect(eqPresets.getByLabel("EQ preset search or name", { exact: true })).not.toBeVisible();
+  await eqPresets.locator("summary").click();
+  await eqPresets.getByLabel("EQ preset search or name", { exact: true }).press("Escape");
+  await expect(eqPresets.getByLabel("EQ preset search or name", { exact: true })).not.toBeVisible();
+  await eqPresets.locator("summary").click();
+  await eqPresets.getByLabel("EQ preset search or name", { exact: true }).fill("Warm Lift");
+  await eqPresets.getByRole("button", { name: "Save current" }).click();
+  await expect(eqPresets.getByLabel("EQ preset", { exact: true })).toContainText("Warm Lift");
+  await expect(eqPresets.getByLabel("EQ preset", { exact: true })).toHaveValue("warm-lift");
+  await eqPresets.getByLabel("EQ preset search or name", { exact: true }).fill("No match");
+  await expect(eqPresets.getByLabel("EQ preset", { exact: true })).toContainText("No matching EQ presets");
+  await eqPresets.getByLabel("EQ preset search or name", { exact: true }).fill("Warm");
+  await expect(eqPresets.getByLabel("EQ preset", { exact: true })).toContainText("Warm Lift");
+
+  await commitNumber("Low shelf gain", -3);
+  await eqPresets.getByLabel("EQ preset", { exact: true }).selectOption("warm-lift");
+  await eqPresets.getByRole("button", { name: "Load" }).click();
+  await expect(page.getByRole("spinbutton", { name: "Low shelf gain" })).toHaveValue("2.5");
+  await expect(eqPresets.getByLabel("EQ preset search or name", { exact: true })).not.toBeVisible();
+
+  await page.getByLabel("Enable MASTER compressor").check();
+  await page.locator(".master-module--compressor .manual-control-bank > summary").click();
+  await commitNumber("Threshold", -24);
+  await page.locator(".master-module--output .manual-control-bank > summary").click();
+  await commitNumber("MASTER output gain", -1.5);
+  await page.getByLabel("Enable MASTER limiter").check();
+  await page.locator(".master-module--limiter .manual-control-bank > summary").click();
+  await commitNumber("Ceiling", -1.2);
+  const masterPresets = page.getByRole("region", { name: "MASTER chain presets" });
+  await masterPresets.locator("summary").click();
+  await masterPresets.getByLabel("MASTER chain preset search or name", { exact: true }).fill("Streaming Chain");
+  await masterPresets.getByRole("button", { name: "Save current" }).click();
+  await expect(masterPresets.getByLabel("MASTER chain preset", { exact: true })).toContainText("Streaming Chain");
+
+  await page.getByRole("button", { name: "Reset MASTER" }).click();
+  await expect(page.getByLabel("Enable MASTER EQ")).not.toBeChecked();
+  await expect(page.getByRole("spinbutton", { name: "MASTER output gain" })).toHaveValue("0");
+  await masterPresets.getByLabel("MASTER chain preset", { exact: true }).selectOption("streaming-chain");
+  await masterPresets.getByRole("button", { name: "Load" }).click();
+  await expect(page.getByLabel("Enable MASTER EQ")).toBeChecked();
+  await expect(page.getByLabel("Enable MASTER compressor")).toBeChecked();
+  await expect(page.getByLabel("Enable MASTER limiter")).toBeChecked();
+  await expect(page.getByRole("spinbutton", { name: "MASTER output gain" })).toHaveValue("-1.5");
+
+  await eqPresets.locator("summary").click();
+  await eqPresets.getByRole("button", { name: "Delete" }).click();
+  await expect(eqPresets.getByRole("button", { name: "Confirm delete" })).toBeVisible();
+  await eqPresets.getByRole("button", { name: "Confirm delete" }).click();
+  await expect(eqPresets.getByLabel("EQ preset", { exact: true })).not.toContainText("Warm Lift");
+  await page.getByRole("button", { name: "Undo Delete eq mastering preset" }).click();
+  await expect(eqPresets.getByLabel("EQ preset", { exact: true })).toContainText("Warm Lift");
+  await expect(page.locator(".status-strip [role='status']")).toContainText("Saved locally");
+
+  await page.reload();
+  await page.getByRole("button", { name: "Mastering", exact: true }).click();
+  await page.getByRole("region", { name: "EQ presets" }).locator("summary").click();
+  await page.getByRole("region", { name: "MASTER chain presets" }).locator("summary").click();
+  await expect(page.getByLabel("EQ preset", { exact: true })).toContainText("Warm Lift");
+  await expect(page.getByLabel("MASTER chain preset", { exact: true })).toContainText("Streaming Chain");
+  const bootstrap = await (await request.get("/api/bootstrap")).json();
+  expect(bootstrap.state.masteringPresets.eq[0].settings.lowShelf.gainDb).toBe(2.5);
+  expect(bootstrap.state.masteringPresets.master[0].settings.outputGainDb).toBe(-1.5);
+  expect(bootstrap.state.albums[0].masterBus.compressor.thresholdDb).toBe(-24);
 });
 
 test("incremental search, saved filters, undo, and portable checksums stay local and non-destructive", async ({ page, request }) => {

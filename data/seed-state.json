@@ -1,6 +1,7 @@
 {
   "schemaVersion": 5,
   "albumTemplates": [],
+  "masteringPresets": { "eq": [], "compressor": [], "output": [], "limiter": [], "master": [] },
   "activeAlbumId": "no-planet-to-call-home",
   "settings": {
     "project": {

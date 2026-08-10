@@ -19,7 +19,7 @@ const fileForTrack = (track, libraryMap) => {
 
 const timeLabel = (value, precise = false) => value <= 0 ? (precise ? "0:00.000" : "0:00") : formatDuration(value, precise);
 
-export function MasteringWorkspace({ album, libraryMap, onAlbumChange, onPreview, previewingTrackId, onOpenExport, onTrackFocus, onPreviewChapter, meteringRef, meteringAvailable, playing, monitorLabel }) {
+export function MasteringWorkspace({ album, libraryMap, presets, onAlbumChange, onPreview, previewingTrackId, onOpenExport, onTrackFocus, onPreviewChapter, onSavePreset, onLoadPreset, onDeletePreset, meteringRef, meteringAvailable, playing, monitorLabel }) {
   const tracks = useMemo(() => sequenceTracks(album), [album]);
   const [selectedTrackId, setSelectedTrackId] = useState(tracks[0]?.id || "");
   const [analysisByKey, setAnalysisByKey] = useState({});
@@ -98,7 +98,7 @@ export function MasteringWorkspace({ album, libraryMap, onAlbumChange, onPreview
         <label className={delivery.readyToPublish ? "is-checked" : ""}><input type="checkbox" checked={Boolean(delivery.readyToPublish)} onChange={(event) => updateDelivery("readyToPublish", event.target.checked)} /> Ready to publish</label>
       </section>
 
-      <MasterBusControls bus={masterBus} onChange={updateMasterBus} onReset={resetMasterBus} meteringRef={meteringRef} meteringAvailable={meteringAvailable} playing={playing} monitorLabel={monitorLabel} />
+      <MasterBusControls bus={masterBus} presets={presets} onChange={updateMasterBus} onReset={resetMasterBus} onSavePreset={onSavePreset} onLoadPreset={onLoadPreset} onDeletePreset={onDeletePreset} meteringRef={meteringRef} meteringAvailable={meteringAvailable} playing={playing} monitorLabel={monitorLabel} />
 
       <div className="mastering-columns">
         <nav className="mastering-track-list" aria-label={`${album.title} mastering tracks`}>
