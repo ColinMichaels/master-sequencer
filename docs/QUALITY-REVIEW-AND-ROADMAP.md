@@ -11,7 +11,7 @@ green. The highest-risk gaps were not missing features; they were overlapping
 state writes, incomplete byte-range behavior, shallow import validation, local
 API request trust, asset symlink boundaries, and keyboard dialog behavior.
 
-Those gaps are addressed in the current working tree. “Perfect” is not a static
+Those gaps are addressed. “Perfect” is not a static
 finish line for an audio tool, so the remaining plan is intentionally ordered by
 risk reduction and user value rather than feature count.
 
@@ -79,20 +79,31 @@ risk reduction and user value rather than feature count.
 
 ## Prioritized roadmap
 
+### Delivery status
+
+| Round | Status | Branch | Evidence |
+| --- | --- | --- | --- |
+| P1 — confidence foundation | Complete | `codex/p1-confidence-foundation` | Repository Playwright coverage, generated-audio FFmpeg integration test, render-job lifecycle, schema migration/recovery, and composition-hub splits |
+| P2 — album decisions | Next | `codex/p2-album-decisions` | Sequence versions, transition notebook, readiness, comparison previews, and safe templates |
+| P3 — mastering review | Planned | `codex/p3-mastering-review` | Technical analysis, chapter preview, delivery profiles, and render history |
+| P4 — scale and portability | Planned | `codex/p4-scale-portability` | Incremental indexing, saved filters, undoable commands, and JSON/checksum bundles |
+
 ### P1 — confidence before feature expansion
 
-1. Add repository-owned rendered tests for bootstrap, reorder persistence,
+Completed in the P1 branch:
+
+1. Added repository-owned rendered tests for bootstrap, reorder persistence,
    protected masking, candidate/master separation, JSON import rejection,
    modal focus, library filters, and mobile overflow. Keep Browser/IAB as the
    human-visible QA path; use the automated suite for regression coverage.
-2. Introduce a render-job service with progress, cancellation, process timeout,
+2. Introduced a render-job service with progress, cancellation, process timeout,
    partial-output cleanup, and restart-aware result discovery. Never point a job
    at an indexed source path.
-3. Add tiny generated audio fixtures and an automated short FFmpeg print test
+3. Added tiny generated audio fixtures and an automated short FFmpeg print test
    that verifies duration, stream format, cue sheet, and manifest consistency.
-4. Add state migration and recovery: schema-version migrations, a last-known-good
+4. Added state migration and recovery: schema-version migrations, a last-known-good
    snapshot, a recovery screen, and an explicit restore workflow.
-5. Split API route handlers out of `server/index.mjs`, extract project commands
+5. Split API route handlers out of `server/index.mjs`, extracted project commands
    from `src/App.jsx`, and divide `src/styles.css` by tokens, shell, workspaces,
    and responsive rules. Do this as features touch each area, not as a rewrite.
 

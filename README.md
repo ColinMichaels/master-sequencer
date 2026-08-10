@@ -138,6 +138,7 @@ do not enter album work.
 | --- | --- |
 | `data/seed-state.json` | Portable initial album catalog |
 | `data/sequencer-state.json` | Ignored, mutable album/review state |
+| `data/sequencer-state.last-known-good.json` | Ignored, validated recovery snapshot |
 | `data/audio-index-cache.json` | Ignored, rebuildable `ffprobe` cache |
 | `config/sequencer.config.json` | Portable server and scanner defaults |
 | `config/sequencer.local.json` | Ignored machine-specific file and folder paths |
@@ -156,7 +157,12 @@ Timing and fade settings are instructions stored on the track record. Audio
 printing reads the indexed source and creates a new derivative under
 `exports/YYYY-MM-DD/`; it never rewrites the source. Every non-preview print
 includes a text cue sheet and JSON render manifest beside the WAV or MP3.
-This is intentionally more
+Prints run as cancellable jobs with visible phase and progress, a bounded
+process timeout, and cleanup of incomplete files. Completed manifests are
+rediscovered after restart so documented results remain available. If current
+project state cannot be parsed, validated, or migrated, the application shows
+an explicit recovery screen for restoring the last-known-good snapshot; it does
+not silently replace project decisions. This is intentionally more
 inspectable and portable than browser-only localStorage or IndexedDB. Export
 the Project JSON from Settings for a portable backup before large catalog
 changes.
@@ -189,6 +195,16 @@ assessment and prioritized future plan.
 ```bash
 npm run check
 ```
+
+The full release gate also runs the isolated rendered-browser suite:
+
+```bash
+npm run check:full
+```
+
+The browser suite generates tiny temporary audio fixtures outside the project
+catalog. It exercises real FFmpeg output and HTTP byte-range playback without
+reading or changing configured source audio.
 
 For a parallel local production QA process without editing local configuration,
 override only the listening port:

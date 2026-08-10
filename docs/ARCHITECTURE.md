@@ -12,11 +12,13 @@ React workspace
   v
 Local Node server (127.0.0.1)
   |-- project state store ------> ignored data/sequencer-state.json
+  |                              `-> ignored last-known-good snapshot
   |-- configuration store -----> ignored config/sequencer.local.json
   |-- audio index -------------> ignored data/audio-index-cache.json
   |-- range media service -----> already-indexed source audio (read-only)
   |-- waveform service --------> compact in-memory peak arrays
   |-- project asset service ---> configured-root images and lyric text (read-only)
+  |-- render-job service ------> bounded FFmpeg queue and result discovery
   `-- audio renderer ----------> ignored exports/YYYY-MM-DD derivatives
 ```
 
@@ -49,13 +51,17 @@ Every feature must preserve these rules:
 
 | Module | Responsibility |
 | --- | --- |
-| `server/index.mjs` | Process startup, API routing, static delivery, and composition of server services |
+| `server/index.mjs` | Process startup, static delivery, and composition of server services |
+| `server/api-router.mjs` | Narrow JSON/media route handlers and API response shaping |
+| `server/http-response.mjs` | Size-bounded JSON input, JSON output, MIME lookup, and range-file streaming |
 | `server/config-store.mjs` | Merge portable/local/environment configuration and atomically register or disconnect sources |
 | `server/audio-library.mjs` | Recursively discover supported audio, probe metadata, and maintain the rebuildable cache |
-| `server/state-store.mjs` | Validate schema version 1 and serialize atomic state writes |
+| `server/state-schema.mjs` | Validate the current state schema and apply explicit migrations from older versions |
+| `server/state-store.mjs` | Serialize atomic state writes and maintain a validated last-known-good snapshot |
 | `server/http-utils.mjs` | Byte-range parsing, local Host/Origin guards, and response security headers |
 | `server/waveform.mjs` | Bound FFmpeg analysis and maintain an in-memory LRU-style waveform cache |
-| `server/audio-renderer.mjs` | Normalize edit instructions, build FFmpeg graphs, and create documented derivatives |
+| `server/render-job-service.mjs` | Queue one bounded render at a time, report progress, cancel work, clean partials, and discover completed results after restart |
+| `server/audio-renderer.mjs` | Normalize edit instructions, build FFmpeg graphs, enforce timeout/cancellation, and atomically publish documented derivatives |
 | `server/project-assets.mjs` | Convert selected images/lyrics into safe configured-root references |
 | `server/native-picker.mjs` | Register paths selected by the native macOS picker without copying files |
 
@@ -74,7 +80,9 @@ baseline order references before disk state changes.
 | `src/hooks/useTransport.js` | Preview individual sources, queue album playback, and recover from media errors |
 | `src/hooks/useAppearance.js` | Resolve and apply persisted display preferences |
 | `src/components/*Workspace.jsx` | Own one user workflow and its local interaction state |
-| `src/lib/*.js` | Pure album, import, sequence, formatting, appearance, and mastering rules |
+| `src/lib/project-commands.js` | Immutable commands for albums, tracks, candidates, assets, and sequence edits |
+| `src/lib/*.js` | Pure import, sequence, formatting, appearance, and mastering rules |
+| `src/styles/*.css` | Tokens/base rules, shell chrome, workspace features, and responsive/motion rules |
 
 Autosave uses a short debounce for editing comfort, then puts each snapshot on a
 single promise chain. A later save cannot be overtaken by an earlier request.
@@ -100,8 +108,13 @@ by media clients. Malformed, multiple, reversed, and out-of-bounds ranges return
 - `data/seed-state.json` is portable initial state and must remain free of
   machine-specific paths.
 - `data/sequencer-state.json` is the ignored, mutable project record.
+- `data/sequencer-state.last-known-good.json` is an ignored, validated recovery
+  snapshot written before the current state is replaced.
 - Every normal edit shows `Changes pending`, `Saving changes`, or `Saved locally`
   in a live status region.
+- If current state cannot be parsed, validated, or migrated, startup enters a
+  dedicated recovery screen. Restoring the last-known-good snapshot is an
+  explicit operator action and never touches indexed media.
 - A failed save leaves the open client state intact and shows a recoverable
   warning. Export Project JSON before large catalog changes.
 - Invalid imported JSON never replaces the open project.
@@ -125,8 +138,18 @@ by media clients. Malformed, multiple, reversed, and out-of-bounds ranges return
 
 ## Architectural pressure points
 
-`src/App.jsx`, `server/index.mjs`, and `src/styles.css` are the current
-composition hubs. They are understandable at the present scale, but new feature
-families should extract routing/controllers, project commands, and workspace
-style layers instead of growing these files indefinitely. The prioritized plan
-is maintained in [QUALITY-REVIEW-AND-ROADMAP.md](./QUALITY-REVIEW-AND-ROADMAP.md).
+The first confidence-foundation refactor extracted API routing, project
+commands, state migrations, and style layers. `src/App.jsx` remains the primary
+client composition hub; future feature families should keep moving domain
+rules into focused modules instead of growing it indefinitely. The prioritized
+plan is maintained in [QUALITY-REVIEW-AND-ROADMAP.md](./QUALITY-REVIEW-AND-ROADMAP.md).
+
+## Verification layers
+
+- `npm test` covers pure domain rules, server boundaries, migrations, recovery,
+  render jobs, and a real generated-audio FFmpeg print.
+- `npm run test:browser` starts an isolated repository-owned server with tiny
+  generated fixtures. It covers persistence, privacy masking, independent
+  audition/master choices, import rejection, modal focus, filters, mobile
+  overflow, a real render job, and byte-range delivery.
+- Browser/IAB remains the human-visible desktop/mobile and keyboard QA path.
