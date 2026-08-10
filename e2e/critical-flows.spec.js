@@ -144,7 +144,7 @@ test("an unconfigured installation explains the complete album workflow", async 
   await expect(guide).toBeVisible();
   await expect(guide.getByRole("heading", { name: "Audition every version. Build one final album." })).toBeVisible();
   await expect(guide.getByText("24-bit / 48 kHz WAV", { exact: false })).toBeVisible();
-  await expect(guide.getByText(/EQ, compression, limiting, and effects are planned/)).toBeVisible();
+  await expect(guide.getByText(/shared EQ, compression, output gain, and limiting/)).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(guide).toBeVisible();
 
@@ -238,6 +238,21 @@ test("album decisions persist versions, transition notes, explicit approval, and
 
 test("mastering analysis, chapter cues, and delivery authority remain explicit", async ({ page, request }) => {
   await page.getByRole("button", { name: "Mastering" }).click();
+  const commitNumber = async (name, value) => {
+    const input = page.getByLabel(name);
+    await input.fill(String(value));
+    await input.press("Enter");
+  };
+
+  await commitNumber(/Track gain/, -3.5);
+  await page.getByLabel("Enable MASTER EQ").check();
+  await commitNumber(/Low shelf gain/, 1.5);
+  await page.getByLabel("Enable MASTER compressor").check();
+  await commitNumber(/Threshold/, -22);
+  await commitNumber(/Ratio/, 2.5);
+  await commitNumber(/MASTER output gain/, -1);
+  await page.getByLabel("Enable MASTER limiter").check();
+  await commitNumber(/Ceiling/, -1);
   await page.getByLabel("Print requirements").selectOption("archive-wav");
   await page.getByLabel("Ready to publish").check();
   await page.getByRole("button", { name: "Analyze Source" }).click();
@@ -248,6 +263,29 @@ test("mastering analysis, chapter cues, and delivery authority remain explicit",
 
   const bootstrap = await (await request.get("/api/bootstrap")).json();
   expect(bootstrap.state.albums[0].delivery).toEqual({ profileId: "archive-wav", masterApproved: false, readyToPublish: true });
+  expect(bootstrap.state.albums[0].tracks[0].mastering.gainDb).toBe(-3.5);
+  expect(bootstrap.state.albums[0].masterBus.eq.lowShelf.gainDb).toBe(1.5);
+  expect(bootstrap.state.albums[0].masterBus.compressor.thresholdDb).toBe(-22);
+  expect(bootstrap.state.albums[0].masterBus.compressor.ratio).toBe(2.5);
+  expect(bootstrap.state.albums[0].masterBus.outputGainDb).toBe(-1);
+  expect(bootstrap.state.albums[0].masterBus.limiter.ceilingDbfs).toBe(-1);
+
+  const renderResponse = await request.post("/api/renders", {
+    data: { album: bootstrap.state.albums[0], scope: "track", trackId: "alpha", format: "wav", deliveryProfileId: "archive-wav" },
+    headers: { Origin: origin },
+  });
+  expect(renderResponse.status()).toBe(202);
+  const render = await renderResponse.json();
+  let renderedJob;
+  await expect.poll(async () => {
+    renderedJob = (await (await request.get(`/api/render-jobs/${render.job.id}`)).json()).job;
+    return renderedJob.status;
+  }).toBe("completed");
+  const manifest = await (await request.get(renderedJob.result.manifestUrl)).json();
+  expect(manifest.tracks[0].gainDb).toBe(-3.5);
+  expect(manifest.masterBus.eq.lowShelf.gainDb).toBe(1.5);
+  expect(manifest.masterBus.compressor.thresholdDb).toBe(-22);
+  expect(manifest.masterBus.limiter.ceilingDbfs).toBe(-1);
 
   await page.getByRole("button", { name: "Print / Export Audio" }).click();
   await expect(page.getByText("Archive WAV", { exact: true })).toBeVisible();

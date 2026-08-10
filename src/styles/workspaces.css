@@ -375,6 +375,48 @@
 .delivery-profile-panel > label.is-checked { border-color: var(--lime); color: var(--lime); }
 .delivery-profile-panel input { width: 17px; height: 17px; accent-color: var(--lime); }
 .delivery-profile-panel select { min-height: 42px; padding: 0.5rem; border: 1px solid var(--line); border-radius: 0; background: var(--ink); color: var(--bone); }
+.master-bus-panel { margin-top: 0.75rem; border: 1px solid var(--lime); background: linear-gradient(135deg, rgb(var(--lime-rgb) / 4%), transparent 32rem), var(--ink-soft); box-shadow: inset 0 3px 0 rgb(var(--lime-rgb) / 18%); }
+.master-bus-panel.is-bypassed { border-color: var(--yellow); box-shadow: inset 0 3px 0 rgb(var(--yellow-rgb) / 18%); }
+.master-bus-heading { display: grid; grid-template-columns: minmax(280px, 1fr) auto; gap: 0.75rem; align-items: center; padding: 0.7rem; border-bottom: 1px solid var(--line-soft); }
+.master-bus-title { display: flex; gap: 0.7rem; align-items: center; min-width: 0; }
+.master-bus-title > span { display: grid; width: 70px; height: 42px; flex: 0 0 auto; border: 1px solid var(--lime); background: var(--lime); color: var(--ink); font-size: 0.66rem; font-weight: 950; place-items: center; }
+.master-bus-panel.is-bypassed .master-bus-title > span { border-color: var(--yellow); background: var(--yellow); }
+.master-bus-title h3 { margin: 0; color: var(--lime); font-size: 1rem; text-transform: uppercase; }
+.master-bus-panel.is-bypassed .master-bus-title h3 { color: var(--yellow); }
+.master-bus-title p { margin: 0.15rem 0 0; color: var(--bone-muted); font-family: var(--ui); font-size: 0.58rem; }
+.master-bus-actions { display: flex; gap: 0.45rem; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
+.master-bus-status { color: var(--lime); font-size: 0.56rem; text-transform: uppercase; }
+.master-bus-panel.is-bypassed .master-bus-status { color: var(--yellow); }
+.master-bypass-switch { display: flex; min-height: 36px; gap: 0.4rem; padding: 0.4rem 0.55rem; align-items: center; border: 1px solid var(--line); color: var(--bone-muted); font-size: 0.55rem; text-transform: uppercase; cursor: pointer; }
+.master-bypass-switch.is-enabled { border-color: var(--yellow); color: var(--yellow); }
+.master-bypass-switch input, .master-module-switch input { width: 16px; height: 16px; accent-color: var(--lime); }
+.master-bypass-switch.is-enabled input { accent-color: var(--yellow); }
+.master-signal-flow { display: flex; gap: 0.35rem; min-height: 36px; padding: 0.45rem 0.7rem; align-items: center; border-bottom: 1px solid var(--line-soft); color: var(--bone-muted); font-size: 0.49rem; text-transform: uppercase; overflow-x: auto; }
+.master-signal-flow span { min-width: max-content; padding: 0.25rem 0.35rem; border: 1px solid var(--line-soft); }
+.master-signal-flow i { color: var(--lime); font-family: var(--ui); font-style: normal; }
+.master-module-grid { display: grid; grid-template-columns: 1.1fr 1.1fr 0.65fr 0.85fr; gap: 1px; background: var(--line); }
+.master-module { min-width: 0; padding: 0.65rem; background: var(--ink); box-shadow: inset 0 2px 0 transparent; }
+.master-module.is-enabled { box-shadow: inset 0 2px 0 var(--lime); }
+.master-module > header { display: flex; min-height: 32px; gap: 0.65rem; align-items: center; justify-content: space-between; }
+.master-module > header > div { display: flex; gap: 0.45rem; align-items: center; }
+.master-module > header > div > span { color: var(--lime); font-size: 0.5rem; }
+.master-module h4 { margin: 0; font-size: 0.72rem; text-transform: uppercase; }
+.master-module > header > small { color: var(--bone-muted); font-family: var(--ui); font-size: 0.5rem; text-transform: uppercase; }
+.master-module-switch { display: grid; grid-template-columns: auto auto auto; min-height: 30px; gap: 0.3rem; padding: 0.25rem 0.35rem; align-items: center; border: 1px solid var(--line-soft); color: var(--bone-muted); font-size: 0.48rem; text-transform: uppercase; cursor: pointer; }
+.master-module-switch.is-enabled { border-color: var(--lime); color: var(--lime); }
+.master-module-switch strong { color: inherit; font-size: 0.46rem; }
+.master-module-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.45rem; margin-top: 0.55rem; }
+.master-module-fields .mastering-number-field > div { min-height: 34px; }
+.master-module-fields .mastering-number-field input { height: 32px; font-size: 0.66rem; }
+.master-module-fields .mastering-number-field input:disabled, .master-select-field select:disabled { opacity: 0.4; cursor: not-allowed; }
+.master-select-field { display: grid; gap: 0.3rem; min-width: 0; color: var(--bone-muted); font-size: 0.54rem; text-transform: uppercase; }
+.master-select-field select { width: 100%; min-width: 0; min-height: 34px; padding: 0.25rem 0.4rem; border: 1px solid var(--line); border-radius: 0; background: var(--ink); color: var(--bone); font-family: var(--display); font-size: 0.6rem; text-transform: uppercase; }
+.track-level-control { background: rgb(var(--lime-rgb) / 2%); }
+.signal-badge { display: grid; width: 36px; height: 28px; flex: 0 0 auto; border: 1px solid var(--lime); color: var(--lime); font-size: 0.5rem; place-items: center; }
+.track-level-console { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(110px, 0.3fr); gap: 0.65rem; align-items: end; margin-top: 0.7rem; }
+.track-level-fader { display: grid; grid-template-columns: auto minmax(120px, 1fr) 58px; min-height: 40px; gap: 0.55rem; padding: 0 0.55rem; align-items: center; border: 1px solid var(--line); background: var(--ink); color: var(--bone-muted); font-size: 0.54rem; text-transform: uppercase; }
+.track-level-fader input { width: 100%; accent-color: var(--lime); }
+.track-level-fader small { color: var(--lime); font-family: var(--display); font-size: 0.58rem; text-align: right; }
 .mastering-columns { display: grid; grid-template-columns: 220px minmax(440px, 1fr) 250px; gap: 0.75rem; min-height: calc(100% - 78px); padding-top: 0.75rem; }
 .mastering-track-list, .mastering-editor, .mastering-program { min-width: 0; border: 1px solid var(--line); background: rgb(var(--bone-rgb) / 0.7%); }
 .mastering-track-list > header, .mastering-program > header { display: grid; gap: 0.15rem; min-height: 58px; padding: 0.7rem; align-content: center; border-bottom: 1px solid var(--line); }

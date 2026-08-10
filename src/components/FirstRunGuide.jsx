@@ -42,7 +42,7 @@ const workflow = [
     title: "Trim and master timing",
     icon: ScissorsIcon,
     accent: "yellow",
-    body: "Set non-destructive trims, fades, gaps, hard cuts, and crossfades. Print short previews before committing to the album flow.",
+    body: "Set non-destructive track levels, trims, fades, gaps, hard cuts, and crossfades, then shape the complete album through one MASTER bus.",
   },
   {
     title: "Export masters and lyrics",
@@ -107,7 +107,7 @@ export function FirstRunGuide({
           )}
         </section>
 
-        <aside className="first-run-roadmap"><DocumentIcon size={20} /><p><strong>Mastering roadmap:</strong> today’s tools focus on timing, fades, gaps, crossfades, and clean audio printing. EQ, compression, limiting, and effects are planned future additions.</p></aside>
+        <aside className="first-run-roadmap"><DocumentIcon size={20} /><p><strong>Mastering tools:</strong> balance every track, then apply shared EQ, compression, output gain, and limiting through the album MASTER bus. Creative effects remain a future addition.</p></aside>
       </div>
     </Modal>
   );

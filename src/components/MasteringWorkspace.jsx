@@ -3,24 +3,14 @@ import { sourceKey } from "../lib/api.js";
 import { api } from "../lib/api.js";
 import { DELIVERY_PROFILES } from "../lib/delivery-profiles.js";
 import { formatDuration } from "../lib/format.js";
-import { calculateProgramTimeline, masteringSummary, normalizeMastering, programDuration } from "../lib/mastering.js";
+import { calculateProgramTimeline, masteringSummary, normalizeMasterBus, normalizeMastering, programDuration } from "../lib/mastering.js";
 import { sequenceTracks } from "../lib/sequence-tracks.js";
 import { ExportIcon, PlayIcon, RefreshIcon, ScissorsIcon, WarningIcon, WaveIcon } from "./Icons.jsx";
 import { WaveformEditor } from "./WaveformEditor.jsx";
 import { TransitionCurve } from "./TransitionCurve.jsx";
 import { transitionCurve } from "../lib/waveform.js";
 import { RenderHistory } from "./RenderHistory.jsx";
-
-function NumberField({ label, value, minimum = 0, maximum, step = 0.1, suffix = "seconds", onCommit, disabled = false }) {
-  const [draft, setDraft] = useState(String(value));
-  useEffect(() => { setDraft(String(value)); }, [value]);
-  const commit = () => {
-    const parsed = Number(draft);
-    if (Number.isFinite(parsed)) onCommit(Math.min(maximum ?? parsed, Math.max(minimum, parsed)));
-    else setDraft(String(value));
-  };
-  return <label className="mastering-number-field"><span>{label}</span><div><input type="number" min={minimum} max={maximum} step={step} value={draft} disabled={disabled} onChange={(event) => setDraft(event.target.value)} onBlur={commit} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} /><small>{suffix}</small></div></label>;
-}
+import { MasterBusControls, MasteringNumberField as NumberField, TrackLevelControl } from "./MasteringControls.jsx";
 
 const fileForTrack = (track, libraryMap) => {
   const candidate = track.candidates.find((item) => item.id === track.auditionCandidateId);
@@ -56,6 +46,7 @@ export function MasteringWorkspace({ album, libraryMap, onAlbumChange, onPreview
   const editedCount = tracks.filter((track) => track.mastering && Object.keys(track.mastering).length).length;
   const analysis = selectedFile ? analysisByKey[selectedFile.key] : null;
   const delivery = album.delivery || {};
+  const masterBus = useMemo(() => normalizeMasterBus(album.masterBus), [album.masterBus]);
 
   const updateMastering = (field, value) => onAlbumChange((draft) => {
     const track = draft.tracks.find((item) => item.id === selectedTrackId);
@@ -81,6 +72,14 @@ export function MasteringWorkspace({ album, libraryMap, onAlbumChange, onPreview
   const updateDelivery = (field, value) => onAlbumChange((draft) => {
     draft.delivery = { profileId: "", masterApproved: false, readyToPublish: false, ...(draft.delivery || {}), [field]: value };
   });
+  const updateMasterBus = (path, value) => onAlbumChange((draft) => {
+    const next = normalizeMasterBus(draft.masterBus);
+    let target = next;
+    path.slice(0, -1).forEach((key) => { target = target[key]; });
+    target[path.at(-1)] = value;
+    draft.masterBus = normalizeMasterBus(next);
+  });
+  const resetMasterBus = () => onAlbumChange((draft) => { draft.masterBus = normalizeMasterBus(); });
 
   if (!tracks.length) return <main className="mastering-workspace"><div className="empty-state"><ScissorsIcon size={30}/><h2>No tracks are currently sequenced.</h2><p>Restore or add a track in Sequence before creating timing and fade instructions.</p></div></main>;
 
@@ -98,6 +97,8 @@ export function MasteringWorkspace({ album, libraryMap, onAlbumChange, onPreview
         <label className={delivery.masterApproved ? "is-checked" : ""}><input type="checkbox" checked={Boolean(delivery.masterApproved)} onChange={(event) => updateDelivery("masterApproved", event.target.checked)} /> Approved master</label>
         <label className={delivery.readyToPublish ? "is-checked" : ""}><input type="checkbox" checked={Boolean(delivery.readyToPublish)} onChange={(event) => updateDelivery("readyToPublish", event.target.checked)} /> Ready to publish</label>
       </section>
+
+      <MasterBusControls bus={masterBus} onChange={updateMasterBus} onReset={resetMasterBus} />
 
       <div className="mastering-columns">
         <nav className="mastering-track-list" aria-label={`${album.title} mastering tracks`}>
@@ -135,6 +136,8 @@ export function MasteringWorkspace({ album, libraryMap, onAlbumChange, onPreview
                 {analysis && <dl><div><dt>Integrated</dt><dd>{analysis.measurements.integratedLoudness?.toFixed(1) ?? "—"} LUFS</dd></div><div><dt>True peak</dt><dd>{analysis.measurements.truePeak?.toFixed(1) ?? "—"} dBFS</dd></div><div><dt>Loudness range</dt><dd>{analysis.measurements.loudnessRange?.toFixed(1) ?? "—"} LU</dd></div><div><dt>DC offset</dt><dd>{analysis.measurements.dcOffset?.toFixed(6) ?? "—"}</dd></div><div><dt>Silence regions</dt><dd>{analysis.measurements.silenceBoundaries.length}</dd></div></dl>}
                 {analysisError && <p className="render-error" role="alert">{analysisError}</p>}
               </section>
+
+              <TrackLevelControl value={settings.gainDb} onChange={(value) => updateMastering("gainDb", value)} />
 
               <section className="mastering-control-section">
                 <div className="mastering-section-title"><ScissorsIcon /><div><h3>Trim &amp; Opening</h3><p>Shorten the source from either end and optionally fade into the opening.</p></div></div>

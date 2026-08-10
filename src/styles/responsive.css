@@ -40,6 +40,8 @@
   .mastering-heading { grid-template-columns: 1fr auto; }
   .mastering-heading dl { grid-column: 1; grid-row: 2; }
   .mastering-heading > .primary-button { grid-column: 2; grid-row: 1 / 3; }
+  .master-module-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .master-module-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .mastering-columns { grid-template-columns: 200px minmax(420px, 1fr); }
   .mastering-program { grid-column: 1 / -1; }
   .mastering-program ol { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -150,6 +152,10 @@
   .mastering-heading { display: block; }
   .mastering-heading dl { margin: 0.65rem 0; }
   .mastering-heading > .primary-button { width: 100%; }
+  .master-bus-heading { grid-template-columns: 1fr; }
+  .master-bus-actions { justify-content: flex-start; }
+  .master-module-grid { grid-template-columns: 1fr; }
+  .master-module-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .mastering-columns { display: block; min-height: 0; }
   .mastering-track-list, .mastering-editor, .mastering-program { margin-top: 0.65rem; overflow: visible; }
   .mastering-track-list ol { display: flex; overflow-x: auto; }
@@ -220,6 +226,15 @@
   .lyric-attachment:first-child { border-top: 0; }
   .lyric-file-row { grid-template-columns: 1fr; }
   .mastering-field-grid, .mastering-field-grid--ending { grid-template-columns: 1fr; }
+  .master-bus-title { align-items: flex-start; }
+  .master-bus-title > span { width: 62px; }
+  .master-bus-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .master-bus-status { grid-column: 1 / -1; }
+  .master-module > header { align-items: flex-start; }
+  .master-module-fields { grid-template-columns: 1fr; }
+  .track-level-console { grid-template-columns: 1fr; }
+  .track-level-fader { grid-template-columns: 1fr 60px; padding-block: 0.45rem; }
+  .track-level-fader > span { grid-column: 1 / -1; }
   .mastering-editor > header { display: block; }
   .mastering-editor > header .text-button { width: 100%; margin-top: 0.55rem; }
   .ending-mode-grid { grid-template-columns: 1fr; }

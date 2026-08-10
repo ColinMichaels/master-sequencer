@@ -39,8 +39,8 @@ few seconds; later starts use the metadata cache.
 On a new installation with no configured audio paths or indexed files, the app
 opens a first-run guide. It explains the complete file-to-album workflow and
 links directly to the native audio picker, album creation, and the main editing
-workspace. The guide also distinguishes the current non-destructive timing and
-transition tools from planned EQ, compression, limiting, and effects features.
+workspace. The guide also introduces the non-destructive track-level controls
+and shared album MASTER bus alongside the timing and transition workflow.
 
 For the built production app:
 
@@ -70,7 +70,9 @@ npm start
   accessible start/end markers, see trimmed, kept, fade, and crossfade regions,
   and retain next-track context while sequencing. Set non-destructive opening
   fades, natural endings, hard cuts, fade-outs, crossfades, and post-track
-  silence; preview edited starts and endings; then print a selected track or
+  silence; balance each track before fades and transitions; shape the complete
+  album through a shared MASTER EQ, compressor, output stage, and limiter;
+  preview edited starts and endings; then print a selected track or
   continuous album program as 24-bit/48 kHz WAV or 320 kbps MP3. Run optional
   rebuildable true-peak, loudness, DC-offset, and silence analysis; navigate a
   chaptered trim preview without reprinting the full program; validate prints
