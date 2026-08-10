@@ -2,7 +2,7 @@ import React from "react";
 import { ExportIcon, PlayIcon, RefreshIcon } from "./Icons.jsx";
 import { TransportWaveform } from "./TransportWaveform.jsx";
 
-export function TransportBar({ audioRef, audioHandlers, current, status, activeAlbum, visual, playing, currentTime, mediaDuration, resetArmed, onTogglePlayback, onSeek, onPlaySequence, onResetOrder, onExport }) {
+export function TransportBar({ audioRef, audioHandlers, current, status, activeAlbum, visual, playing, currentTime, mediaDuration, liveMasteringLabel, resetArmed, onTogglePlayback, onSeek, onPlaySequence, onResetOrder, onExport }) {
   return (
     <footer className="transport-bar">
       <div className="transport-copy"><span>Sequence Preview</span><strong>{current?.trackTitle || "Ready to audition"}</strong><small>{status}</small></div>
@@ -15,6 +15,7 @@ export function TransportBar({ audioRef, audioHandlers, current, status, activeA
         nextTrackTitle={visual.nextTrackTitle}
         currentTime={currentTime}
         mediaDuration={mediaDuration}
+        liveMasteringLabel={liveMasteringLabel}
         playing={playing}
         hasCurrentMedia={Boolean(current)}
         renderedPreview={Boolean(current?.renderedPreview)}

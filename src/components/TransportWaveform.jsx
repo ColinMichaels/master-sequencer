@@ -19,6 +19,7 @@ export function TransportWaveform({
   nextTrackTitle,
   currentTime,
   mediaDuration,
+  liveMasteringLabel,
   playing,
   hasCurrentMedia,
   renderedPreview,
@@ -90,7 +91,7 @@ export function TransportWaveform({
         <div className="transport-waveform-meta">
           <span>{timeLabel(currentTime)} / {timeLabel(playableDuration || duration)}</span>
           <span>Trim {timeLabel(settings.trimStart)}–{timeLabel(settings.trimEnd)}</span>
-          {renderedPreview ? <strong>Rendered preview · source edit map</strong> : <strong>{waveform.error ? "Waveform unavailable" : waveform.loading ? "Reading waveform…" : "Source waveform"}</strong>}
+          {renderedPreview ? <strong>Rendered preview · source edit map</strong> : <strong>{liveMasteringLabel || (waveform.error ? "Waveform unavailable" : waveform.loading ? "Reading waveform…" : "Source waveform")}</strong>}
         </div>
         <button
           type="button"

@@ -201,6 +201,28 @@ test("the transport waveform stays inside its desktop and phone footer", async (
   expect(bounds.player.bottom).toBeLessThanOrEqual(bounds.bar.bottom);
 });
 
+test("space always toggles transport playback without hijacking text entry", async ({ page }) => {
+  const transportToggle = page.locator(".transport-playback-toggle");
+  await transportToggle.click();
+  await expect(transportToggle).toHaveAttribute("aria-label", "Pause playback");
+
+  await page.keyboard.press("Space");
+  await expect(transportToggle).toHaveAttribute("aria-label", "Resume playback");
+  await expect(page.locator(".transport-copy small")).toHaveText("Playback paused. Press Space to resume.");
+  await page.keyboard.press("Space");
+  await expect(transportToggle).toHaveAttribute("aria-label", "Pause playback");
+  await expect(page.locator(".transport-copy small")).toHaveText("Playback resumed. Press Space to pause.");
+
+  await page.keyboard.press("Space");
+  await expect(transportToggle).toHaveAttribute("aria-label", "Resume playback");
+  await page.getByRole("button", { name: "Audio Library", exact: true }).click();
+  const search = page.getByPlaceholder("Search files");
+  await search.click();
+  await page.keyboard.type("alpha tone");
+  await expect(search).toHaveValue("alpha tone");
+  await expect(transportToggle).toHaveAttribute("aria-label", "Resume playback");
+});
+
 test("album decisions persist versions, transition notes, explicit approval, and safe templates", async ({ page, request }) => {
   await page.getByRole("button", { name: "Album Decisions" }).click();
   await page.getByLabel("Sequence version name").fill("Opening order");
@@ -239,26 +261,36 @@ test("album decisions persist versions, transition notes, explicit approval, and
 test("mastering analysis, chapter cues, and delivery authority remain explicit", async ({ page, request }) => {
   await page.getByRole("button", { name: "Mastering" }).click();
   const commitNumber = async (name, value) => {
-    const input = page.getByLabel(name);
+    const input = page.getByRole("spinbutton", { name });
     await input.fill(String(value));
     await input.press("Enter");
   };
 
   await commitNumber(/Track gain/, -3.5);
   await page.getByLabel("Enable MASTER EQ").check();
-  await commitNumber(/Low shelf gain/, 1.5);
+  await page.getByRole("slider", { name: "Low shelf gain graphical control" }).fill("1.5");
+  await expect(page.getByRole("spinbutton", { name: "Low shelf gain" })).toHaveValue("1.5");
   await page.getByLabel("Enable MASTER compressor").check();
-  await commitNumber(/Threshold/, -22);
+  await page.getByRole("slider", { name: "Threshold graphical control" }).fill("-22");
+  await expect(page.getByRole("spinbutton", { name: "Threshold" })).toHaveValue("-22");
   await commitNumber(/Ratio/, 2.5);
+  await expect(page.getByRole("slider", { name: "Ratio graphical control" })).toHaveAttribute("aria-valuetext", "2.5:1");
   await commitNumber(/MASTER output gain/, -1);
   await page.getByLabel("Enable MASTER limiter").check();
-  await commitNumber(/Ceiling/, -1);
+  await page.getByRole("slider", { name: "Ceiling graphical control" }).fill("-1");
+  await expect(page.getByRole("spinbutton", { name: "Ceiling" })).toHaveValue("-1");
   await page.getByLabel("Print requirements").selectOption("archive-wav");
   await page.getByLabel("Ready to publish").check();
   await page.getByRole("button", { name: "Analyze Source" }).click();
   await expect(page.locator(".technical-analysis dl")).toContainText("LUFS");
   await page.getByRole("button", { name: "Preview chapter 1: Alpha Tone" }).click();
   await expect(page.locator(".transport-copy")).toContainText("Alpha Tone");
+  await expect(page.locator(".transport-waveform-meta strong")).toHaveText("MASTER live · EQ / compressor / output / limiter");
+  const outputMeter = page.getByTestId("master-output-meter");
+  await expect(outputMeter).toBeVisible();
+  await expect(outputMeter).toHaveClass(/is-active/);
+  await expect.poll(async () => Number(await outputMeter.locator('[data-meter-channel="left"]').getAttribute("data-meter-rms")), { timeout: 2_000 }).toBeGreaterThan(-60);
+  await expect.poll(async () => Number(await outputMeter.locator(".master-spectrum-panel").getAttribute("data-spectrum-peak")), { timeout: 2_000 }).toBeGreaterThan(-80);
   await expect(page.locator(".status-strip [role='status']")).toContainText("Saved locally");
 
   const bootstrap = await (await request.get("/api/bootstrap")).json();

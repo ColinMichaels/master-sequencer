@@ -1,19 +1,78 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, sourceKey } from "../lib/api.js";
 import { normalizeMastering } from "../lib/mastering.js";
+import { applyLiveMasteringSettings, createLiveMasteringGraph } from "../lib/live-mastering.js";
 
-export const useTransport = ({ libraryMap }) => {
+export const useTransport = ({ libraryMap, masterBus, liveTracks = [] }) => {
   const audioRef = useRef(null);
+  const audioGraph = useRef(null);
+  const meteringRef = useRef(null);
+  const currentRef = useRef(null);
+  const masterBusRef = useRef(masterBus);
+  const liveTracksRef = useRef(liveTracks);
   const [current, setCurrent] = useState(null);
   const [status, setStatus] = useState("Ready");
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [mediaDuration, setMediaDuration] = useState(0);
+  const [liveMasteringAvailable, setLiveMasteringAvailable] = useState(null);
   const mode = useRef("idle");
   const queue = useRef([]);
   const queueCursor = useRef(0);
   const completionMessage = useRef("Preview complete.");
   const playToken = useRef(0);
+
+  masterBusRef.current = masterBus;
+  liveTracksRef.current = liveTracks;
+
+  const liveSettingsForEntry = useCallback((entry) => {
+    const liveTrack = entry?.track?.id ? liveTracksRef.current.find((track) => track.id === entry.track.id) : null;
+    const sourceBypassed = !entry?.track || Boolean(entry.renderedPreview);
+    const trackGainDb = sourceBypassed ? 0 : Number(liveTrack?.mastering?.gainDb ?? entry.track?.mastering?.gainDb ?? 0);
+    return { sourceBypassed, trackGainDb };
+  }, []);
+
+  const updateAudioGraph = useCallback((entry = currentRef.current) => {
+    if (!audioGraph.current) return;
+    applyLiveMasteringSettings(audioGraph.current, masterBusRef.current, liveSettingsForEntry(entry));
+  }, [liveSettingsForEntry]);
+
+  const ensureAudioGraph = useCallback(() => {
+    if (audioGraph.current) return audioGraph.current;
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!audioRef.current || !AudioContextClass) {
+      setLiveMasteringAvailable(false);
+      return null;
+    }
+    try {
+      audioGraph.current = createLiveMasteringGraph(audioRef.current, AudioContextClass);
+      meteringRef.current = audioGraph.current ? {
+        frequencyAnalyser: audioGraph.current.frequencyAnalyser,
+        leftAnalyser: audioGraph.current.leftAnalyser,
+        rightAnalyser: audioGraph.current.rightAnalyser,
+        sampleRate: audioGraph.current.context.sampleRate,
+      } : null;
+      updateAudioGraph();
+      setLiveMasteringAvailable(Boolean(audioGraph.current));
+      return audioGraph.current;
+    } catch {
+      setLiveMasteringAvailable(false);
+      return null;
+    }
+  }, [updateAudioGraph]);
+
+  useEffect(() => {
+    updateAudioGraph();
+  }, [masterBus, liveTracks, updateAudioGraph]);
+
+  useEffect(() => () => {
+    const graph = audioGraph.current;
+    audioGraph.current = null;
+    meteringRef.current = null;
+    if (!graph) return;
+    try { graph.source.disconnect(); } catch { /* Already disconnected. */ }
+    graph.context.close().catch(() => {});
+  }, []);
 
   const fileForTrack = useCallback((track) => {
     const candidate = track.candidates.find((item) => item.id === track.auditionCandidateId);
@@ -24,21 +83,26 @@ export const useTransport = ({ libraryMap }) => {
     if ((!entry?.file && !entry?.url) || !audioRef.current) return;
     const audio = audioRef.current;
     const token = ++playToken.current;
+    currentRef.current = entry;
     setCurrent(entry);
     setCurrentTime(0);
     setMediaDuration(0);
+    const graph = ensureAudioGraph();
+    updateAudioGraph(entry);
+    if (graph?.context.state === "suspended") graph.context.resume().catch(() => {});
     audio.src = entry.url || api.mediaUrl(entry.file.key);
     audio.load();
     const start = () => {
       if (token !== playToken.current) return;
       audio.currentTime = Math.min(startAt, Math.max(0, (entry.file?.duration || audio.duration || 0) - 0.2));
       audio.play().catch((error) => {
+        if (error.name === "AbortError" && audio.paused) return;
         if (token === playToken.current) setStatus(`Playback needs a direct play gesture: ${error.message}`);
       });
     };
     if (audio.readyState >= 1) start();
     else audio.addEventListener("loadedmetadata", start, { once: true });
-  }, []);
+  }, [ensureAudioGraph, updateAudioGraph]);
 
   const previewFile = useCallback((file, label = file?.name) => {
     if (!file) return;
@@ -140,6 +204,7 @@ export const useTransport = ({ libraryMap }) => {
     audioRef.current?.pause();
     mode.current = "idle";
     queue.current = [];
+    currentRef.current = null;
     setCurrent(null);
     setPlaying(false);
     setCurrentTime(0);
@@ -150,9 +215,21 @@ export const useTransport = ({ libraryMap }) => {
   const togglePlayback = useCallback(() => {
     const audio = audioRef.current;
     if (!audio?.src) return;
-    if (audio.paused) audio.play().catch((error) => setStatus(`Playback needs a direct play gesture: ${error.message}`));
-    else audio.pause();
-  }, []);
+    if (audio.paused) {
+      const graph = ensureAudioGraph();
+      updateAudioGraph();
+      if (graph?.context.state === "suspended") graph.context.resume().catch(() => {});
+      audio.play()
+        .then(() => setStatus("Playback resumed. Press Space to pause."))
+        .catch((error) => {
+          if (error.name === "AbortError" && audio.paused) return;
+          setStatus(`Playback needs a direct play gesture: ${error.message}`);
+        });
+    } else {
+      audio.pause();
+      setStatus("Playback paused. Press Space to resume.");
+    }
+  }, [ensureAudioGraph, updateAudioGraph]);
 
   const seek = useCallback((time) => {
     const audio = audioRef.current;
@@ -178,5 +255,5 @@ export const useTransport = ({ libraryMap }) => {
     onError: handleError,
   }), [handleEnded, handleError]);
 
-  return { audioRef, audioHandlers, current, status, setStatus, playing, currentTime, mediaDuration, fileForTrack, previewFile, previewRendered, playSequence, previewChapter, stop, togglePlayback, seek };
+  return { audioRef, audioHandlers, meteringRef, current, status, setStatus, playing, currentTime, mediaDuration, liveMasteringAvailable, fileForTrack, previewFile, previewRendered, playSequence, previewChapter, stop, togglePlayback, seek };
 };
