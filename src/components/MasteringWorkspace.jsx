@@ -1,10 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { sourceKey } from "../lib/api.js";
+import { api } from "../lib/api.js";
+import { DELIVERY_PROFILES } from "../lib/delivery-profiles.js";
 import { formatDuration } from "../lib/format.js";
 import { calculateProgramTimeline, masteringSummary, normalizeMastering, programDuration } from "../lib/mastering.js";
 import { sequenceTracks } from "../lib/sequence-tracks.js";
 import { ExportIcon, PlayIcon, RefreshIcon, ScissorsIcon, WarningIcon, WaveIcon } from "./Icons.jsx";
 import { WaveformEditor } from "./WaveformEditor.jsx";
+import { RenderHistory } from "./RenderHistory.jsx";
 
 function NumberField({ label, value, minimum = 0, maximum, step = 0.1, suffix = "seconds", onCommit, disabled = false }) {
   const [draft, setDraft] = useState(String(value));
@@ -24,9 +27,12 @@ const fileForTrack = (track, libraryMap) => {
 
 const timeLabel = (value, precise = false) => value <= 0 ? (precise ? "0:00.000" : "0:00") : formatDuration(value, precise);
 
-export function MasteringWorkspace({ album, libraryMap, onAlbumChange, onPreview, previewingTrackId, onOpenExport }) {
+export function MasteringWorkspace({ album, libraryMap, onAlbumChange, onPreview, previewingTrackId, onOpenExport, onPreviewChapter }) {
   const tracks = useMemo(() => sequenceTracks(album), [album]);
   const [selectedTrackId, setSelectedTrackId] = useState(tracks[0]?.id || "");
+  const [analysisByKey, setAnalysisByKey] = useState({});
+  const [analyzingKey, setAnalyzingKey] = useState("");
+  const [analysisError, setAnalysisError] = useState("");
   useEffect(() => {
     if (!tracks.some((track) => track.id === selectedTrackId)) setSelectedTrackId(tracks[0]?.id || "");
   }, [album.id, tracks, selectedTrackId]);
@@ -45,6 +51,8 @@ export function MasteringWorkspace({ album, libraryMap, onAlbumChange, onPreview
   const settings = selectedFile ? normalizeMastering(selectedTrack.mastering, selectedFile.duration, { hasNext: hasNextPlayable }) : null;
   const missingCount = tracks.length - entries.length;
   const editedCount = tracks.filter((track) => track.mastering && Object.keys(track.mastering).length).length;
+  const analysis = selectedFile ? analysisByKey[selectedFile.key] : null;
+  const delivery = album.delivery || {};
 
   const updateMastering = (field, value) => onAlbumChange((draft) => {
     const track = draft.tracks.find((item) => item.id === selectedTrackId);
@@ -53,6 +61,22 @@ export function MasteringWorkspace({ album, libraryMap, onAlbumChange, onPreview
   const resetMastering = () => onAlbumChange((draft) => {
     const track = draft.tracks.find((item) => item.id === selectedTrackId);
     delete track.mastering;
+  });
+  const analyzeSelected = async () => {
+    if (!selectedFile) return;
+    setAnalyzingKey(selectedFile.key);
+    setAnalysisError("");
+    try {
+      const result = await api.technicalAnalysis(selectedFile.key);
+      setAnalysisByKey((current) => ({ ...current, [selectedFile.key]: result }));
+    } catch (error) {
+      setAnalysisError(error.message);
+    } finally {
+      setAnalyzingKey("");
+    }
+  };
+  const updateDelivery = (field, value) => onAlbumChange((draft) => {
+    draft.delivery = { profileId: "", masterApproved: false, readyToPublish: false, ...(draft.delivery || {}), [field]: value };
   });
 
   if (!tracks.length) return <main className="mastering-workspace"><div className="empty-state"><ScissorsIcon size={30}/><h2>No tracks are currently sequenced.</h2><p>Restore or add a track in Sequence before creating timing and fade instructions.</p></div></main>;
@@ -64,6 +88,13 @@ export function MasteringWorkspace({ album, libraryMap, onAlbumChange, onPreview
         <dl><div><dt>{formatDuration(programDuration(entries))}</dt><dd>Estimated program</dd></div><div><dt>{editedCount}/{tracks.length}</dt><dd>Tracks edited</dd></div><div className={missingCount ? "is-warning" : ""}><dt>{missingCount}</dt><dd>Missing audio</dd></div></dl>
         <button type="button" className="primary-button primary-button--yellow" onClick={() => onOpenExport(selectedFile ? selectedTrackId : "")} disabled={!entries.length}><ExportIcon /> Print / Export Audio</button>
       </header>
+
+      <section className="delivery-profile-panel" aria-labelledby="delivery-profile-title">
+        <div><h3 id="delivery-profile-title">Delivery Profile</h3><p>Profile validation, approved master, and publication readiness are three separate records.</p></div>
+        <label>Print requirements<select value={delivery.profileId || ""} onChange={(event) => updateDelivery("profileId", event.target.value)}><option value="">No delivery profile</option>{DELIVERY_PROFILES.map((profile) => <option key={profile.id} value={profile.id}>{profile.name} — {profile.description}</option>)}</select></label>
+        <label className={delivery.masterApproved ? "is-checked" : ""}><input type="checkbox" checked={Boolean(delivery.masterApproved)} onChange={(event) => updateDelivery("masterApproved", event.target.checked)} /> Approved master</label>
+        <label className={delivery.readyToPublish ? "is-checked" : ""}><input type="checkbox" checked={Boolean(delivery.readyToPublish)} onChange={(event) => updateDelivery("readyToPublish", event.target.checked)} /> Ready to publish</label>
+      </section>
 
       <div className="mastering-columns">
         <nav className="mastering-track-list" aria-label={`${album.title} mastering tracks`}>
@@ -95,6 +126,12 @@ export function MasteringWorkspace({ album, libraryMap, onAlbumChange, onPreview
                 endDuration={settings.endDuration}
                 onTrimChange={updateMastering}
               />
+
+              <section className="technical-analysis">
+                <header><div><h3>Optional Technical Analysis</h3><p>Rebuildable measurements only. No source is normalized or changed.</p></div><button type="button" className="text-button" disabled={analyzingKey === selectedFile.key} onClick={analyzeSelected}>{analyzingKey === selectedFile.key ? "Analyzing…" : analysis ? "Analyze Again" : "Analyze Source"}</button></header>
+                {analysis && <dl><div><dt>Integrated</dt><dd>{analysis.measurements.integratedLoudness?.toFixed(1) ?? "—"} LUFS</dd></div><div><dt>True peak</dt><dd>{analysis.measurements.truePeak?.toFixed(1) ?? "—"} dBFS</dd></div><div><dt>Loudness range</dt><dd>{analysis.measurements.loudnessRange?.toFixed(1) ?? "—"} LU</dd></div><div><dt>DC offset</dt><dd>{analysis.measurements.dcOffset?.toFixed(6) ?? "—"}</dd></div><div><dt>Silence regions</dt><dd>{analysis.measurements.silenceBoundaries.length}</dd></div></dl>}
+                {analysisError && <p className="render-error" role="alert">{analysisError}</p>}
+              </section>
 
               <section className="mastering-control-section">
                 <div className="mastering-section-title"><ScissorsIcon /><div><h3>Trim &amp; Opening</h3><p>Shorten the source from either end and optionally fade into the opening.</p></div></div>
@@ -128,12 +165,13 @@ export function MasteringWorkspace({ album, libraryMap, onAlbumChange, onPreview
         </section>
 
         <aside className="mastering-program" aria-labelledby="program-timeline-title">
-          <header><h3 id="program-timeline-title">Rendered Timeline</h3><small>First playable frame</small></header>
-          <ol>{timeline.map((entry, index) => <li key={entry.track.id}><span>{index + 1}</span><div><strong>{entry.track.title}</strong><small>{masteringSummary(entry.settings)}</small></div><time>{timeLabel(entry.outputStart, true)}</time></li>)}</ol>
+          <header><h3 id="program-timeline-title">Chapter Preview</h3><small>Cue navigation · no full reprint</small></header>
+          <ol>{timeline.map((entry, index) => <li key={entry.track.id}><span>{index + 1}</span><div><strong>{entry.track.title}</strong><small>{masteringSummary(entry.settings)}</small></div><time>{timeLabel(entry.outputStart, true)}</time><button type="button" className="chapter-cue" onClick={() => onPreviewChapter(index)} aria-label={`Preview chapter ${index + 1}: ${entry.track.title}`}><PlayIcon /></button></li>)}</ol>
           {missingCount > 0 && <div className="mastering-warning"><WarningIcon /><p><strong>{missingCount} track{missingCount === 1 ? "" : "s"} will be skipped.</strong> Add audio before printing a complete album master.</p></div>}
           <div className="program-total"><span>Estimated length</span><strong>{formatDuration(programDuration(entries), true)}</strong></div>
         </aside>
       </div>
+      <RenderHistory />
     </main>
   );
 }

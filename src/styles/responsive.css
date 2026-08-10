@@ -130,6 +130,8 @@
   .track-assets-heading label { min-width: 220px; }
   .lyric-file-row { grid-template-columns: minmax(0, 1fr) auto; }
   .mastering-workspace { height: auto; padding: 0.85rem 0.5rem; overflow: visible; }
+  .delivery-profile-panel { grid-template-columns: 1fr 1fr; }
+  .delivery-profile-panel > div, .delivery-profile-panel > label:first-of-type { grid-column: 1 / -1; }
   .mastering-heading { display: block; }
   .mastering-heading dl { margin: 0.65rem 0; }
   .mastering-heading > .primary-button { width: 100%; }
@@ -138,6 +140,12 @@
   .mastering-track-list ol { display: flex; overflow-x: auto; }
   .mastering-track-list li { min-width: 205px; }
   .mastering-program ol { display: block; }
+  .technical-analysis dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .technical-analysis dl div { border-top: 1px solid var(--line-soft); }
+  .render-history > header { align-items: stretch; flex-direction: column; }
+  .render-history li, .render-compare { grid-template-columns: 1fr; }
+  .manifest-diff > div { grid-template-columns: 1fr; }
+  .manifest-diff span { border-top: 1px solid var(--line-soft); border-left: 0; }
   .ending-mode-grid { grid-template-columns: 1fr 1fr; }
   .transport-bar { position: fixed; z-index: 50; right: 0; bottom: 24px; left: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; gap: 0.35rem 0.45rem; min-height: 98px; padding: 0.42rem 0.5rem; }
   .transport-copy { grid-column: 1 / -1; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0 0.45rem; }

@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { calculateProgramTimeline, normalizeMastering } from "../src/lib/mastering.js";
+import { validateDeliveryRequest } from "../src/lib/delivery-profiles.js";
 import { sourceKey } from "./audio-library.mjs";
 
 const AUDIO_FORMATS = new Set(["wav", "mp3"]);
@@ -211,12 +212,14 @@ export const buildPreviewEntries = (entries, selectedIndex, previewPart) => {
   return [previewSelected, { ...next, mastering: { ...next.mastering, trimStart: nextSettings.trimStart, trimEnd: nextPreviewEnd, fadeIn: nextSettings.fadeIn } }];
 };
 
-export const renderAudio = async ({ album, scope, trackId, candidateId = "", format, previewPart = "end", getLibraryFile, outputRoot, signal, timeoutMs, onProgress = () => {} }) => {
+export const renderAudio = async ({ album, scope, trackId, candidateId = "", format, previewPart = "end", deliveryProfileId = "", getLibraryFile, outputRoot, signal, timeoutMs, onProgress = () => {} }) => {
   throwIfCancelled(signal);
   if (!album?.id || !Array.isArray(album.tracks)) throw new Error("Choose a valid album to render.");
   if (!RENDER_SCOPES.has(scope)) throw new Error("Choose a valid render scope.");
   if (!AUDIO_FORMATS.has(format)) throw new Error("Choose WAV or MP3 output.");
   if (scope === "preview" && !PREVIEW_PARTS.has(previewPart)) throw new Error("Choose a valid preview type.");
+  const delivery = validateDeliveryRequest({ profileId: deliveryProfileId, format, scope });
+  if (!delivery.ok) throw new Error(delivery.issues.join(" "));
 
   const sequence = album.tracks.filter((track) => track.inSequence !== false);
   const missing = [];
@@ -293,6 +296,13 @@ export const renderAudio = async ({ album, scope, trackId, candidateId = "", for
         album: { id: album.id, artist: album.artist, title: album.title },
         scope,
         format: renderFormat,
+        delivery: {
+          profileId: delivery.profile?.id || "",
+          profileName: delivery.profile?.name || "Unprofiled print",
+          requirementsValidated: true,
+          masterApproved: Boolean(album.delivery?.masterApproved),
+          readyToPublish: Boolean(album.delivery?.readyToPublish),
+        },
         audioFile: audioName,
         warnings,
         tracks: timeline.map((entry) => ({

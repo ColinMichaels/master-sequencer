@@ -15,7 +15,7 @@ test.beforeEach(async ({ request, page }) => {
 
 test("bootstrap renders the project and protected sources remain masked", async ({ page, request }) => {
   const bootstrap = await (await request.get("/api/bootstrap")).json();
-  expect(bootstrap.state.schemaVersion).toBe(3);
+  expect(bootstrap.state.schemaVersion).toBe(4);
   expect(bootstrap.library).toHaveLength(4);
   expect(bootstrap.library.some((file) => file.name === "Hidden Coda.wav")).toBeFalsy();
   expect(bootstrap.library.some((file) => file.name === "[Private source file]")).toBeTruthy();
@@ -123,9 +123,28 @@ test("album decisions persist versions, transition notes, explicit approval, and
   expect(copy.orderApproved).toBe(false);
 });
 
-test("a real render job completes with documented range-readable output", async ({ request }) => {
+test("mastering analysis, chapter cues, and delivery authority remain explicit", async ({ page, request }) => {
+  await page.getByRole("button", { name: "Mastering" }).click();
+  await page.getByLabel("Print requirements").selectOption("archive-wav");
+  await page.getByLabel("Ready to publish").check();
+  await page.getByRole("button", { name: "Analyze Source" }).click();
+  await expect(page.locator(".technical-analysis dl")).toContainText("LUFS");
+  await page.getByRole("button", { name: "Preview chapter 1: Alpha Tone" }).click();
+  await expect(page.locator(".transport-copy")).toContainText("Alpha Tone");
+  await expect(page.locator(".status-strip [role='status']")).toContainText("Saved locally");
+
+  const bootstrap = await (await request.get("/api/bootstrap")).json();
+  expect(bootstrap.state.albums[0].delivery).toEqual({ profileId: "archive-wav", masterApproved: false, readyToPublish: true });
+
+  await page.getByRole("button", { name: "Print / Export Audio" }).click();
+  await expect(page.getByText("Archive WAV", { exact: true })).toBeVisible();
+  await expect(page.getByRole("radio", { name: /MP3 for Review/ })).toBeDisabled();
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+});
+
+test("a real render job completes with documented range-readable output and appears in history", async ({ page, request }) => {
   const createResponse = await request.post("/api/renders", {
-    data: { album: e2eProjectState.albums[0], scope: "track", trackId: "alpha", format: "wav" },
+    data: { album: e2eProjectState.albums[0], scope: "track", trackId: "alpha", format: "wav", deliveryProfileId: "archive-wav" },
     headers: { Origin: origin },
   });
   expect(createResponse.status()).toBe(202);
@@ -144,5 +163,9 @@ test("a real render job completes with documented range-readable output", async 
   expect((await range.body()).byteLength).toBe(32);
   const manifest = await (await request.get(completedJob.result.manifestUrl)).json();
   expect(manifest.renderId).toBe(completedJob.result.id);
+  expect(manifest.delivery.profileId).toBe("archive-wav");
   expect(manifest.tracks).toHaveLength(1);
-}); 
+
+  await page.getByRole("button", { name: "Mastering" }).click();
+  await expect(page.locator(".render-history")).toContainText(completedJob.result.audioName);
+});

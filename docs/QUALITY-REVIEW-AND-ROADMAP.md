@@ -85,8 +85,8 @@ risk reduction and user value rather than feature count.
 | --- | --- | --- | --- |
 | P1 — confidence foundation | Complete | `codex/p1-confidence-foundation` | Repository Playwright coverage, generated-audio FFmpeg integration test, render-job lifecycle, schema migration/recovery, and composition-hub splits |
 | P2 — album decisions | Complete | `codex/p2-album-decisions` | Sequence versions, transition notebook, readiness, comparison previews, and safe templates |
-| P3 — mastering review | Next | `codex/p3-mastering-review` | Technical analysis, chapter preview, delivery profiles, and render history |
-| P4 — scale and portability | Planned | `codex/p4-scale-portability` | Incremental indexing, saved filters, undoable commands, and JSON/checksum bundles |
+| P3 — mastering review | Complete | `codex/p3-mastering-review` | Technical analysis, chapter preview, delivery profiles, and render history |
+| P4 — scale and portability | Next | `codex/p4-scale-portability` | Incremental indexing, saved filters, undoable commands, and JSON/checksum bundles |
 
 ### P1 — confidence before feature expansion
 
@@ -126,14 +126,16 @@ Completed in the P2 branch:
 
 ### P3 — deeper mastering review
 
-1. Optional compact technical analysis for true peak, integrated loudness,
+Completed in the P3 branch:
+
+1. Added optional compact technical analysis for true peak, integrated loudness,
    loudness range, DC offset, and silence boundaries. Cache only rebuildable
    measurements and never normalize a source automatically.
-2. Chaptered program preview and cue navigation without rendering an entire new
+2. Added chaptered program preview and cue navigation without rendering an entire new
    file for every small sequence change.
-3. Delivery profiles that validate requested output settings and documentation
+3. Added delivery profiles that validate requested output settings and documentation
    while keeping “print,” “approved master,” and “ready to publish” separate.
-4. Render-history browser for derivatives under `exports/`, with manifest
+4. Added a render-history browser for derivatives under `exports/`, with manifest
    comparison and an explicit reveal-in-Finder action. No automatic deletion.
 
 ### P4 — scale and portability

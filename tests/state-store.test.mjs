@@ -6,7 +6,7 @@ import test from "node:test";
 import { createStateStore, migrateState, validateState } from "../server/state-store.mjs";
 
 const seed = {
-  schemaVersion: 3,
+  schemaVersion: 4,
   albumTemplates: [],
   activeAlbumId: "album",
   settings: { revealPrivateFilenames: false },
@@ -37,11 +37,12 @@ test("version 1 project state migrates to the current schema without changing al
   const legacy = structuredClone(seed);
   legacy.schemaVersion = 1;
   const migrated = migrateState(legacy);
-  assert.equal(migrated.schemaVersion, 3);
+  assert.equal(migrated.schemaVersion, 4);
   assert.deepEqual(migrated.albumTemplates, []);
   assert.deepEqual(migrated.albums[0].sequenceVersions, []);
+  assert.deepEqual(migrated.albums[0].delivery, { profileId: "", masterApproved: false, readyToPublish: false });
   assert.equal(migrated.activeAlbumId, legacy.activeAlbumId);
-  assert.deepEqual(migrated.albums.map(({ sequenceVersions, transitionNotebook, ...album }) => album), legacy.albums);
+  assert.deepEqual(migrated.albums.map(({ sequenceVersions, transitionNotebook, delivery, ...album }) => album), legacy.albums);
 });
 
 test("future project-state versions are rejected without guessing", () => {
@@ -183,4 +184,13 @@ test("state validation accepts appearance preferences and rejects unsupported ch
   const invalid = structuredClone(seed);
   invalid.settings.appearance = { mode: "ultraviolet" };
   assert.throws(() => validateState(invalid), /Unsupported appearance mode/);
+});
+
+test("state validation keeps delivery profile, master approval, and publish readiness separate", () => {
+  const valid = structuredClone(seed);
+  valid.albums[0].delivery = { profileId: "archive-wav", masterApproved: false, readyToPublish: true };
+  assert.equal(validateState(valid), valid);
+  const invalid = structuredClone(valid);
+  invalid.albums[0].delivery.profileId = "automatic-publisher";
+  assert.throws(() => validateState(invalid), /unsupported delivery profile/);
 });

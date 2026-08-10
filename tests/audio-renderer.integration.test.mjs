@@ -48,6 +48,7 @@ test("a generated short FFmpeg print preserves sources and keeps audio, cue, and
     album,
     scope: "album",
     format: "wav",
+    deliveryProfileId: "archive-wav",
     getLibraryFile: (key) => files.get(key),
     outputRoot: sourceRoot,
     timeoutMs: 20_000,
@@ -69,6 +70,8 @@ test("a generated short FFmpeg print preserves sources and keeps audio, cue, and
   assert.match(cue, /2\. 00:00\.650\s+Second Tone/);
   assert.equal(manifest.renderId, result.id);
   assert.equal(manifest.audioFile, result.audioName);
+  assert.equal(manifest.delivery.profileId, "archive-wav");
+  assert.equal(manifest.delivery.masterApproved, false);
   assert.equal(manifest.tracks.length, 2);
   assert.equal(manifest.tracks[1].outputStart, 0.65);
   assert.equal(path.dirname(result.audioPath), result.outputDirectory);

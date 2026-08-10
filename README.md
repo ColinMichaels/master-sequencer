@@ -65,7 +65,12 @@ npm start
   and retain next-track context while sequencing. Set non-destructive opening
   fades, natural endings, hard cuts, fade-outs, crossfades, and post-track
   silence; preview edited starts and endings; then print a selected track or
-  continuous album program as 24-bit/48 kHz WAV or 320 kbps MP3.
+  continuous album program as 24-bit/48 kHz WAV or 320 kbps MP3. Run optional
+  rebuildable true-peak, loudness, DC-offset, and silence analysis; navigate a
+  chaptered trim preview without reprinting the full program; validate prints
+  against delivery profiles while recording master approval and publish
+  readiness separately; and compare or reveal documented render history without
+  deleting derivatives.
 - **Assets:** attach album artwork and track-specific visual references, choose
   an album cover, and associate both Suno prompt lyrics and clean DistroKid
   lyrics with the exact audio candidate they describe.

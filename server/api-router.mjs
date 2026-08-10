@@ -30,6 +30,7 @@ export const createApiRouter = ({
   stateStore,
   renderJobs,
   waveformService,
+  technicalAnalysisService,
   getLibrary,
   getLibraryFile,
   getConfig,
@@ -41,6 +42,7 @@ export const createApiRouter = ({
   chooseAudioPaths,
   chooseProjectAssetPaths,
   createProjectAssetReferences,
+  revealRenderResult,
 }) => async (request, response, url) => {
   const library = getLibrary();
   if (request.method === "GET" && url.pathname === "/api/health") {
@@ -133,6 +135,16 @@ export const createApiRouter = ({
     await streamFile(request, response, renderPath, contentTypeFor(renderPath));
     return true;
   }
+  if (request.method === "POST" && url.pathname === "/api/renders/reveal") {
+    const { id } = await readJsonBody(request);
+    const result = await revealRenderResult(id);
+    if (!result) {
+      sendJson(response, 404, { error: "That completed render is not available." });
+      return true;
+    }
+    sendJson(response, 200, result);
+    return true;
+  }
   if (request.method === "POST" && url.pathname === "/api/roots") {
     const details = await readJsonBody(request);
     const payload = await responsePayloadForPaths([details.path]);
@@ -158,6 +170,20 @@ export const createApiRouter = ({
     } catch (error) {
       console.error(`Waveform analysis failed for indexed key ${file.key}:`, error);
       sendJson(response, 422, { error: "A waveform could not be generated for this audio source." });
+    }
+    return true;
+  }
+  if (request.method === "GET" && url.pathname === "/api/analysis") {
+    const file = getLibraryFile(url.searchParams.get("key"));
+    if (!file) {
+      sendJson(response, 404, { error: "Audio file is not in a configured library path." });
+      return true;
+    }
+    try {
+      sendJson(response, 200, await technicalAnalysisService.get(file));
+    } catch (error) {
+      console.error(`Technical analysis failed for indexed key ${file.key}:`, error);
+      sendJson(response, 422, { error: "Technical measurements could not be generated for this source." });
     }
     return true;
   }

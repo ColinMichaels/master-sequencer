@@ -29,6 +29,7 @@ export const addAlbum = (state, { title, era }) => {
     era,
     status: era === "past" ? "archive" : era === "current" ? "working" : "empty",
     orderApproved: false,
+    delivery: { profileId: "", masterApproved: false, readyToPublish: false },
     baselineTrackOrder: [],
     sequenceVersions: [],
     transitionNotebook: [],
