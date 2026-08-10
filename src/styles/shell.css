@@ -41,6 +41,11 @@
 .album-rail-heading { display: flex; min-height: 38px; align-items: center; justify-content: space-between; padding-bottom: 0.45rem; border-bottom: 1px solid var(--line); }
 .album-rail-heading h2 { margin: 0; font-size: 0.96rem; }
 .album-panel-content { display: flex; min-height: 0; flex: 1; flex-direction: column; overflow: hidden; }
+.current-project-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.55rem; align-items: center; width: 100%; margin-top: 0.65rem; padding: 0.65rem; border: 1px solid var(--line); background: rgb(var(--lime-rgb) / 4%); color: var(--bone); text-align: left; cursor: pointer; }
+.current-project-card:hover { border-color: var(--lime); }
+.current-project-card span { display: grid; min-width: 0; gap: 0.2rem; }
+.current-project-card small { color: var(--bone-muted); font-size: 0.53rem; letter-spacing: 0.08em; text-transform: uppercase; }
+.current-project-card strong { overflow: hidden; color: var(--lime); font-size: 0.68rem; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
 .album-rail.is-collapsed { align-items: center; padding: 0.45rem; }
 .album-rail.is-collapsed .album-rail-heading { width: 100%; justify-content: center; padding: 0; border: 0; }
 .panel-toggle { display: grid; width: 34px; height: 34px; padding: 0; border: 1px solid var(--line); background: transparent; color: var(--bone-muted); cursor: pointer; place-items: center; }
@@ -48,7 +53,7 @@
 .album-groups { min-height: 0; overflow-y: auto; scrollbar-color: var(--line) transparent; }
 .album-group { padding: 0.75rem 0 0.5rem; border-bottom: 1px solid var(--line-soft); }
 .album-group h3 { margin: 0 0 0.55rem 0.65rem; color: var(--bone-muted); font-size: 0.82rem; letter-spacing: 0.12em; }
-.album-item-row { display: grid; grid-template-columns: minmax(0, 1fr) 38px; border: 1px solid transparent; color: var(--bone); }
+.album-item-row { display: grid; grid-template-columns: minmax(0, 1fr) 76px; border: 1px solid transparent; color: var(--bone); }
 .album-item-row:hover { border-color: var(--line); }
 .album-item-row.is-active { border-color: var(--lime); background: var(--bone); color: var(--ink); box-shadow: inset 3px 0 0 var(--lime); }
 .album-item { display: grid; grid-template-columns: 58px minmax(0, 1fr) 24px; gap: 0.6rem; align-items: center; width: 100%; min-width: 0; padding: 0.48rem; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
@@ -62,12 +67,18 @@
 .album-item-row.is-active .album-copy small { color: var(--selected-muted); }
 .album-state { justify-self: end; color: var(--lime); }
 .album-item-row.is-active .album-state { color: var(--ink); }
-.album-rename-button { display: grid; min-width: 38px; border: 0; border-left: 1px solid var(--line-soft); background: transparent; color: var(--bone-muted); place-items: center; cursor: pointer; }
-.album-rename-button:hover { background: rgb(var(--lime-rgb) / 9%); color: var(--lime); }
-.album-item-row.is-active .album-rename-button { border-left-color: rgb(var(--ink-rgb) / 18%); color: var(--ink); }
-.album-item-row.is-active .album-rename-button:hover { background: rgb(var(--ink-rgb) / 8%); }
-.rail-add-button { display: flex; align-items: center; justify-content: center; gap: 0.65rem; min-height: 48px; margin-top: auto; border: 1px solid var(--lime); background: transparent; color: var(--lime); font-weight: 900; cursor: pointer; }
+.album-row-actions { display: grid; grid-template-columns: repeat(2, 38px); }
+.album-action-button { display: grid; min-width: 38px; padding: 0; border: 0; border-left: 1px solid var(--line-soft); background: transparent; color: var(--bone-muted); place-items: center; cursor: pointer; }
+.album-action-button:hover:not(:disabled) { background: rgb(var(--lime-rgb) / 9%); color: var(--lime); }
+.album-delete-button:hover:not(:disabled) { background: rgb(var(--orange-rgb) / 9%); color: var(--orange); }
+.album-item-row.is-active .album-action-button { border-left-color: rgb(var(--ink-rgb) / 18%); color: var(--ink); }
+.album-item-row.is-active .album-action-button:hover:not(:disabled) { background: rgb(var(--ink-rgb) / 8%); }
+.rail-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; margin-top: auto; padding-top: 0.55rem; }
+.rail-add-button, .rail-project-button { display: flex; align-items: center; justify-content: center; gap: 0.4rem; min-height: 48px; padding: 0.35rem; background: transparent; font-weight: 900; cursor: pointer; }
+.rail-add-button { border: 1px solid var(--lime); color: var(--lime); }
 .rail-add-button:hover { background: rgb(var(--lime-rgb) / 9%); }
+.rail-project-button { border: 1px solid var(--yellow); color: var(--yellow); }
+.rail-project-button:hover:not(:disabled) { background: rgb(var(--yellow-rgb) / 9%); }
 
 .content-shell { grid-column: 2; grid-row: 2; position: relative; min-width: 0; min-height: 0; overflow: hidden; }
 .error-banner { position: absolute; z-index: 20; top: 0.5rem; right: 0.5rem; left: 0.5rem; display: grid; grid-template-columns: auto 1fr auto; gap: 1rem; align-items: center; padding: 0.75rem 1rem; border: 1px solid var(--orange); background: var(--error-bg); color: var(--bone); font-family: var(--ui); font-size: 0.82rem; }

@@ -3,7 +3,7 @@ import { FolderIcon, LockIcon, MusicIcon, PlusIcon, RefreshIcon, TrashIcon } fro
 import { AppearanceSettings } from "./AppearanceSettings.jsx";
 import { ProjectIdentityForm } from "./ProjectIdentityForm.jsx";
 
-export function SettingsWorkspace({ state, roots, scanning, projectArtistName, revealPrivateFilenames, appearance, resolvedMode, onProjectIdentityChange, onAppearanceChange, onTogglePrivate, onAddRoot, onRemoveRoot, onChooseSources, onRescan, onImportState }) {
+export function SettingsWorkspace({ state, roots, scanning, projectArtistName, currentProject, projects, projectBusy, revealPrivateFilenames, appearance, resolvedMode, onProjectIdentityChange, onAppearanceChange, onTogglePrivate, onAddRoot, onRemoveRoot, onChooseSources, onRescan, onImportState, onOpenProjects, onNewProject }) {
   const [folderPath, setFolderPath] = useState("");
   const [folderLabel, setFolderLabel] = useState("");
   const [importError, setImportError] = useState("");
@@ -45,6 +45,10 @@ export function SettingsWorkspace({ state, roots, scanning, projectArtistName, r
           <div><h3>Project</h3><p>The artist is a project-wide identity, separate from album and audio-source decisions.</p></div>
         </div>
         <ProjectIdentityForm artistName={projectArtistName} onSubmit={onProjectIdentityChange} />
+        <div className="project-lifecycle-panel">
+          <span><small>Current saved project</small><strong>{currentProject?.name || "Local Project"}</strong><em>{projects.length} saved project{projects.length === 1 ? "" : "s"} on this device</em></span>
+          <div><button type="button" className="text-button" disabled={projectBusy} onClick={onOpenProjects}><FolderIcon /> Open Saved Project</button><button type="button" className="primary-button" disabled={projectBusy} onClick={onNewProject}><PlusIcon /> New Project</button></div>
+        </div>
       </section>
       <AppearanceSettings appearance={appearance} resolvedMode={resolvedMode} onChange={onAppearanceChange} />
       <div className="settings-columns">
@@ -70,7 +74,7 @@ export function SettingsWorkspace({ state, roots, scanning, projectArtistName, r
           <label className="privacy-toggle"><span><LockIcon /><strong>Reveal protected filenames</strong><small>Off by default. Sequence and review views keep protected sources masked.</small></span><input type="checkbox" checked={revealPrivateFilenames} onChange={(event) => onTogglePrivate(event.target.checked)} /></label>
           <div className="data-actions"><button type="button" className="primary-button" onClick={exportProject}>Export Project JSON</button><button type="button" className="primary-button primary-button--yellow" onClick={() => fileInput.current?.click()}>Import Project JSON</button><input ref={fileInput} type="file" accept="application/json,.json" hidden onChange={importProject}/></div>
           {importError && <p className="render-error" role="alert">{importError}</p>}
-          <dl className="data-locations"><div><dt>Album decisions</dt><dd>data/sequencer-state.json</dd></div><div><dt>Audio metadata cache</dt><dd>data/audio-index-cache.json</dd></div><div><dt>File and folder paths</dt><dd>config/sequencer.local.json</dd></div></dl>
+          <dl className="data-locations"><div><dt>Open project</dt><dd>data/sequencer-state.json</dd></div><div><dt>Saved projects</dt><dd>data/projects/</dd></div><div><dt>Audio metadata cache</dt><dd>data/audio-index-cache.json</dd></div><div><dt>File and folder paths</dt><dd>config/sequencer.local.json</dd></div></dl>
           <p className="settings-note"><strong>Local project storage:</strong> paths, notes, sequence order, audition choices, and approvals are stored in ignored JSON files on this device. Audio bytes are never stored in the project.</p>
           <p className="settings-note">Removing a path never deletes audio. It only disconnects that folder from this index. Existing album references remain and return when the path is connected again.</p>
         </section>

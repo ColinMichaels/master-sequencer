@@ -78,6 +78,8 @@
 .primary-button { display: inline-flex; align-items: center; justify-content: center; gap: 0.55rem; min-height: 43px; padding: 0.55rem 1rem; border: 1px solid var(--lime); background: transparent; color: var(--lime); font-family: var(--display); font-size: 0.72rem; font-weight: 900; text-transform: uppercase; cursor: pointer; }
 .primary-button:hover { background: rgb(var(--lime-rgb) / 9%); }
 .primary-button--yellow { border-color: var(--yellow); color: var(--yellow); }
+.primary-button--danger { border-color: var(--orange); color: var(--orange); }
+.primary-button--danger:hover { background: rgb(var(--orange-rgb) / 9%); }
 
 .review-workspace { display: grid; grid-template-columns: 245px minmax(0, 1fr); height: 100%; min-height: 0; }
 .review-track-rail { min-height: 0; padding: 1rem 0.75rem; border-right: 1px solid var(--line); overflow-y: auto; }
@@ -181,6 +183,12 @@
 .settings-section-heading { display: flex; align-items: center; justify-content: space-between; }
 .settings-section-heading > div > h3 { margin-bottom: 0.25rem; }
 .settings-section-heading > div > p { margin: 0; color: var(--bone-muted); font-family: var(--ui); font-size: 0.68rem; }
+.project-lifecycle-panel { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1rem; align-items: center; margin-top: 1rem; padding: 0.8rem; border: 1px solid var(--line-soft); background: rgb(var(--lime-rgb) / 3%); }
+.project-lifecycle-panel > span { display: grid; gap: 0.15rem; min-width: 0; }
+.project-lifecycle-panel small { color: var(--bone-muted); font-size: 0.56rem; text-transform: uppercase; }
+.project-lifecycle-panel strong { overflow: hidden; color: var(--lime); font-size: 0.82rem; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.project-lifecycle-panel em { color: var(--bone-muted); font-family: var(--ui); font-size: 0.62rem; font-style: normal; letter-spacing: 0; }
+.project-lifecycle-panel > div { display: flex; gap: 0.5rem; }
 .appearance-settings { margin-top: 1rem; background: linear-gradient(125deg, rgb(var(--lime-rgb) / 3%), transparent 40%); }
 .appearance-layout { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(260px, 0.55fr); gap: 0.85rem; margin-top: 1rem; }
 .appearance-controls-grid { display: grid; grid-template-columns: 1fr 0.7fr; gap: 0.65rem; }
@@ -584,6 +592,16 @@
 .import-file-list small { color: var(--bone-muted); font-family: var(--ui); font-size: 0.62rem; }
 .import-empty { padding: 1.5rem; color: var(--orange); font-family: var(--ui); font-size: 0.75rem; text-align: center; }
 .path-storage-note { padding: 0.65rem; border-left: 3px solid var(--lime); background: rgb(var(--lime-rgb) / 5%); }
+.deletion-safety-note { padding: 0.65rem; border-left: 3px solid var(--orange); background: rgb(var(--orange-rgb) / 5%); }
+.saved-project-list { max-height: min(440px, 55vh); margin: 0; padding: 0; border: 1px solid var(--line); overflow-y: auto; list-style: none; }
+.saved-project-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.8rem; align-items: center; min-height: 78px; padding: 0.7rem; border-top: 1px solid var(--line-soft); }
+.saved-project-list li:first-child { border-top: 0; }
+.saved-project-list li.is-active { box-shadow: inset 3px 0 0 var(--lime); background: rgb(var(--lime-rgb) / 4%); }
+.saved-project-list li > span { display: grid; gap: 0.2rem; min-width: 0; }
+.saved-project-list strong, .saved-project-list small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.saved-project-list strong { color: var(--bone); font-size: 0.78rem; text-transform: uppercase; }
+.saved-project-list small { color: var(--bone-muted); font-family: var(--ui); font-size: 0.62rem; letter-spacing: 0; }
+.saved-project-list em { color: var(--lime); font-size: 0.62rem; font-style: normal; text-transform: uppercase; }
 
 .first-run-guide { display: grid; grid-template-columns: minmax(0, 0.78fr) minmax(480px, 1.22fr); }
 .first-run-intro { display: grid; align-content: space-between; min-height: 260px; padding: 1.35rem; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: linear-gradient(145deg, rgb(var(--lime-rgb) / 8%), transparent 58%); }
