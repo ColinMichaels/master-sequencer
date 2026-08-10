@@ -12,7 +12,8 @@ React workspace
   v
 Local Node server (127.0.0.1)
   |-- project state store ------> ignored data/sequencer-state.json
-  |                              `-> ignored last-known-good snapshot
+  |                              |-> ignored last-known-good snapshot
+  |                              `-> ignored saved-project index + data/projects/*.json
   |-- configuration store -----> ignored config/sequencer.local.json
   |-- audio index -------------> ignored data/audio-index-cache.json
   |   `-- optional watcher ----> debounced incremental metadata rescans
@@ -72,7 +73,7 @@ Every feature must preserve these rules:
 | `server/audio-watch-service.mjs` | Optionally watch connected folders and debounce incremental metadata rescans |
 | `server/portable-project-bundle.mjs` | Hash indexed candidate sources and build JSON/checksum-only portable bundles |
 | `server/state-schema.mjs` | Validate the current state schema and apply explicit migrations from older versions |
-| `server/state-store.mjs` | Serialize atomic state writes and maintain a validated last-known-good snapshot |
+| `server/state-store.mjs` | Serialize atomic state writes, maintain recovery state, and create/load per-project snapshots |
 | `server/http-utils.mjs` | Byte-range parsing, local Host/Origin guards, and response security headers |
 | `server/waveform.mjs` | Bound FFmpeg analysis and maintain an in-memory LRU-style waveform cache |
 | `server/technical-analysis.mjs` | Run optional bounded FFmpeg loudness/peak/DC/silence analysis and cache compact rebuildable measurements |
@@ -103,6 +104,9 @@ baseline order references before disk state changes.
 
 Autosave uses a short debounce for editing comfort, then puts each snapshot on a
 single promise chain. A later save cannot be overtaken by an earlier request.
+The client tracks the last queued snapshot as well as the last confirmed one,
+so a rapid edit/revert or add/delete pair cannot leave a stale pending status or
+allow an intermediate queued snapshot to become authoritative.
 When the page is being left, an unsaved final snapshot is sent through the
 same-origin state endpoint with `sendBeacon`. Imported JSON is validated and
 persisted by the server before it replaces the open client state.
@@ -127,6 +131,9 @@ by media clients. Malformed, multiple, reversed, and out-of-bounds ranges return
 - `data/sequencer-state.json` is the ignored, mutable project record.
 - `data/sequencer-state.last-known-good.json` is an ignored, validated recovery
   snapshot written before the current state is replaced.
+- `data/sequencer-projects.json` indexes saved projects and identifies the open
+  project; each project's decisions live in an ignored `data/projects/*.json`
+  snapshot. Starting or loading a project flushes pending edits first.
 - Every normal edit shows `Changes pending`, `Saving changes`, or `Saved locally`
   in a live status region.
 - If current state cannot be parsed, validated, or migrated, startup enters a

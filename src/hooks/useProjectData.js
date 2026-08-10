@@ -22,12 +22,14 @@ export const useProjectData = () => {
   const saveChain = useRef(Promise.resolve());
   const latestState = useRef(null);
   const lastSavedJson = useRef("");
+  const lastQueuedJson = useRef("");
   const undoStack = useRef([]);
   const redoStack = useRef([]);
   const [historyRevision, setHistoryRevision] = useState(0);
 
   const persistState = useCallback((snapshot) => {
     const serialized = JSON.stringify(snapshot);
+    lastQueuedJson.current = serialized;
     const operation = saveChain.current
       .catch(() => {})
       .then(() => api.saveState(snapshot));
@@ -36,7 +38,7 @@ export const useProjectData = () => {
       lastSavedJson.current = serialized;
       if (payload.projects) setProjects(payload.projects);
       if (payload.activeProjectId) setActiveProjectId(payload.activeProjectId);
-      if (JSON.stringify(latestState.current) === serialized) setSaveStatus("Saved locally.");
+      if (JSON.stringify(latestState.current) === serialized && lastQueuedJson.current === serialized) setSaveStatus("Saved locally.");
       return payload;
     }).catch((reason) => {
       if (JSON.stringify(latestState.current) === serialized) {
@@ -52,6 +54,7 @@ export const useProjectData = () => {
       const serialized = JSON.stringify(payload.state);
       latestState.current = payload.state;
       lastSavedJson.current = serialized;
+      lastQueuedJson.current = serialized;
       hydrated.current = true;
       setState(payload.state);
       setLibrary(payload.library);
@@ -74,7 +77,10 @@ export const useProjectData = () => {
     latestState.current = state;
     if (!state || !hydrated.current) return undefined;
     const serialized = JSON.stringify(state);
-    if (serialized === lastSavedJson.current) return undefined;
+    if (serialized === lastSavedJson.current && serialized === lastQueuedJson.current) {
+      setSaveStatus((current) => current === "Changes pending…" || current === "Saving changes…" ? "Saved locally." : current);
+      return undefined;
+    }
     setSaveStatus("Changes pending…");
     window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => {
@@ -228,6 +234,7 @@ export const useProjectData = () => {
       const payload = await persistState(nextState);
       latestState.current = payload.state;
       lastSavedJson.current = JSON.stringify(payload.state);
+      lastQueuedJson.current = JSON.stringify(payload.state);
       setState(payload.state);
       undoStack.current = [];
       redoStack.current = [];
@@ -252,6 +259,7 @@ export const useProjectData = () => {
     const serialized = JSON.stringify(payload.state);
     latestState.current = payload.state;
     lastSavedJson.current = serialized;
+    lastQueuedJson.current = serialized;
     setState(payload.state);
     setProjects(payload.projects || []);
     setActiveProjectId(payload.activeProjectId || "");
@@ -301,6 +309,7 @@ export const useProjectData = () => {
       const serialized = JSON.stringify(payload.state);
       latestState.current = payload.state;
       lastSavedJson.current = serialized;
+      lastQueuedJson.current = serialized;
       setState(payload.state);
       undoStack.current = [];
       redoStack.current = [];

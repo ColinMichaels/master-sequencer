@@ -99,8 +99,14 @@ be collapsed independently when more editing space is needed.
 Project edits also have a bounded 100-step undo/redo history. Undo changes only
 the local project record; it never reverses a filesystem operation.
 
-Albums can be added or renamed directly from the album rail, and blank tracks
-can be added from the sequence workspace. Renaming changes only the album title;
+Projects can be started fresh and reopened from the album rail or Settings.
+Before a switch, pending edits are flushed into the current project's ignored
+local snapshot; configured audio paths remain shared without copying media.
+Albums can be added, renamed, or explicitly deleted from the album rail, and
+blank tracks can be added from the sequence workspace. Deleting an album removes
+only its Project Sequencer decisions and references—indexed source audio and
+rendered exports are untouched—and the final album in a project is protected.
+Renaming changes only the album title;
 the permanent album ID and every attached track, source, asset, note, sequence,
 and approval remain unchanged. Past, current, and future are organizational
 eras, not publication states.
@@ -161,6 +167,8 @@ available, and disconnected roots report Offline or Reconnected explicitly.
 | `data/seed-state.json` | Portable initial album catalog |
 | `data/sequencer-state.json` | Ignored, mutable album/review state |
 | `data/sequencer-state.last-known-good.json` | Ignored, validated recovery snapshot |
+| `data/sequencer-projects.json` | Ignored saved-project index and active-project pointer |
+| `data/projects/*.json` | Ignored per-project snapshots used for switching and recovery |
 | `data/audio-index-cache.json` | Ignored, rebuildable `ffprobe` cache |
 | `config/sequencer.config.json` | Portable server and scanner defaults |
 | `config/sequencer.local.json` | Ignored machine-specific file and folder paths |

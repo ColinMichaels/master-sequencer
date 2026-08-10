@@ -66,6 +66,8 @@ export const createApiRouter = ({
       dataFiles: {
         state: "data/sequencer-state.json",
         recovery: "data/sequencer-state.last-known-good.json",
+        projects: "data/projects/",
+        projectIndex: "data/sequencer-projects.json",
         audioCache: "data/audio-index-cache.json",
         localConfig: "config/sequencer.local.json",
       },
