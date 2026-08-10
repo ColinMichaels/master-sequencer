@@ -1,23 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
 import { formatDuration } from "../lib/format.js";
+import { waveformPath } from "../lib/waveform.js";
 import { RefreshIcon, WaveIcon } from "./Icons.jsx";
 
 const clamp = (value, minimum, maximum) => Math.min(maximum, Math.max(minimum, value));
 const roundMillis = (value) => Number(value.toFixed(3));
 const percent = (value, duration) => `${clamp((value / Math.max(0.1, duration)) * 100, 0, 100)}%`;
 const timeLabel = (value) => value <= 0 ? "0:00.000" : formatDuration(value, true);
-
-const waveformPath = (points) => {
-  if (!points.length) return "";
-  const width = 1000;
-  const middle = 50;
-  const amplitude = 43;
-  const xForIndex = (index) => points.length === 1 ? width / 2 : (index / (points.length - 1)) * width;
-  const upper = points.map((point, index) => `${xForIndex(index).toFixed(2)} ${(middle - point * amplitude).toFixed(2)}`);
-  const lower = points.map((point, index) => `${xForIndex(index).toFixed(2)} ${(middle + point * amplitude).toFixed(2)}`).reverse();
-  return `M ${upper.join(" L ")} L ${lower.join(" L ")} Z`;
-};
 
 function WaveformMarker({ kind, label, value, minimum, maximum, duration, onChange }) {
   const updateFromPointer = (event) => {

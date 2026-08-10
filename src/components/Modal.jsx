@@ -9,7 +9,7 @@ const FOCUSABLE_SELECTOR = [
   "[tabindex]:not([tabindex='-1'])",
 ].join(",");
 
-export function Modal({ title, children, onClose, className = "" }) {
+export function Modal({ title, children, onClose, className = "", dismissible = true }) {
   const dialogRef = useRef(null);
   const onCloseRef = useRef(onClose);
   const previouslyFocusedRef = useRef(typeof document === "undefined" ? null : document.activeElement);
@@ -20,11 +20,12 @@ export function Modal({ title, children, onClose, className = "" }) {
     const focusDialog = window.requestAnimationFrame(() => {
       const dialog = dialogRef.current;
       if (dialog?.contains(document.activeElement)) return;
-      const preferred = dialog?.querySelector("[autofocus]") || dialog?.querySelector(FOCUSABLE_SELECTOR);
+      const preferred = dialog?.querySelector("[data-modal-autofocus], input:not([disabled]):not([type='hidden']), select:not([disabled]), textarea:not([disabled])")
+        || dialog?.querySelector(FOCUSABLE_SELECTOR);
       (preferred || dialog)?.focus();
     });
     const onKey = (event) => {
-      if (event.key === "Escape") {
+      if (event.key === "Escape" && dismissible) {
         event.preventDefault();
         onCloseRef.current();
         return;
@@ -54,11 +55,11 @@ export function Modal({ title, children, onClose, className = "" }) {
       const previouslyFocused = previouslyFocusedRef.current;
       if (previouslyFocused instanceof HTMLElement && document.contains(previouslyFocused)) previouslyFocused.focus();
     };
-  }, []);
+  }, [dismissible]);
   return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (dismissible && event.target === event.currentTarget) onClose(); }}>
       <section ref={dialogRef} tabIndex={-1} className={`modal ${className}`} role="dialog" aria-modal="true" aria-labelledby="modal-title">
-        <header><h2 id="modal-title">{title}</h2><button type="button" onClick={onClose} aria-label="Close dialog">×</button></header>
+        <header><h2 id="modal-title">{title}</h2>{dismissible && <button type="button" onClick={onClose} aria-label="Close dialog">×</button>}</header>
         {children}
       </section>
     </div>

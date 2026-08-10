@@ -5,6 +5,8 @@ import { calculateProgramTimeline, masteringSummary, normalizeMastering, program
 import { sequenceTracks } from "../lib/sequence-tracks.js";
 import { ExportIcon, PlayIcon, RefreshIcon, ScissorsIcon, WarningIcon, WaveIcon } from "./Icons.jsx";
 import { WaveformEditor } from "./WaveformEditor.jsx";
+import { TransitionCurve } from "./TransitionCurve.jsx";
+import { transitionCurve } from "../lib/waveform.js";
 
 function NumberField({ label, value, minimum = 0, maximum, step = 0.1, suffix = "seconds", onCommit, disabled = false }) {
   const [draft, setDraft] = useState(String(value));
@@ -24,12 +26,13 @@ const fileForTrack = (track, libraryMap) => {
 
 const timeLabel = (value, precise = false) => value <= 0 ? (precise ? "0:00.000" : "0:00") : formatDuration(value, precise);
 
-export function MasteringWorkspace({ album, libraryMap, onAlbumChange, onPreview, previewingTrackId, onOpenExport }) {
+export function MasteringWorkspace({ album, libraryMap, onAlbumChange, onPreview, previewingTrackId, onOpenExport, onTrackFocus }) {
   const tracks = useMemo(() => sequenceTracks(album), [album]);
   const [selectedTrackId, setSelectedTrackId] = useState(tracks[0]?.id || "");
   useEffect(() => {
     if (!tracks.some((track) => track.id === selectedTrackId)) setSelectedTrackId(tracks[0]?.id || "");
   }, [album.id, tracks, selectedTrackId]);
+  useEffect(() => { onTrackFocus(selectedTrackId); }, [onTrackFocus, selectedTrackId]);
 
   const entries = useMemo(() => tracks.flatMap((track) => {
     const file = fileForTrack(track, libraryMap);
@@ -114,7 +117,7 @@ export function MasteringWorkspace({ album, libraryMap, onAlbumChange, onPreview
                     ["cut", "Hard Cut", "Stop exactly at the trim point"],
                     ["fade", "Fade Out", "Fade to silence before the end"],
                     ["crossfade", "Crossfade", hasNextPlayable ? `Overlap into ${nextPlayable.track.title}` : "Needs a next playable track"],
-                  ].map(([mode, label, copy]) => <label key={mode} className={`${settings.endMode === mode ? "is-selected" : ""} ${mode === "crossfade" && !hasNextPlayable ? "is-disabled" : ""}`}><input type="radio" name={`ending-${selectedTrack.id}`} value={mode} checked={settings.endMode === mode} disabled={mode === "crossfade" && !hasNextPlayable} onChange={() => updateMastering("endMode", mode)} /><strong>{label}</strong><small>{copy}</small></label>)}
+                  ].map(([mode, label, copy]) => <label key={mode} className={`${settings.endMode === mode ? "is-selected" : ""} ${mode === "crossfade" && !hasNextPlayable ? "is-disabled" : ""}`}><input type="radio" name={`ending-${selectedTrack.id}`} value={mode} checked={settings.endMode === mode} disabled={mode === "crossfade" && !hasNextPlayable} onChange={() => updateMastering("endMode", mode)} /><TransitionCurve mode={mode} /><strong>{label}</strong><small>{copy}</small><em>{transitionCurve(mode).curveLabel}</em></label>)}
                 </div>
                 <div className="mastering-field-grid mastering-field-grid--ending">
                   <NumberField label={settings.endMode === "crossfade" ? "Crossfade length" : "Ending fade length"} value={settings.endDuration.toFixed(2)} maximum={settings.duration - 0.05} step={0.1} disabled={!['fade', 'crossfade'].includes(settings.endMode)} onCommit={(value) => updateMastering("endDuration", value)} />

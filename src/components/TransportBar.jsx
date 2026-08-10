@@ -1,11 +1,27 @@
 import React from "react";
 import { ExportIcon, PlayIcon, RefreshIcon } from "./Icons.jsx";
+import { TransportWaveform } from "./TransportWaveform.jsx";
 
-export function TransportBar({ audioRef, current, status, activeAlbum, resetArmed, onPlaySequence, onResetOrder, onExport }) {
+export function TransportBar({ audioRef, audioHandlers, current, status, activeAlbum, visual, playing, currentTime, mediaDuration, resetArmed, onTogglePlayback, onSeek, onPlaySequence, onResetOrder, onExport }) {
   return (
     <footer className="transport-bar">
       <div className="transport-copy"><span>Sequence Preview</span><strong>{current?.trackTitle || "Ready to audition"}</strong><small>{status}</small></div>
-      <audio ref={audioRef} controls preload="metadata">Your browser cannot play this audio source.</audio>
+      <TransportWaveform
+        audioRef={audioRef}
+        audioHandlers={audioHandlers}
+        file={visual.file}
+        trackTitle={visual.trackTitle}
+        mastering={visual.mastering}
+        nextTrackTitle={visual.nextTrackTitle}
+        currentTime={currentTime}
+        mediaDuration={mediaDuration}
+        playing={playing}
+        hasCurrentMedia={Boolean(current)}
+        renderedPreview={Boolean(current?.renderedPreview)}
+        onTogglePlayback={onTogglePlayback}
+        onStartPlayback={onPlaySequence}
+        onSeek={onSeek}
+      />
       <div className="transport-actions">
         <button type="button" className="transport-button" onClick={onPlaySequence} disabled={!activeAlbum.tracks.length} aria-label="Play available tracks" data-tooltip="Play available tracks"><PlayIcon /><span className="sr-only">Play Available Tracks</span></button>
         <button type="button" className={`transport-button transport-button--yellow ${resetArmed ? "is-armed" : ""}`} onClick={onResetOrder} aria-label={resetArmed ? "Confirm reset order" : "Reset order"} data-tooltip={resetArmed ? "Confirm reset order" : "Reset order"}><RefreshIcon /><span className="sr-only">{resetArmed ? "Confirm Reset" : "Reset Order"}</span></button>

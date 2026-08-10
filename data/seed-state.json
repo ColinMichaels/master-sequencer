@@ -1,7 +1,11 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 3,
   "activeAlbumId": "no-planet-to-call-home",
   "settings": {
+    "project": {
+      "artistName": "The Dreadnauts",
+      "setupComplete": false
+    },
     "revealPrivateFilenames": false,
     "appearance": {
       "mode": "dark",

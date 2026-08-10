@@ -9,6 +9,7 @@ export const useProjectData = () => {
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [pickingAssets, setPickingAssets] = useState(false);
+  const [recovery, setRecovery] = useState({ required: false });
   const [saveStatus, setSaveStatus] = useState("Loading project…");
   const [error, setError] = useState("");
   const hydrated = useRef(false);
@@ -46,6 +47,7 @@ export const useProjectData = () => {
       setLibrary(payload.library);
       setRoots(payload.roots);
       setFormats(payload.supportedFormats);
+      setRecovery(payload.recovery || { required: false });
       setSaveStatus("All changes save automatically.");
       setLoading(false);
     }).catch((reason) => {
@@ -186,6 +188,25 @@ export const useProjectData = () => {
     }
   }, [persistState]);
 
+  const restoreRecovery = useCallback(async () => {
+    setSaveStatus("Restoring the recovery snapshot…");
+    setError("");
+    try {
+      const payload = await api.restoreRecovery();
+      const serialized = JSON.stringify(payload.state);
+      latestState.current = payload.state;
+      lastSavedJson.current = serialized;
+      setState(payload.state);
+      setRecovery(payload.recovery || { required: false });
+      setSaveStatus("Recovery snapshot restored locally.");
+      return true;
+    } catch (reason) {
+      setSaveStatus("Recovery could not be completed.");
+      setError(reason.message);
+      return false;
+    }
+  }, []);
+
   const libraryMap = useMemo(() => new Map(library.map((file) => [file.key, file])), [library]);
 
   return {
@@ -197,11 +218,13 @@ export const useProjectData = () => {
     loading,
     scanning,
     pickingAssets,
+    recovery,
     saveStatus,
     error,
     setError,
     setState,
     replaceState,
+    restoreRecovery,
     updateState,
     rescan,
     registerSource,

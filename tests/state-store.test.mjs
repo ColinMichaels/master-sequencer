@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { createStateStore, validateState } from "../server/state-store.mjs";
+import { createStateStore, migrateState, validateState } from "../server/state-store.mjs";
 
 const seed = {
-  schemaVersion: 1,
+  schemaVersion: 3,
   activeAlbumId: "album",
-  settings: { revealPrivateFilenames: false },
+  settings: { project: { artistName: "Test Artist", setupComplete: true }, revealPrivateFilenames: false },
   albums: [{ id: "album", title: "Album", tracks: [{ id: "track", title: "Track", candidates: [] }] }],
 };
 
@@ -30,6 +30,70 @@ test("state store initializes from seed and writes atomically", async () => {
   initial.albums[0].title = "Updated Album";
   await store.write(initial);
   assert.equal((await store.read()).albums[0].title, "Updated Album");
+});
+
+test("version 1 project state migrates to the current schema without changing album authority", () => {
+  const legacy = structuredClone(seed);
+  legacy.schemaVersion = 1;
+  delete legacy.settings.project;
+  const migrated = migrateState(legacy);
+  assert.equal(migrated.schemaVersion, 3);
+  assert.equal(migrated.activeAlbumId, legacy.activeAlbumId);
+  assert.deepEqual(migrated.albums, legacy.albums);
+  assert.deepEqual(migrated.settings.project, { artistName: "Untitled Artist", setupComplete: true });
+});
+
+test("version 2 project state inherits its artist without interrupting an existing project", () => {
+  const legacy = structuredClone(seed);
+  legacy.schemaVersion = 2;
+  legacy.albums[0].artist = "Legacy Ensemble";
+  delete legacy.settings.project;
+  const migrated = migrateState(legacy);
+  assert.equal(migrated.schemaVersion, 3);
+  assert.deepEqual(migrated.settings.project, { artistName: "Legacy Ensemble", setupComplete: true });
+  assert.deepEqual(migrated.albums, legacy.albums);
+});
+
+test("future project-state versions are rejected without guessing", () => {
+  const future = structuredClone(seed);
+  future.schemaVersion = 99;
+  assert.throws(() => migrateState(future), /newer than this application supports/);
+});
+
+test("state store preserves an invalid current record and requires explicit recovery", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "project-sequencer-state-recovery-"));
+  const seedPath = path.join(root, "seed.json");
+  const statePath = path.join(root, "state.json");
+  const recoveryPath = path.join(root, "state.last-known-good.json");
+  await writeFile(seedPath, JSON.stringify(seed));
+  await writeFile(recoveryPath, JSON.stringify({ ...seed, albums: [{ ...seed.albums[0], title: "Recovered Album" }] }));
+  await writeFile(statePath, "{ definitely not project json");
+
+  const store = createStateStore({ seedPath, statePath, recoveryPath });
+  await store.initialize();
+  assert.equal(store.recoveryStatus().required, true);
+  assert.equal(store.recoveryStatus().source, "last-known-good");
+  assert.equal((await store.read()).albums[0].title, "Recovered Album");
+  assert.equal(await readFile(statePath, "utf8"), "{ definitely not project json");
+  await assert.rejects(() => store.write(seed), /Restore the recovery snapshot/);
+
+  const restored = await store.restoreRecovery();
+  assert.equal(restored.recovery.required, false);
+  assert.equal(JSON.parse(await readFile(statePath, "utf8")).albums[0].title, "Recovered Album");
+});
+
+test("state store falls back to the portable seed when no valid recovery snapshot exists", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "project-sequencer-state-seed-recovery-"));
+  const seedPath = path.join(root, "seed.json");
+  const statePath = path.join(root, "state.json");
+  const recoveryPath = path.join(root, "state.last-known-good.json");
+  await writeFile(seedPath, JSON.stringify(seed));
+  await writeFile(statePath, JSON.stringify({ schemaVersion: 99, albums: [] }));
+
+  const store = createStateStore({ seedPath, statePath, recoveryPath });
+  await store.initialize();
+  assert.equal(store.recoveryStatus().source, "portable-seed");
+  assert.equal((await store.read()).activeAlbumId, seed.activeAlbumId);
 });
 
 test("state store serializes overlapping writes so the latest state wins", async () => {
@@ -129,4 +193,14 @@ test("state validation accepts appearance preferences and rejects unsupported ch
   const invalid = structuredClone(seed);
   invalid.settings.appearance = { mode: "ultraviolet" };
   assert.throws(() => validateState(invalid), /Unsupported appearance mode/);
+});
+
+test("state validation requires a portable project artist and setup status", () => {
+  const missingArtist = structuredClone(seed);
+  missingArtist.settings.project.artistName = "   ";
+  assert.throws(() => validateState(missingArtist), /Project artist name/);
+
+  const invalidSetup = structuredClone(seed);
+  invalidSetup.settings.project.setupComplete = "yes";
+  assert.throws(() => validateState(invalidSetup), /Project setup status/);
 });

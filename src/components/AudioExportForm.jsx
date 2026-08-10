@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { formatBytes } from "../lib/format.js";
 import { DownloadIcon, ExportIcon, MusicIcon, WarningIcon } from "./Icons.jsx";
 
-export function AudioExportForm({ album, selectedTrack, rendering, error, result, onRender, onClear, onCancel }) {
+export function AudioExportForm({ album, selectedTrack, rendering, renderJob, error, result, onRender, onCancelRender, onClear, onCancel }) {
   const [scope, setScope] = useState(selectedTrack ? "track" : "album");
   const [format, setFormat] = useState("wav");
   if (result) return (
@@ -33,9 +33,14 @@ export function AudioExportForm({ album, selectedTrack, rendering, error, result
         <label className={format === "mp3" ? "is-selected" : ""}><input type="radio" name="format" value="mp3" checked={format === "mp3"} onChange={() => setFormat("mp3")} /><span><strong>MP3 for Review</strong><small>320 kbps · 48 kHz</small></span></label>
       </fieldset>
       {scope === "track" && selectedTrack?.mastering?.endMode === "crossfade" && <p className="render-warning"><WarningIcon /> A selected-track print cannot include the next song, so its crossfade length becomes a fade-out. Choose Full Album Program to print the actual overlap.</p>}
+      {rendering && <div className="render-progress" role="status" aria-live="polite">
+        <div><strong>{renderJob?.phase === "queued" ? "Waiting to print" : renderJob?.phase === "cancelling" ? "Cancelling print" : "Printing audio"}</strong><span>{renderJob?.progress || 0}%</span></div>
+        <progress max="100" value={renderJob?.progress || 0}>{renderJob?.progress || 0}%</progress>
+        <small>{renderJob?.phase === "documenting" ? "Writing the cue sheet and manifest…" : renderJob?.phase === "queued" ? "Another print is finishing first…" : "FFmpeg is creating a new derivative. Indexed sources remain read-only."}</small>
+      </div>}
       {error && <p className="render-error" role="alert"><WarningIcon /> {error}</p>}
       <div className="render-safety-note"><ExportIcon /><p><strong>Each print includes documentation.</strong> Album and track exports include a cue sheet and JSON manifest beside the audio.</p></div>
-      <div className="modal-actions"><button type="button" className="text-button" onClick={onCancel} disabled={rendering}>Cancel</button><button type="submit" className="primary-button primary-button--yellow" disabled={rendering}><ExportIcon /> {rendering ? "Printing Audio…" : `Print ${format.toUpperCase()}`}</button></div>
+      <div className="modal-actions"><button type="button" className="text-button" onClick={rendering ? onCancelRender : onCancel}>{rendering ? "Cancel Print" : "Cancel"}</button><button type="submit" className="primary-button primary-button--yellow" disabled={rendering}><ExportIcon /> {rendering ? "Printing Audio…" : `Print ${format.toUpperCase()}`}</button></div>
     </form>
   );
 }

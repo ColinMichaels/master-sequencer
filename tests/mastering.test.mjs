@@ -41,6 +41,7 @@ test("FFmpeg graph builds trims, fades, crossfades, gaps, and one final output",
   assert.match(graph.filterComplex, /atrim=start=1:end=19/);
   assert.match(graph.filterComplex, /afade=t=in/);
   assert.match(graph.filterComplex, /acrossfade=d=3/);
+  assert.match(graph.filterComplex, /acrossfade=d=3:c1=qsin:c2=qsin/);
   assert.match(graph.filterComplex, /afade=t=out/);
   assert.match(graph.filterComplex, /anullsrc=.*duration=1/);
   assert.equal(graph.outputLabel, "joined1");

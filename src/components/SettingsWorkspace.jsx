@@ -1,8 +1,9 @@
 import React, { useRef, useState } from "react";
 import { FolderIcon, LockIcon, MusicIcon, PlusIcon, RefreshIcon, TrashIcon } from "./Icons.jsx";
 import { AppearanceSettings } from "./AppearanceSettings.jsx";
+import { ProjectIdentityForm } from "./ProjectIdentityForm.jsx";
 
-export function SettingsWorkspace({ state, roots, scanning, revealPrivateFilenames, appearance, resolvedMode, onAppearanceChange, onTogglePrivate, onAddRoot, onRemoveRoot, onChooseSources, onRescan, onImportState }) {
+export function SettingsWorkspace({ state, roots, scanning, projectArtistName, revealPrivateFilenames, appearance, resolvedMode, onProjectIdentityChange, onAppearanceChange, onTogglePrivate, onAddRoot, onRemoveRoot, onChooseSources, onRescan, onImportState }) {
   const [folderPath, setFolderPath] = useState("");
   const [folderLabel, setFolderLabel] = useState("");
   const [importError, setImportError] = useState("");
@@ -38,7 +39,13 @@ export function SettingsWorkspace({ state, roots, scanning, revealPrivateFilenam
 
   return (
     <main className="settings-workspace">
-      <header className="settings-heading"><h2>Settings</h2><p>Adjust the screen, configure audio paths, and manage local project data. Source files always stay in place.</p></header>
+      <header className="settings-heading"><h2>Settings</h2><p>Set project identity, adjust the screen, configure audio paths, and manage local project data. Source files always stay in place.</p></header>
+      <section className="settings-section project-settings" id="project-settings">
+        <div className="settings-section-heading">
+          <div><h3>Project</h3><p>The artist is a project-wide identity, separate from album and audio-source decisions.</p></div>
+        </div>
+        <ProjectIdentityForm artistName={projectArtistName} onSubmit={onProjectIdentityChange} />
+      </section>
       <AppearanceSettings appearance={appearance} resolvedMode={resolvedMode} onChange={onAppearanceChange} />
       <div className="settings-columns">
         <section className="settings-section">

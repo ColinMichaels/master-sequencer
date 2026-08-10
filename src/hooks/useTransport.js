@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { api, sourceKey } from "../lib/api.js";
 
 export const useTransport = ({ libraryMap }) => {
@@ -6,6 +6,8 @@ export const useTransport = ({ libraryMap }) => {
   const [current, setCurrent] = useState(null);
   const [status, setStatus] = useState("Ready");
   const [playing, setPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [mediaDuration, setMediaDuration] = useState(0);
   const mode = useRef("idle");
   const queue = useRef([]);
   const queueCursor = useRef(0);
@@ -22,6 +24,8 @@ export const useTransport = ({ libraryMap }) => {
     const audio = audioRef.current;
     const token = ++playToken.current;
     setCurrent(entry);
+    setCurrentTime(0);
+    setMediaDuration(0);
     audio.src = entry.url || api.mediaUrl(entry.file.key);
     audio.load();
     const start = () => {
@@ -50,7 +54,15 @@ export const useTransport = ({ libraryMap }) => {
     queue.current = [];
     completionMessage.current = options.completionStatus || "Rendered preview complete.";
     setStatus(options.status || "Playing the rendered edit preview.");
-    playEntry({ url, trackTitle: label, albumTitle: options.albumTitle || "Mastering Preview" });
+    playEntry({
+      url,
+      file: options.file,
+      track: options.track,
+      trackTitle: label,
+      albumTitle: options.albumTitle || "Mastering Preview",
+      nextTrackTitle: options.nextTrackTitle || "",
+      renderedPreview: true,
+    });
   }, [playEntry]);
 
   const playSequence = useCallback((album, startIndex = 0) => {
@@ -108,25 +120,36 @@ export const useTransport = ({ libraryMap }) => {
     audioRef.current?.pause();
     mode.current = "idle";
     queue.current = [];
+    setCurrent(null);
+    setPlaying(false);
+    setCurrentTime(0);
+    setMediaDuration(0);
     setStatus(message);
   }, []);
 
-  useEffect(() => {
+  const togglePlayback = useCallback(() => {
     const audio = audioRef.current;
-    if (!audio) return undefined;
-    const onPlay = () => setPlaying(true);
-    const onPause = () => setPlaying(false);
-    audio.addEventListener("play", onPlay);
-    audio.addEventListener("pause", onPause);
-    audio.addEventListener("ended", handleEnded);
-    audio.addEventListener("error", handleError);
-    return () => {
-      audio.removeEventListener("play", onPlay);
-      audio.removeEventListener("pause", onPause);
-      audio.removeEventListener("ended", handleEnded);
-      audio.removeEventListener("error", handleError);
-    };
-  }, [handleEnded, handleError]);
+    if (!audio?.src) return;
+    if (audio.paused) audio.play().catch((error) => setStatus(`Playback needs a direct play gesture: ${error.message}`));
+    else audio.pause();
+  }, []);
 
-  return { audioRef, current, status, setStatus, playing, fileForTrack, previewFile, previewRendered, playSequence, stop };
+  const seek = useCallback((time) => {
+    const audio = audioRef.current;
+    if (!audio || !Number.isFinite(audio.duration)) return;
+    audio.currentTime = Math.min(audio.duration, Math.max(0, time));
+    setCurrentTime(audio.currentTime);
+  }, []);
+
+  const audioHandlers = useMemo(() => ({
+    onPlay: () => setPlaying(true),
+    onPause: () => setPlaying(false),
+    onTimeUpdate: (event) => setCurrentTime(event.currentTarget.currentTime || 0),
+    onDurationChange: (event) => setMediaDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0),
+    onLoadedMetadata: (event) => setMediaDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0),
+    onEnded: handleEnded,
+    onError: handleError,
+  }), [handleEnded, handleError]);
+
+  return { audioRef, audioHandlers, current, status, setStatus, playing, currentTime, mediaDuration, fileForTrack, previewFile, previewRendered, playSequence, stop, togglePlayback, seek };
 };

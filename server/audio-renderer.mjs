@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdir, rename, stat, writeFile } from "node:fs/promises";
+import { mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { calculateProgramTimeline, normalizeMastering } from "../src/lib/mastering.js";
 import { sourceKey } from "./audio-library.mjs";
@@ -16,17 +16,76 @@ const slugify = (value) => value
 
 const seconds = (value) => Number(value.toFixed(6)).toString();
 
-const runFfmpeg = (argumentsList) => new Promise((resolve, reject) => {
-  const child = spawn("ffmpeg", argumentsList, { stdio: ["ignore", "ignore", "pipe"] });
+export class RenderCancelledError extends Error {
+  constructor(message = "Audio rendering was cancelled.") {
+    super(message);
+    this.name = "RenderCancelledError";
+    this.code = "RENDER_CANCELLED";
+  }
+}
+
+const throwIfCancelled = (signal) => {
+  if (signal?.aborted) throw new RenderCancelledError();
+};
+
+export const runFfmpeg = (argumentsList, { signal, timeoutMs = 10 * 60_000, expectedDuration = 0, onProgress = () => {} } = {}) => new Promise((resolve, reject) => {
+  throwIfCancelled(signal);
+  const child = spawn("ffmpeg", [...argumentsList.slice(0, -1), "-progress", "pipe:3", "-nostats", argumentsList.at(-1)], { stdio: ["ignore", "ignore", "pipe", "pipe"] });
   let errors = "";
+  let progressBuffer = "";
+  let settled = false;
+  let cancelled = false;
+  let timedOut = false;
+  let forceKillTimer;
+  const finish = (callback) => {
+    if (settled) return;
+    settled = true;
+    clearTimeout(timeout);
+    clearTimeout(forceKillTimer);
+    signal?.removeEventListener("abort", cancel);
+    callback();
+  };
+  const stopChild = () => {
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill("SIGTERM");
+      forceKillTimer = setTimeout(() => child.kill("SIGKILL"), 2_000);
+      forceKillTimer.unref?.();
+    }
+  };
+  const cancel = () => {
+    cancelled = true;
+    stopChild();
+  };
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    stopChild();
+  }, timeoutMs);
+  timeout.unref?.();
+  signal?.addEventListener("abort", cancel, { once: true });
   child.stderr.setEncoding("utf8");
   child.stderr.on("data", (chunk) => {
     errors = `${errors}${chunk}`.slice(-16_000);
   });
-  child.on("error", (error) => reject(new Error(`FFmpeg could not start: ${error.message}`)));
+  child.stdio[3].setEncoding("utf8");
+  child.stdio[3].on("data", (chunk) => {
+    progressBuffer += chunk;
+    const lines = progressBuffer.split("\n");
+    progressBuffer = lines.pop() || "";
+    for (const line of lines) {
+      const [key, rawValue] = line.trim().split("=", 2);
+      if (!expectedDuration || !["out_time_us", "out_time_ms"].includes(key)) continue;
+      const elapsed = Number(rawValue) / 1_000_000;
+      if (Number.isFinite(elapsed)) onProgress(Math.min(88, 10 + (elapsed / expectedDuration) * 78), "rendering");
+    }
+  });
+  child.on("error", (error) => finish(() => reject(new Error(`FFmpeg could not start: ${error.message}`))));
   child.on("close", (code) => {
-    if (code === 0) resolve();
-    else reject(new Error(`FFmpeg render failed${errors ? `: ${errors.trim().split("\n").slice(-4).join(" ")}` : "."}`));
+    finish(() => {
+      if (cancelled) reject(new RenderCancelledError());
+      else if (timedOut) reject(new Error(`FFmpeg render exceeded the ${Math.ceil(timeoutMs / 1_000)} second safety limit.`));
+      else if (code === 0) resolve();
+      else reject(new Error(`FFmpeg render failed${errors ? `: ${errors.trim().split("\n").slice(-4).join(" ")}` : "."}`));
+    });
   });
 });
 
@@ -140,7 +199,8 @@ export const buildPreviewEntries = (entries, selectedIndex, previewPart) => {
   return [previewSelected, { ...next, mastering: { ...next.mastering, trimStart: nextSettings.trimStart, trimEnd: nextPreviewEnd, fadeIn: nextSettings.fadeIn } }];
 };
 
-export const renderAudio = async ({ album, scope, trackId, format, previewPart = "end", getLibraryFile, outputRoot }) => {
+export const renderAudio = async ({ album, scope, trackId, format, previewPart = "end", getLibraryFile, outputRoot, signal, timeoutMs, onProgress = () => {} }) => {
+  throwIfCancelled(signal);
   if (!album?.id || !Array.isArray(album.tracks)) throw new Error("Choose a valid album to render.");
   if (!RENDER_SCOPES.has(scope)) throw new Error("Choose a valid render scope.");
   if (!AUDIO_FORMATS.has(format)) throw new Error("Choose WAV or MP3 output.");
@@ -167,6 +227,8 @@ export const renderAudio = async ({ album, scope, trackId, format, previewPart =
   const renderFormat = scope === "preview" ? "mp3" : format;
   const singleTrack = entries.length === 1;
   const graph = buildRenderGraph(entries, { singleTrack });
+  const timeline = calculateProgramTimeline(entries);
+  const expectedDuration = timeline.at(-1)?.outputEnd || 0;
   const createdAt = new Date().toISOString();
   const id = randomUUID();
   const day = createdAt.slice(0, 10);
@@ -176,52 +238,63 @@ export const renderAudio = async ({ album, scope, trackId, format, previewPart =
   const directory = scope === "preview"
     ? path.join(outputRoot, ".previews", id)
     : path.join(outputRoot, day, `${slugify(album.title)}-${scopeName}-${time}-${id.slice(0, 6)}`);
+  onProgress(5, "preparing");
   await mkdir(directory, { recursive: true });
   const audioName = `${slugify(album.artist)}-${slugify(album.title)}-${scopeName}.${renderFormat}`;
   const audioPath = path.join(directory, audioName);
   const temporaryPath = path.join(directory, `${path.basename(audioName, `.${renderFormat}`)}.part.${renderFormat}`);
 
-  const argumentsList = ["-hide_banner", "-loglevel", "error", "-y"];
-  entries.forEach((entry) => argumentsList.push("-i", entry.file.absolutePath));
-  argumentsList.push("-filter_complex", graph.filterComplex, "-map", `[${graph.outputLabel}]`, "-vn");
-  if (renderFormat === "wav") argumentsList.push("-c:a", "pcm_s24le", "-ar", "48000");
-  else argumentsList.push("-c:a", "libmp3lame", "-b:a", scope === "preview" ? "192k" : "320k", "-ar", "48000", "-id3v2_version", "3");
-  argumentsList.push("-metadata", `artist=${album.artist}`, "-metadata", `album=${album.title}`, "-metadata", `title=${scope === "album" ? `${album.title} — Album Program` : entries[0].track.title}`, temporaryPath);
-  await runFfmpeg(argumentsList);
-  await rename(temporaryPath, audioPath);
+  try {
+    const argumentsList = ["-hide_banner", "-loglevel", "error", "-y"];
+    entries.forEach((entry) => argumentsList.push("-i", entry.file.absolutePath));
+    argumentsList.push("-filter_complex", graph.filterComplex, "-map", `[${graph.outputLabel}]`, "-vn");
+    if (renderFormat === "wav") argumentsList.push("-c:a", "pcm_s24le", "-ar", "48000");
+    else argumentsList.push("-c:a", "libmp3lame", "-b:a", scope === "preview" ? "192k" : "320k", "-ar", "48000", "-id3v2_version", "3");
+    argumentsList.push("-metadata", `artist=${album.artist}`, "-metadata", `album=${album.title}`, "-metadata", `title=${scope === "album" ? `${album.title} — Album Program` : entries[0].track.title}`, temporaryPath);
+    onProgress(10, "rendering");
+    await runFfmpeg(argumentsList, { signal, timeoutMs, expectedDuration, onProgress });
+    throwIfCancelled(signal);
+    await rename(temporaryPath, audioPath);
+    onProgress(92, "documenting");
 
-  const timeline = calculateProgramTimeline(entries);
-  const warnings = missing.length && scope === "album" ? [`Skipped missing audio: ${missing.join(", ")}.`] : [];
-  let cuePath = "";
-  let manifestPath = "";
-  if (scope !== "preview") {
-    cuePath = path.join(directory, `${path.basename(audioName, `.${renderFormat}`)}-cue-sheet.txt`);
-    manifestPath = path.join(directory, `${path.basename(audioName, `.${renderFormat}`)}-render-manifest.json`);
-    await writeFile(cuePath, createCueSheet({ album, timeline, audioName, format: renderFormat, createdAt, warnings }));
-    await writeFile(manifestPath, `${JSON.stringify({
-      schemaVersion: 1,
-      createdAt,
-      album: { id: album.id, artist: album.artist, title: album.title },
-      scope,
-      format: renderFormat,
-      audioFile: audioName,
-      warnings,
-      tracks: timeline.map((entry) => ({
-        id: entry.track.id,
-        title: entry.track.title,
-        candidateId: entry.candidate.id,
-        sourceRef: entry.candidate.sourceRef,
-        trimStart: entry.settings.trimStart,
-        trimEnd: entry.settings.trimEnd,
-        fadeIn: entry.settings.fadeIn,
-        endMode: entry.settings.endMode,
-        endDuration: entry.settings.endDuration,
-        gapAfter: entry.settings.gapAfter,
-        outputStart: entry.outputStart,
-        outputEnd: entry.outputEnd,
-      })),
-    }, null, 2)}\n`);
+    const warnings = missing.length && scope === "album" ? [`Skipped missing audio: ${missing.join(", ")}.`] : [];
+    let cuePath = "";
+    let manifestPath = "";
+    if (scope !== "preview") {
+      cuePath = path.join(directory, `${path.basename(audioName, `.${renderFormat}`)}-cue-sheet.txt`);
+      manifestPath = path.join(directory, `${path.basename(audioName, `.${renderFormat}`)}-render-manifest.json`);
+      await writeFile(cuePath, createCueSheet({ album, timeline, audioName, format: renderFormat, createdAt, warnings }));
+      await writeFile(manifestPath, `${JSON.stringify({
+        schemaVersion: 1,
+        renderId: id,
+        createdAt,
+        album: { id: album.id, artist: album.artist, title: album.title },
+        scope,
+        format: renderFormat,
+        audioFile: audioName,
+        warnings,
+        tracks: timeline.map((entry) => ({
+          id: entry.track.id,
+          title: entry.track.title,
+          candidateId: entry.candidate.id,
+          sourceRef: entry.candidate.sourceRef,
+          trimStart: entry.settings.trimStart,
+          trimEnd: entry.settings.trimEnd,
+          fadeIn: entry.settings.fadeIn,
+          endMode: entry.settings.endMode,
+          endDuration: entry.settings.endDuration,
+          gapAfter: entry.settings.gapAfter,
+          outputStart: entry.outputStart,
+          outputEnd: entry.outputEnd,
+        })),
+      }, null, 2)}\n`);
+    }
+    throwIfCancelled(signal);
+    const fileStat = await stat(audioPath);
+    onProgress(100, "completed");
+    return { id, scope, format: renderFormat, audioPath, cuePath, manifestPath, outputDirectory: directory, audioName, size: fileStat.size, warnings, createdAt };
+  } catch (error) {
+    await rm(directory, { recursive: true, force: true });
+    throw error;
   }
-  const fileStat = await stat(audioPath);
-  return { id, scope, format: renderFormat, audioPath, cuePath, manifestPath, outputDirectory: directory, audioName, size: fileStat.size, warnings, createdAt };
 };
