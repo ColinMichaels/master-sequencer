@@ -36,6 +36,12 @@ npm run dev
 Open [http://127.0.0.1:4177](http://127.0.0.1:4177). The first scan may take a
 few seconds; later starts use the metadata cache.
 
+On a new installation with no configured audio paths or indexed files, the app
+opens a first-run guide. It explains the complete file-to-album workflow and
+links directly to the native audio picker, album creation, and the main editing
+workspace. The guide also distinguishes the current non-destructive timing and
+transition tools from planned EQ, compression, limiting, and effects features.
+
 For the built production app:
 
 ```bash
@@ -53,31 +59,54 @@ npm start
   record, restore unsequenced tracks, review the live back-cover layout, reset
   to the baseline order, and export a Markdown sequence.
 - **Track Review:** compare every candidate, play sources, record notes, choose
-  a master candidate, and set a separate disposition.
+  a master candidate, set a separate disposition, and explicitly queue sources
+  for loudness-matched derivative previews without changing either choice.
+- **Album Decisions:** name, duplicate, compare, and restore sequence versions;
+  keep notes, markers, and A/B settings for every adjacent transition; inspect
+  eight independent readiness gates; audition clearly labeled loudness-matched
+  comparison derivatives; and create reusable album structures that carry no
+  media or approvals.
 - **Mastering:** read the real source waveform, drag or keyboard-adjust
   accessible start/end markers, see trimmed, kept, fade, and crossfade regions,
   and retain next-track context while sequencing. Set non-destructive opening
   fades, natural endings, hard cuts, fade-outs, crossfades, and post-track
   silence; preview edited starts and endings; then print a selected track or
-  continuous album program as 24-bit/48 kHz WAV or 320 kbps MP3.
+  continuous album program as 24-bit/48 kHz WAV or 320 kbps MP3. Run optional
+  rebuildable true-peak, loudness, DC-offset, and silence analysis; navigate a
+  chaptered trim preview without reprinting the full program; validate prints
+  against delivery profiles while recording master approval and publish
+  readiness separately; and compare or reveal documented render history without
+  deleting derivatives.
 - **Assets:** attach album artwork and track-specific visual references, choose
   an album cover, and associate both Suno prompt lyrics and clean DistroKid
   lyrics with the exact audio candidate they describe.
 - **Audio Library:** search every discovered source, filter by root/format/use,
-  preview files, add a file as a candidate, or create a new track from it.
+  save and restore indexed searches/facets, preview files, add a file as a
+  candidate, or create a new track from it. Incremental rescan status shows
+  reused versus reprobed metadata and explicitly reports offline/reconnected
+  roots.
 - **Settings:** click a file-path or folder-path control to open the native
   macOS picker; manual path entry remains under an optional fallback. Choose
   dark, light, or system mode; adjust interface text from 90% to 120%; and mix
   four color themes with four font pairings. Disconnect sources, rescan, keep
   protected filenames masked, and export/import the complete Project Sequencer
-  JSON record.
+  JSON record. Export an optional portable bundle containing project JSON and
+  source checksums only; it never copies media.
 
 The application shell uses compact icon tabs and transport actions with
 accessible hover/focus labels. The Albums rail and Sequence layout preview can
 be collapsed independently when more editing space is needed.
+Project edits also have a bounded 100-step undo/redo history. Undo changes only
+the local project record; it never reverses a filesystem operation.
 
-Albums can be added or renamed directly from the album rail, and blank tracks
-can be added from the sequence workspace. Renaming changes only the album title;
+Projects can be started fresh and reopened from the album rail or Settings.
+Before a switch, pending edits are flushed into the current project's ignored
+local snapshot; configured audio paths remain shared without copying media.
+Albums can be added, renamed, or explicitly deleted from the album rail, and
+blank tracks can be added from the sequence workspace. Deleting an album removes
+only its Project Sequencer decisions and references—indexed source audio and
+rendered exports are untouched—and the final album in a project is protected.
+Renaming changes only the album title;
 the permanent album ID and every attached track, source, asset, note, sequence,
 and approval remain unchanged. Past, current, and future are organizational
 eras, not publication states.
@@ -126,12 +155,20 @@ Hidden directories are skipped by default. Set `includeHiddenDirectories` to
 the Dreadnauts installation leaves it off so `.whisper` cache and sample audio
 do not enter album work.
 
+Rescans always reuse cached metadata for unchanged files. Optional debounced
+filesystem watching can be enabled with `"watchAudioRoots": true` in the ignored
+local configuration. It is off in the portable default; manual rescans remain
+available, and disconnected roots report Offline or Reconnected explicitly.
+
 ## Local data
 
 | File | Purpose |
 | --- | --- |
 | `data/seed-state.json` | Portable initial album catalog |
 | `data/sequencer-state.json` | Ignored, mutable album/review state |
+| `data/sequencer-state.last-known-good.json` | Ignored, validated recovery snapshot |
+| `data/sequencer-projects.json` | Ignored saved-project index and active-project pointer |
+| `data/projects/*.json` | Ignored per-project snapshots used for switching and recovery |
 | `data/audio-index-cache.json` | Ignored, rebuildable `ffprobe` cache |
 | `config/sequencer.config.json` | Portable server and scanner defaults |
 | `config/sequencer.local.json` | Ignored machine-specific file and folder paths |
@@ -150,7 +187,12 @@ Timing and fade settings are instructions stored on the track record. Audio
 printing reads the indexed source and creates a new derivative under
 `exports/YYYY-MM-DD/`; it never rewrites the source. Every non-preview print
 includes a text cue sheet and JSON render manifest beside the WAV or MP3.
-This is intentionally more
+Prints run as cancellable jobs with visible phase and progress, a bounded
+process timeout, and cleanup of incomplete files. Completed manifests are
+rediscovered after restart so documented results remain available. If current
+project state cannot be parsed, validated, or migrated, the application shows
+an explicit recovery screen for restoring the last-known-good snapshot; it does
+not silently replace project decisions. This is intentionally more
 inspectable and portable than browser-only localStorage or IndexedDB. Export
 the Project JSON from Settings for a portable backup before large catalog
 changes.
@@ -183,6 +225,16 @@ assessment and prioritized future plan.
 ```bash
 npm run check
 ```
+
+The full release gate also runs the isolated rendered-browser suite:
+
+```bash
+npm run check:full
+```
+
+The browser suite generates tiny temporary audio fixtures outside the project
+catalog. It exercises real FFmpeg output and HTTP byte-range playback without
+reading or changing configured source audio.
 
 For a parallel local production QA process without editing local configuration,
 override only the listening port:

@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { sourceKey } from "../lib/api.js";
 import { formatBytes, formatDuration } from "../lib/format.js";
+import { toggleComparisonCandidate } from "../lib/album-decisions.js";
+import { deleteTrackRecord } from "../lib/project-commands.js";
 import { LockIcon, PlayIcon, TrashIcon, WarningIcon } from "./Icons.jsx";
 
 export function TrackReviewWorkspace({ album, libraryMap, revealPrivateFilenames, onAlbumChange, onPreviewFile, onOpenLibrary }) {
@@ -22,7 +24,7 @@ export function TrackReviewWorkspace({ album, libraryMap, revealPrivateFilenames
   const updateTrack = (recipe) => onAlbumChange((draft) => recipe(draft.tracks.find((item) => item.id === track.id)));
   const deleteTrack = () => {
     if (!deleteArmed) { setDeleteArmed(true); return; }
-    onAlbumChange((draft) => { draft.tracks = draft.tracks.filter((item) => item.id !== track.id); draft.baselineTrackOrder = (draft.baselineTrackOrder || []).filter((id) => id !== track.id); draft.orderApproved = false; });
+    onAlbumChange((draft) => { deleteTrackRecord(draft, track.id); });
     setDeleteArmed(false);
   };
 
@@ -62,6 +64,7 @@ export function TrackReviewWorkspace({ album, libraryMap, revealPrivateFilenames
                     <div><dt>Size</dt><dd>{formatBytes(file?.size)}</dd></div>
                   </dl>
                   {candidate.flags?.length > 0 && <ul className="candidate-flags">{candidate.flags.map((flag) => <li key={flag}>{flag}</li>)}</ul>}
+                  <label className="comparison-toggle"><input type="checkbox" checked={(track.comparisonQueue || []).includes(candidate.id)} onChange={() => updateTrack((draft) => { toggleComparisonCandidate(draft, candidate.id); })} /><span>Add to loudness-matched comparison queue</span><small>Creates previews only; audition and master choices remain unchanged.</small></label>
                   <label className="candidate-notes">Candidate notes<textarea value={candidate.notes || ""} onChange={(event) => updateTrack((draft) => { draft.candidates.find((item) => item.id === candidate.id).notes = event.target.value; })} placeholder="Mix, vocal, artifacts, ending, emotional fit…" /></label>
                 </li>
               );

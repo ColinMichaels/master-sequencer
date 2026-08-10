@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { api, sourceKey } from "../lib/api.js";
+import { normalizeMastering } from "../lib/mastering.js";
 
 export const useTransport = ({ libraryMap }) => {
   const audioRef = useRef(null);
@@ -19,7 +20,7 @@ export const useTransport = ({ libraryMap }) => {
     return candidate ? libraryMap.get(sourceKey(candidate.sourceRef)) : null;
   }, [libraryMap]);
 
-  const playEntry = useCallback((entry, startAt = 0) => {
+  const playEntry = useCallback((entry, startAt = entry?.startAt || 0) => {
     if ((!entry?.file && !entry?.url) || !audioRef.current) return;
     const audio = audioRef.current;
     const token = ++playToken.current;
@@ -81,13 +82,32 @@ export const useTransport = ({ libraryMap }) => {
     playEntry(entries[0]);
   }, [fileForTrack, playEntry]);
 
+  const previewChapter = useCallback((album, startIndex = 0) => {
+    const playable = album.tracks.map((track, index) => ({ track, index, file: fileForTrack(track) })).filter((entry) => entry.file);
+    const entries = playable.flatMap((entry, playableIndex) => {
+      if (entry.index < startIndex) return [];
+      const settings = normalizeMastering(entry.track.mastering, entry.file.duration, { hasNext: playableIndex < playable.length - 1 });
+      return [{ file: entry.file, trackTitle: entry.track.title, albumTitle: `${album.title} · Chapter Preview`, track: entry.track, startAt: settings.trimStart, endAt: settings.trimEnd }];
+    });
+    if (!entries.length) {
+      setStatus("No playable chapter exists from this cue.");
+      return;
+    }
+    mode.current = "chapterQueue";
+    queue.current = entries;
+    queueCursor.current = 0;
+    setStatus("Playing chaptered trims from this cue. Use transition A/B preview for overlaps and fades.");
+    playEntry(entries[0]);
+  }, [fileForTrack, playEntry]);
+
   const handleEnded = useCallback(() => {
-    if (mode.current === "queue") {
+    if (["queue", "chapterQueue"].includes(mode.current)) {
+      const completedMode = mode.current;
       queueCursor.current += 1;
       if (queueCursor.current < queue.current.length) playEntry(queue.current[queueCursor.current]);
       else {
         mode.current = "idle";
-        setStatus("Available-sequence preview complete.");
+        setStatus(completedMode === "chapterQueue" ? "Chaptered program preview complete." : "Available-sequence preview complete.");
       }
       return;
     }
@@ -99,7 +119,7 @@ export const useTransport = ({ libraryMap }) => {
 
   const handleError = useCallback(() => {
     setPlaying(false);
-    if (mode.current === "queue") {
+    if (["queue", "chapterQueue"].includes(mode.current)) {
       const failedEntry = queue.current[queueCursor.current];
       queueCursor.current += 1;
       if (queueCursor.current < queue.current.length) {
@@ -144,12 +164,19 @@ export const useTransport = ({ libraryMap }) => {
   const audioHandlers = useMemo(() => ({
     onPlay: () => setPlaying(true),
     onPause: () => setPlaying(false),
-    onTimeUpdate: (event) => setCurrentTime(event.currentTarget.currentTime || 0),
+    onTimeUpdate: (event) => {
+      const time = event.currentTarget.currentTime || 0;
+      setCurrentTime(time);
+      if (mode.current === "chapterQueue") {
+        const entry = queue.current[queueCursor.current];
+        if (Number.isFinite(entry?.endAt) && time >= entry.endAt - 0.02) handleEnded();
+      }
+    },
     onDurationChange: (event) => setMediaDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0),
     onLoadedMetadata: (event) => setMediaDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0),
     onEnded: handleEnded,
     onError: handleError,
   }), [handleEnded, handleError]);
 
-  return { audioRef, audioHandlers, current, status, setStatus, playing, currentTime, mediaDuration, fileForTrack, previewFile, previewRendered, playSequence, stop, togglePlayback, seek };
+  return { audioRef, audioHandlers, current, status, setStatus, playing, currentTime, mediaDuration, fileForTrack, previewFile, previewRendered, playSequence, previewChapter, stop, togglePlayback, seek };
 };

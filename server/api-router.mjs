@@ -18,6 +18,7 @@ const resultPayload = (result) => result ? {
   outputDirectory: result.outputDirectory,
   warnings: result.warnings,
   recovered: Boolean(result.recovered),
+  derivativeLabel: result.derivativeLabel || "",
   audioUrl: `/api/renders/file?id=${encodeURIComponent(result.id)}&kind=audio`,
   cueUrl: result.cuePath ? `/api/renders/file?id=${encodeURIComponent(result.id)}&kind=cue` : "",
   manifestUrl: result.manifestPath ? `/api/renders/file?id=${encodeURIComponent(result.id)}&kind=manifest` : "",
@@ -29,10 +30,12 @@ export const createApiRouter = ({
   stateStore,
   renderJobs,
   waveformService,
+  technicalAnalysisService,
   getLibrary,
   getLibraryFile,
   getConfig,
   isScanning,
+  getWatchStatus,
   refreshLibrary,
   publicFile,
   responsePayloadForPaths,
@@ -40,6 +43,8 @@ export const createApiRouter = ({
   chooseAudioPaths,
   chooseProjectAssetPaths,
   createProjectAssetReferences,
+  revealRenderResult,
+  createPortableBundle,
 }) => async (request, response, url) => {
   const library = getLibrary();
   if (request.method === "GET" && url.pathname === "/api/health") {
@@ -49,31 +54,68 @@ export const createApiRouter = ({
   if (request.method === "GET" && url.pathname === "/api/bootstrap") {
     sendJson(response, 200, {
       state: await stateStore.read(),
+      projects: stateStore.listProjects(),
+      activeProjectId: stateStore.activeProjectId(),
       recovery: stateStore.recoveryStatus(),
       library: library.files.map(publicFile),
       roots: library.roots,
       supportedFormats: [...new Set(library.files.map((file) => file.extension))].sort(),
       scanning: isScanning(),
+      scan: library.scan,
+      watching: getWatchStatus(),
       dataFiles: {
         state: "data/sequencer-state.json",
         recovery: "data/sequencer-state.last-known-good.json",
+        projects: "data/projects/",
+        projectIndex: "data/sequencer-projects.json",
         audioCache: "data/audio-index-cache.json",
         localConfig: "config/sequencer.local.json",
       },
     });
     return true;
   }
+  if (request.method === "GET" && url.pathname === "/api/library") {
+    sendJson(response, 200, {
+      library: library.files.map(publicFile),
+      roots: library.roots,
+      scan: library.scan,
+      watching: getWatchStatus(),
+      scanning: isScanning(),
+    });
+    return true;
+  }
+  if (request.method === "GET" && url.pathname === "/api/project-bundle") {
+    sendJson(response, 200, await createPortableBundle());
+    return true;
+  }
   if (["PUT", "POST"].includes(request.method) && url.pathname === "/api/state") {
-    sendJson(response, 200, { state: await stateStore.write(await readJsonBody(request)) });
+    sendJson(response, 200, {
+      state: await stateStore.write(await readJsonBody(request)),
+      projects: stateStore.listProjects(),
+      activeProjectId: stateStore.activeProjectId(),
+    });
     return true;
   }
   if (request.method === "POST" && url.pathname === "/api/state/recovery/restore") {
     sendJson(response, 200, await stateStore.restoreRecovery());
     return true;
   }
+  if (request.method === "GET" && url.pathname === "/api/projects") {
+    sendJson(response, 200, { projects: stateStore.listProjects(), activeProjectId: stateStore.activeProjectId() });
+    return true;
+  }
+  if (request.method === "POST" && url.pathname === "/api/projects") {
+    sendJson(response, 201, await stateStore.createProject(await readJsonBody(request)));
+    return true;
+  }
+  if (request.method === "POST" && url.pathname.startsWith("/api/projects/") && url.pathname.endsWith("/load")) {
+    const projectId = decodeURIComponent(url.pathname.slice("/api/projects/".length, -"/load".length));
+    sendJson(response, 200, await stateStore.loadProject(projectId));
+    return true;
+  }
   if (request.method === "POST" && url.pathname === "/api/rescan") {
     const scanned = await refreshLibrary();
-    sendJson(response, 200, { library: scanned.files.map(publicFile), roots: scanned.roots });
+    sendJson(response, 200, { library: scanned.files.map(publicFile), roots: scanned.roots, scan: scanned.scan, watching: getWatchStatus() });
     return true;
   }
   if (request.method === "POST" && url.pathname === "/api/sources/register") {
@@ -132,6 +174,16 @@ export const createApiRouter = ({
     await streamFile(request, response, renderPath, contentTypeFor(renderPath));
     return true;
   }
+  if (request.method === "POST" && url.pathname === "/api/renders/reveal") {
+    const { id } = await readJsonBody(request);
+    const result = await revealRenderResult(id);
+    if (!result) {
+      sendJson(response, 404, { error: "That completed render is not available." });
+      return true;
+    }
+    sendJson(response, 200, result);
+    return true;
+  }
   if (request.method === "POST" && url.pathname === "/api/roots") {
     const details = await readJsonBody(request);
     const payload = await responsePayloadForPaths([details.path]);
@@ -143,7 +195,7 @@ export const createApiRouter = ({
     const sourceId = decodeURIComponent(url.pathname.slice(prefix.length));
     await removeAudioSource(sourceId);
     const scanned = await refreshLibrary();
-    sendJson(response, 200, { library: scanned.files.map(publicFile), roots: scanned.roots });
+    sendJson(response, 200, { library: scanned.files.map(publicFile), roots: scanned.roots, scan: scanned.scan, watching: getWatchStatus() });
     return true;
   }
   if (request.method === "GET" && url.pathname === "/api/waveform") {
@@ -157,6 +209,20 @@ export const createApiRouter = ({
     } catch (error) {
       console.error(`Waveform analysis failed for indexed key ${file.key}:`, error);
       sendJson(response, 422, { error: "A waveform could not be generated for this audio source." });
+    }
+    return true;
+  }
+  if (request.method === "GET" && url.pathname === "/api/analysis") {
+    const file = getLibraryFile(url.searchParams.get("key"));
+    if (!file) {
+      sendJson(response, 404, { error: "Audio file is not in a configured library path." });
+      return true;
+    }
+    try {
+      sendJson(response, 200, await technicalAnalysisService.get(file));
+    } catch (error) {
+      console.error(`Technical analysis failed for indexed key ${file.key}:`, error);
+      sendJson(response, 422, { error: "Technical measurements could not be generated for this source." });
     }
     return true;
   }

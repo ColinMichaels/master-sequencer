@@ -4,13 +4,16 @@ import { createServer } from "node:http";
 import path from "node:path";
 import { createApiRouter } from "./api-router.mjs";
 import { scanAudioLibrary, sourceKey } from "./audio-library.mjs";
+import { createAudioWatchService } from "./audio-watch-service.mjs";
 import { addAudioSource, loadConfig, projectRoot, removeAudioSource } from "./config-store.mjs";
 import { BASE_SECURITY_HEADERS, isStateChangingMethod, requestHostIsAllowed, requestOriginIsAllowed } from "./http-utils.mjs";
 import { contentTypeFor, sendJson, streamFile } from "./http-response.mjs";
-import { chooseAudioPaths, chooseProjectAssetPaths } from "./native-picker.mjs";
+import { chooseAudioPaths, chooseProjectAssetPaths, revealInFinder } from "./native-picker.mjs";
 import { createProjectAssetReferences } from "./project-assets.mjs";
+import { createPortableProjectBundle } from "./portable-project-bundle.mjs";
 import { createRenderJobService } from "./render-job-service.mjs";
 import { createStateStore } from "./state-store.mjs";
+import { createTechnicalAnalysisService } from "./technical-analysis.mjs";
 import { createWaveformService } from "./waveform.mjs";
 
 const development = process.argv.includes("--dev");
@@ -27,8 +30,11 @@ let config = await loadConfig();
 let library = { files: [], roots: [] };
 let libraryByKey = new Map();
 let scanPromise = null;
+let audioWatchService = null;
+const previousConnectivity = new Map();
 const outputRoot = configuredPath("PROJECT_SEQUENCER_EXPORTS_PATH", path.join(projectRoot, "exports"));
 const waveformService = createWaveformService();
+const technicalAnalysisService = createTechnicalAnalysisService();
 
 const publicFile = (file) => ({
   key: file.key,
@@ -85,8 +91,14 @@ const refreshLibrary = async () => {
       metadataConcurrency: config.metadataConcurrency,
       includeHiddenDirectories: config.includeHiddenDirectories,
     });
-    library = createBrowserSafeLibrary(scanned, config.privateSourceAliases);
+    const roots = scanned.roots.map((root) => {
+      const wasConnected = previousConnectivity.get(root.id);
+      previousConnectivity.set(root.id, root.connected);
+      return { ...root, connectionState: root.connected ? wasConnected === false ? "reconnected" : "connected" : "offline" };
+    });
+    library = createBrowserSafeLibrary({ ...scanned, roots }, config.privateSourceAliases);
     libraryByKey = new Map(library.files.map((file) => [file.key, file]));
+    audioWatchService?.configure(library.roots, Boolean(config.watchAudioRoots));
     return library;
   })().finally(() => {
     scanPromise = null;
@@ -95,6 +107,9 @@ const refreshLibrary = async () => {
 };
 
 await refreshLibrary();
+
+audioWatchService = createAudioWatchService({ onChange: refreshLibrary });
+audioWatchService.configure(library.roots, Boolean(config.watchAudioRoots));
 
 const renderJobs = createRenderJobService({
   outputRoot,
@@ -131,10 +146,12 @@ const handleApi = createApiRouter({
   stateStore,
   renderJobs,
   waveformService,
+  technicalAnalysisService,
   getLibrary: () => library,
   getLibraryFile: (key) => libraryByKey.get(key),
   getConfig: () => config,
   isScanning: () => Boolean(scanPromise),
+  getWatchStatus: () => audioWatchService.status(),
   refreshLibrary,
   publicFile,
   responsePayloadForPaths,
@@ -142,6 +159,13 @@ const handleApi = createApiRouter({
   chooseAudioPaths,
   chooseProjectAssetPaths,
   createProjectAssetReferences,
+  revealRenderResult: async (renderId) => {
+    const result = renderJobs.result(renderId);
+    if (!result?.audioPath) return null;
+    await revealInFinder({ filePath: result.audioPath });
+    return { revealed: true };
+  },
+  createPortableBundle: async () => createPortableProjectBundle({ state: await stateStore.read(), getLibraryFile: (key) => libraryByKey.get(key) }),
 });
 
 let vite;
@@ -208,6 +232,7 @@ const shutdown = async () => {
   if (shuttingDown) return;
   shuttingDown = true;
   renderJobs.shutdown();
+  audioWatchService.close();
   await vite?.close();
   server.close(() => process.exit(0));
 };

@@ -1,5 +1,6 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 5,
+  "albumTemplates": [],
   "activeAlbumId": "no-planet-to-call-home",
   "settings": {
     "project": {
@@ -22,6 +23,7 @@
       "era": "past",
       "status": "released",
       "orderApproved": true,
+      "masterBus": { "bypass": false, "eq": { "enabled": false, "lowShelf": { "frequencyHz": 120, "gainDb": 0 }, "midBand": { "frequencyHz": 1000, "gainDb": 0, "q": 1 }, "highShelf": { "frequencyHz": 8000, "gainDb": 0 } }, "compressor": { "enabled": false, "thresholdDb": -18, "ratio": 2, "attackMs": 30, "releaseMs": 250, "knee": 2.82843, "makeupGainDb": 0, "mix": 1, "link": "maximum", "detection": "rms" }, "outputGainDb": 0, "limiter": { "enabled": false, "ceilingDbfs": -1, "attackMs": 5, "releaseMs": 50 } },
       "baselineTrackOrder": ["funky-space-reggae-vibes", "intergalactic-mind-traveler", "captain-of-the-cosmic-tide", "nebula-meditation", "solar-wind-surfer", "spacerock", "black-hole-dub", "one-love-across-the-universe", "return-to-earth"],
       "coverRef": {
         "rootId": "dreadnauts",
@@ -46,6 +48,7 @@
       "era": "current",
       "status": "working",
       "orderApproved": false,
+      "masterBus": { "bypass": false, "eq": { "enabled": false, "lowShelf": { "frequencyHz": 120, "gainDb": 0 }, "midBand": { "frequencyHz": 1000, "gainDb": 0, "q": 1 }, "highShelf": { "frequencyHz": 8000, "gainDb": 0 } }, "compressor": { "enabled": false, "thresholdDb": -18, "ratio": 2, "attackMs": 30, "releaseMs": 250, "knee": 2.82843, "makeupGainDb": 0, "mix": 1, "link": "maximum", "detection": "rms" }, "outputGainDb": 0, "limiter": { "enabled": false, "ceilingDbfs": -1, "attackMs": 5, "releaseMs": 50 } },
       "baselineTrackOrder": ["return-address", "open-carrier", "crosses-inna-di-cosmos", "ophira", "the-alien-within", "lost-in-space", "no-planet-to-call-home-track", "signal-source-withheld", "remember-the-road"],
       "coverRef": {
         "rootId": "dreadnauts",
@@ -96,6 +99,7 @@
       "era": "future",
       "status": "empty",
       "orderApproved": false,
+      "masterBus": { "bypass": false, "eq": { "enabled": false, "lowShelf": { "frequencyHz": 120, "gainDb": 0 }, "midBand": { "frequencyHz": 1000, "gainDb": 0, "q": 1 }, "highShelf": { "frequencyHz": 8000, "gainDb": 0 } }, "compressor": { "enabled": false, "thresholdDb": -18, "ratio": 2, "attackMs": 30, "releaseMs": 250, "knee": 2.82843, "makeupGainDb": 0, "mix": 1, "link": "maximum", "detection": "rms" }, "outputGainDb": 0, "limiter": { "enabled": false, "ceilingDbfs": -1, "attackMs": 5, "releaseMs": 50 } },
       "baselineTrackOrder": [],
       "tracks": []
     }

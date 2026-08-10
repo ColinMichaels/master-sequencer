@@ -1,6 +1,6 @@
 import React from "react";
 import { api } from "../lib/api.js";
-import { CheckIcon, EditIcon, MoreIcon, PanelLeftIcon, PlusIcon } from "./Icons.jsx";
+import { CheckIcon, EditIcon, FolderIcon, MoreIcon, PanelLeftIcon, PlusIcon, TrashIcon } from "./Icons.jsx";
 
 const eraLabels = { past: "Past", current: "Current", future: "Future" };
 
@@ -9,7 +9,7 @@ function AlbumArt({ album }) {
   return <span className="album-art-placeholder" aria-hidden="true">{album.title.slice(0, 1).toUpperCase()}</span>;
 }
 
-export function AlbumRail({ albums, activeAlbumId, collapsed, onToggle, onSelectAlbum, onAddAlbum, onRenameAlbum }) {
+export function AlbumRail({ albums, activeAlbumId, currentProject, collapsed, projectBusy, onToggle, onSelectAlbum, onAddAlbum, onRenameAlbum, onDeleteAlbum, onOpenProjects, onNewProject }) {
   const toggleLabel = collapsed ? "Show albums panel" : "Hide albums panel";
   return (
     <aside className={`album-rail ${collapsed ? "is-collapsed" : ""}`} aria-label="Albums">
@@ -18,6 +18,9 @@ export function AlbumRail({ albums, activeAlbumId, collapsed, onToggle, onSelect
         <button type="button" className="panel-toggle panel-toggle--left" onClick={onToggle} aria-expanded={!collapsed} aria-controls="album-panel-content" aria-label={toggleLabel} data-tooltip={toggleLabel}><PanelLeftIcon collapsed={collapsed} /></button>
       </header>
       {!collapsed && <div id="album-panel-content" className="album-panel-content">
+      <button type="button" className="current-project-card" disabled={projectBusy} onClick={onOpenProjects}>
+        <span><small>Current project</small><strong>{currentProject?.name || "Local Project"}</strong></span><FolderIcon />
+      </button>
       <div className="album-groups">
         {Object.keys(eraLabels).map((era) => {
           const grouped = albums.filter((album) => album.era === era);
@@ -35,14 +38,17 @@ export function AlbumRail({ albums, activeAlbumId, collapsed, onToggle, onSelect
                     </span>
                     <span className="album-state" aria-hidden="true">{album.status === "released" ? <CheckIcon /> : <MoreIcon />}</span>
                   </button>
-                  <button type="button" className="album-rename-button" onClick={() => onRenameAlbum(album.id)} aria-label={`Rename ${album.title}`} title={`Rename ${album.title}`}><EditIcon /></button>
+                  <span className="album-row-actions">
+                    <button type="button" className="album-action-button" onClick={() => onRenameAlbum(album.id)} aria-label={`Rename ${album.title}`} title={`Rename ${album.title}`}><EditIcon /></button>
+                    <button type="button" className="album-action-button album-delete-button" disabled={albums.length <= 1} onClick={() => onDeleteAlbum(album.id)} aria-label={`Delete ${album.title}`} title={albums.length <= 1 ? "A project must keep at least one album" : `Delete ${album.title}`}><TrashIcon /></button>
+                  </span>
                 </div>
               ))}
             </section>
           );
         })}
       </div>
-      <button type="button" className="rail-add-button" onClick={onAddAlbum}><PlusIcon /> Add Album</button>
+      <div className="rail-actions"><button type="button" className="rail-add-button" onClick={onAddAlbum}><PlusIcon /> Add Album</button><button type="button" className="rail-project-button" disabled={projectBusy} onClick={onNewProject}><PlusIcon /> New Project</button></div>
       </div>}
     </aside>
   );

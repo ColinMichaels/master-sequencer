@@ -1,4 +1,4 @@
-node_modules/
+node_modules
 dist/
 exports/
 data/sequencer-state.json
@@ -6,6 +6,9 @@ data/sequencer-state.json.tmp
 data/sequencer-state.last-known-good.json
 data/sequencer-state.last-known-good.json.tmp
 data/audio-index-cache.json
+data/sequencer-projects.json
+data/sequencer-projects.json.tmp
+data/projects/
 config/sequencer.local.json
 .DS_Store
 .idea/

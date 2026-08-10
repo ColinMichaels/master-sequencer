@@ -69,3 +69,14 @@ export const chooseProjectAssetPaths = async ({ kind, platform = process.platfor
     throw error;
   }
 };
+
+export const revealInFinder = async ({ filePath, platform = process.platform, run = execFileAsync } = {}) => {
+  if (!filePath) throw new Error("Choose a completed render to reveal.");
+  if (platform !== "darwin") {
+    const error = new Error("Reveal in Finder is available on macOS.");
+    error.statusCode = 501;
+    throw error;
+  }
+  await run("open", ["-R", filePath]);
+  return { revealed: true };
+};

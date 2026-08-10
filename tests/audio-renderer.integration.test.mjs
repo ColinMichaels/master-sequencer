@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { renderAudio } from "../server/audio-renderer.mjs";
-import { generateSineWave, probeAudio } from "./helpers/audio-fixtures.mjs";
+import { generateSineWave, measurePeakDb, probeAudio } from "./helpers/audio-fixtures.mjs";
 
 const checksum = async (filePath) => createHash("sha256").update(await readFile(filePath)).digest("hex");
 
@@ -25,20 +25,42 @@ test("a generated short FFmpeg print preserves sources and keeps audio, cue, and
     id: "fixture-album",
     artist: "Fixture Artist",
     title: "Fixture Album",
+    masterBus: {
+      eq: {
+        enabled: true,
+        lowShelf: { frequencyHz: 120, gainDb: 1 },
+        midBand: { frequencyHz: 1000, gainDb: -0.5, q: 1 },
+        highShelf: { frequencyHz: 8000, gainDb: 0.5 },
+      },
+      compressor: {
+        enabled: true,
+        thresholdDb: -24,
+        ratio: 2,
+        attackMs: 10,
+        releaseMs: 100,
+        knee: 2.5,
+        makeupGainDb: 1,
+        mix: 0.75,
+        link: "maximum",
+        detection: "rms",
+      },
+      outputGainDb: -1,
+      limiter: { enabled: true, ceilingDbfs: -1, attackMs: 5, releaseMs: 50 },
+    },
     tracks: [
       {
         id: "first",
         title: "First Tone",
         auditionCandidateId: "first-source",
         candidates: [{ id: "first-source", sourceRef: { rootId: "fixture", relativePath: "first.wav" } }],
-        mastering: { endMode: "crossfade", endDuration: 0.15 },
+        mastering: { gainDb: -3, endMode: "crossfade", endDuration: 0.15 },
       },
       {
         id: "second",
         title: "Second Tone",
         auditionCandidateId: "second-source",
         candidates: [{ id: "second-source", sourceRef: { rootId: "fixture", relativePath: "second.wav" } }],
-        mastering: { endMode: "fade", endDuration: 0.1 },
+        mastering: { gainDb: -1, endMode: "fade", endDuration: 0.1 },
       },
     ],
   };
@@ -48,6 +70,7 @@ test("a generated short FFmpeg print preserves sources and keeps audio, cue, and
     album,
     scope: "album",
     format: "wav",
+    deliveryProfileId: "archive-wav",
     getLibraryFile: (key) => files.get(key),
     outputRoot: sourceRoot,
     timeoutMs: 20_000,
@@ -67,11 +90,59 @@ test("a generated short FFmpeg print preserves sources and keeps audio, cue, and
   const manifest = JSON.parse(await readFile(result.manifestPath, "utf8"));
   assert.match(cue, /1\. 00:00\.000\s+First Tone/);
   assert.match(cue, /2\. 00:00\.650\s+Second Tone/);
+  assert.match(cue, /MASTER bus: EQ on · compressor on · output -1 dB · limiter -1 dBFS/);
+  assert.match(cue, /gain -3 dB/);
+  assert.equal(manifest.schemaVersion, 2);
   assert.equal(manifest.renderId, result.id);
   assert.equal(manifest.audioFile, result.audioName);
+  assert.equal(manifest.delivery.profileId, "archive-wav");
+  assert.equal(manifest.delivery.masterApproved, false);
   assert.equal(manifest.tracks.length, 2);
+  assert.equal(manifest.tracks[0].gainDb, -3);
   assert.equal(manifest.tracks[1].outputStart, 0.65);
+  assert.equal(manifest.masterBus.eq.enabled, true);
+  assert.equal(manifest.masterBus.compressor.enabled, true);
+  assert.equal(manifest.masterBus.limiter.enabled, true);
   assert.equal(path.dirname(result.audioPath), result.outputDirectory);
+});
+
+test("an individual track print applies track gain and the album MASTER bus", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "project-sequencer-track-master-"));
+  const sourcePath = path.join(root, "source.wav");
+  const outputRoot = path.join(root, "exports");
+  await generateSineWave(sourcePath, { duration: 0.5, frequency: 440 });
+  const sourceChecksum = await checksum(sourcePath);
+  const sourcePeak = await measurePeakDb(sourcePath);
+  const album = {
+    id: "track-master-album",
+    artist: "Fixture Artist",
+    title: "Track MASTER Fixture",
+    masterBus: { outputGainDb: -6 },
+    tracks: [{
+      id: "source",
+      title: "Processed Source",
+      auditionCandidateId: "source-a",
+      candidates: [{ id: "source-a", sourceRef: { rootId: "fixture", relativePath: "source.wav" } }],
+      mastering: { gainDb: -3 },
+    }],
+  };
+
+  const result = await renderAudio({
+    album,
+    scope: "track",
+    trackId: "source",
+    format: "wav",
+    getLibraryFile: () => ({ absolutePath: sourcePath, duration: 0.5 }),
+    outputRoot,
+  });
+
+  const outputPeak = await measurePeakDb(result.audioPath);
+  assert.ok(Math.abs((outputPeak - sourcePeak) - (-9)) < 0.3, `expected about -9 dB combined gain, received ${outputPeak - sourcePeak} dB`);
+  assert.equal(await checksum(sourcePath), sourceChecksum);
+  const manifest = JSON.parse(await readFile(result.manifestPath, "utf8"));
+  assert.equal(manifest.scope, "track");
+  assert.equal(manifest.tracks[0].gainDb, -3);
+  assert.equal(manifest.masterBus.outputGainDb, -6);
 });
 
 test("cancelling a real FFmpeg print removes its partial derivative directory", async () => {
@@ -104,4 +175,38 @@ test("cancelling a real FFmpeg print removes its partial derivative directory", 
   }), /cancelled/i);
   const remaining = await readdir(outputRoot, { recursive: true });
   assert.equal(remaining.some((name) => /\.(?:part\.)?(?:wav|mp3|json|txt)$/.test(name)), false);
+});
+
+test("comparison previews create labeled loudness-matched derivatives without changing candidates", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "project-sequencer-comparison-"));
+  const sourcePath = path.join(root, "quiet.wav");
+  await generateSineWave(sourcePath, { duration: 0.6, frequency: 260 });
+  const before = await checksum(sourcePath);
+  const album = {
+    id: "comparison-album",
+    artist: "Fixture Artist",
+    title: "Comparison Fixture",
+    tracks: [{
+      id: "song",
+      title: "Song",
+      auditionCandidateId: "source-a",
+      masterCandidateId: "source-a",
+      candidates: [{ id: "source-a", sourceRef: { rootId: "fixture", relativePath: "quiet.wav" } }],
+    }],
+  };
+  const result = await renderAudio({
+    album,
+    scope: "comparison",
+    trackId: "song",
+    candidateId: "source-a",
+    format: "mp3",
+    getLibraryFile: () => ({ absolutePath: sourcePath, duration: 0.6 }),
+    outputRoot: path.join(root, "exports"),
+  });
+  const probe = await probeAudio(result.audioPath);
+  assert.equal(probe.streams[0].codec_name, "mp3");
+  assert.equal(result.derivativeLabel, "Loudness-matched preview derivative");
+  assert.equal(result.cuePath, "");
+  assert.equal(await checksum(sourcePath), before);
+  assert.equal(album.tracks[0].masterCandidateId, "source-a");
 });

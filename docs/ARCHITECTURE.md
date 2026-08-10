@@ -12,11 +12,16 @@ React workspace
   v
 Local Node server (127.0.0.1)
   |-- project state store ------> ignored data/sequencer-state.json
+  |                              |-> ignored last-known-good snapshot
+  |                              `-> ignored saved-project index + data/projects/*.json
   |-- configuration store -----> ignored config/sequencer.local.json
   |-- audio index -------------> ignored data/audio-index-cache.json
+  |   `-- optional watcher ----> debounced incremental metadata rescans
   |-- range media service -----> already-indexed source audio (read-only)
   |-- waveform service --------> compact in-memory peak arrays
+  |-- analysis service --------> compact rebuildable mastering measurements
   |-- project asset service ---> configured-root images and lyric text (read-only)
+  |-- render-job service ------> bounded FFmpeg queue and result discovery
   `-- audio renderer ----------> ignored exports/YYYY-MM-DD derivatives
 ```
 
@@ -44,18 +49,36 @@ Every feature must preserve these rules:
    never writes a sidecar beside audio.
 8. Machine-specific source paths belong only in ignored local configuration or
    `PROJECT_SEQUENCER_AUDIO_PATHS`.
+9. Sequence versions snapshot track IDs and membership only. Transition A/B
+   variants and loudness-matched comparisons are preview instructions; they do
+   not mutate track mastering or source-choice authority.
+10. Album templates contain structure and non-destructive mastering settings,
+    never source references, artwork, candidate decisions, or approvals.
+11. A delivery profile validates a print request and its documentation. It does
+    not imply an approved master or publication readiness; those remain
+    separate explicit album fields.
+12. Undo/redo stores bounded project-state snapshots only. It never performs a
+    filesystem inverse operation. Portable bundles contain JSON and checksums,
+    never media bytes or absolute indexed-source paths.
 
 ## Server modules
 
 | Module | Responsibility |
 | --- | --- |
-| `server/index.mjs` | Process startup, API routing, static delivery, and composition of server services |
+| `server/index.mjs` | Process startup, static delivery, and composition of server services |
+| `server/api-router.mjs` | Narrow JSON/media route handlers and API response shaping |
+| `server/http-response.mjs` | Size-bounded JSON input, JSON output, MIME lookup, and range-file streaming |
 | `server/config-store.mjs` | Merge portable/local/environment configuration and atomically register or disconnect sources |
 | `server/audio-library.mjs` | Recursively discover supported audio, probe metadata, and maintain the rebuildable cache |
-| `server/state-store.mjs` | Validate schema version 1 and serialize atomic state writes |
+| `server/audio-watch-service.mjs` | Optionally watch connected folders and debounce incremental metadata rescans |
+| `server/portable-project-bundle.mjs` | Hash indexed candidate sources and build JSON/checksum-only portable bundles |
+| `server/state-schema.mjs` | Validate the current state schema and apply explicit migrations from older versions |
+| `server/state-store.mjs` | Serialize atomic state writes, maintain recovery state, and create/load per-project snapshots |
 | `server/http-utils.mjs` | Byte-range parsing, local Host/Origin guards, and response security headers |
 | `server/waveform.mjs` | Bound FFmpeg analysis and maintain an in-memory LRU-style waveform cache |
-| `server/audio-renderer.mjs` | Normalize edit instructions, build FFmpeg graphs, and create documented derivatives |
+| `server/technical-analysis.mjs` | Run optional bounded FFmpeg loudness/peak/DC/silence analysis and cache compact rebuildable measurements |
+| `server/render-job-service.mjs` | Queue one bounded render at a time, report progress, cancel work, clean partials, and discover completed results after restart |
+| `server/audio-renderer.mjs` | Normalize edit instructions, build FFmpeg graphs, enforce timeout/cancellation, and atomically publish documented derivatives |
 | `server/project-assets.mjs` | Convert selected images/lyrics into safe configured-root references |
 | `server/native-picker.mjs` | Register paths selected by the native macOS picker without copying files |
 
@@ -74,10 +97,16 @@ baseline order references before disk state changes.
 | `src/hooks/useTransport.js` | Preview individual sources, queue album playback, and recover from media errors |
 | `src/hooks/useAppearance.js` | Resolve and apply persisted display preferences |
 | `src/components/*Workspace.jsx` | Own one user workflow and its local interaction state |
-| `src/lib/*.js` | Pure album, import, sequence, formatting, appearance, and mastering rules |
+| `src/lib/project-commands.js` | Immutable commands for albums, tracks, candidates, assets, and sequence edits |
+| `src/lib/library-search.js` | Build the in-memory catalog index and define portable saved-filter records |
+| `src/lib/*.js` | Pure import, sequence, formatting, appearance, and mastering rules |
+| `src/styles/*.css` | Tokens/base rules, shell chrome, workspace features, and responsive/motion rules |
 
 Autosave uses a short debounce for editing comfort, then puts each snapshot on a
 single promise chain. A later save cannot be overtaken by an earlier request.
+The client tracks the last queued snapshot as well as the last confirmed one,
+so a rapid edit/revert or add/delete pair cannot leave a stale pending status or
+allow an intermediate queued snapshot to become authoritative.
 When the page is being left, an unsaved final snapshot is sent through the
 same-origin state endpoint with `sendBeacon`. Imported JSON is validated and
 persisted by the server before it replaces the open client state.
@@ -100,13 +129,38 @@ by media clients. Malformed, multiple, reversed, and out-of-bounds ranges return
 - `data/seed-state.json` is portable initial state and must remain free of
   machine-specific paths.
 - `data/sequencer-state.json` is the ignored, mutable project record.
+- `data/sequencer-state.last-known-good.json` is an ignored, validated recovery
+  snapshot written before the current state is replaced.
+- `data/sequencer-projects.json` indexes saved projects and identifies the open
+  project; each project's decisions live in an ignored `data/projects/*.json`
+  snapshot. Starting or loading a project flushes pending edits first.
 - Every normal edit shows `Changes pending`, `Saving changes`, or `Saved locally`
   in a live status region.
+- If current state cannot be parsed, validated, or migrated, startup enters a
+  dedicated recovery screen. Restoring the last-known-good snapshot is an
+  explicit operator action and never touches indexed media.
 - A failed save leaves the open client state intact and shows a recoverable
   warning. Export Project JSON before large catalog changes.
 - Invalid imported JSON never replaces the open project.
 - `data/audio-index-cache.json` can be deleted and rebuilt; it is not authority
   for album decisions.
+
+Schema version 3 adds sequence versions, transition notebooks, explicit human
+approval, candidate comparison queues, and media-free album templates. The
+version 2 migration initializes only the new collections; it does not infer any
+decision or approval.
+
+Schema version 4 adds the delivery record. Optional technical analysis remains
+outside project authority in an in-memory, rebuildable cache. Render history is
+rediscovered from completed manifests below `exports/`; the UI can compare
+manifests and reveal a server-resolved result in Finder, but cannot delete one.
+
+Schema version 5 adds saved library filters. The audio metadata cache reports
+reused versus reprobed records on each incremental scan. Optional filesystem
+watching is disabled in portable configuration by default and can be enabled
+locally. Undo/redo is session-local; autosave persists the resulting state.
+Portable bundles are generated on demand and downloaded directly without
+creating a second media tree.
 
 ## Adding a feature safely
 
@@ -125,8 +179,18 @@ by media clients. Malformed, multiple, reversed, and out-of-bounds ranges return
 
 ## Architectural pressure points
 
-`src/App.jsx`, `server/index.mjs`, and `src/styles.css` are the current
-composition hubs. They are understandable at the present scale, but new feature
-families should extract routing/controllers, project commands, and workspace
-style layers instead of growing these files indefinitely. The prioritized plan
-is maintained in [QUALITY-REVIEW-AND-ROADMAP.md](./QUALITY-REVIEW-AND-ROADMAP.md).
+The first confidence-foundation refactor extracted API routing, project
+commands, state migrations, and style layers. `src/App.jsx` remains the primary
+client composition hub; future feature families should keep moving domain
+rules into focused modules instead of growing it indefinitely. The prioritized
+plan is maintained in [QUALITY-REVIEW-AND-ROADMAP.md](./QUALITY-REVIEW-AND-ROADMAP.md).
+
+## Verification layers
+
+- `npm test` covers pure domain rules, server boundaries, migrations, recovery,
+  render jobs, and a real generated-audio FFmpeg print.
+- `npm run test:browser` starts an isolated repository-owned server with tiny
+  generated fixtures. It covers persistence, privacy masking, independent
+  audition/master choices, import rejection, modal focus, filters, mobile
+  overflow, a real render job, and byte-range delivery.
+- Browser/IAB remains the human-visible desktop/mobile and keyboard QA path.

@@ -1,5 +1,8 @@
+import { normalizeMasterBus } from "../../src/lib/mastering.js";
+
 export const e2eProjectState = {
-  schemaVersion: 3,
+  schemaVersion: 5,
+  albumTemplates: [],
   activeAlbumId: "fixture-album",
   settings: {
     project: { artistName: "Fixture Artist", setupComplete: true },
@@ -13,6 +16,7 @@ export const e2eProjectState = {
     era: "current",
     status: "working",
     orderApproved: false,
+    masterBus: normalizeMasterBus(),
     baselineTrackOrder: ["alpha", "protected"],
     visualAssets: [],
     tracks: [

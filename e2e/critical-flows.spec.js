@@ -15,7 +15,7 @@ test.beforeEach(async ({ request, page }) => {
 
 test("bootstrap renders the project and protected sources remain masked", async ({ page, request }) => {
   const bootstrap = await (await request.get("/api/bootstrap")).json();
-  expect(bootstrap.state.schemaVersion).toBe(3);
+  expect(bootstrap.state.schemaVersion).toBe(5);
   expect(bootstrap.library).toHaveLength(4);
   expect(bootstrap.library.some((file) => file.name === "Hidden Coda.wav")).toBeFalsy();
   expect(bootstrap.library.some((file) => file.name === "[Private source file]")).toBeTruthy();
@@ -96,6 +96,73 @@ test("project setup owns the artist used by layouts and new albums", async ({ pa
   expect(bootstrap.state.albums.every((album) => album.artist === "Open Orbit Ensemble")).toBeTruthy();
 });
 
+test("a fresh project saves the old project, can load it again, and albums can be deleted", async ({ page }) => {
+  await page.getByRole("button", { name: "New Project", exact: true }).click();
+  const fresh = page.getByRole("dialog", { name: "Start a Fresh Project" });
+  await fresh.getByLabel("Project name").fill("Fresh Project QA");
+  await fresh.getByLabel("Artist name").fill("Fresh Artist");
+  await fresh.getByLabel("First album title").fill("Clean Slate");
+  await fresh.getByLabel("Album era").selectOption("current");
+  await fresh.getByRole("button", { name: "Start Fresh Project" }).click();
+
+  await expect(page.getByRole("heading", { name: /Clean Slate.*Working Sequence/ })).toBeVisible();
+  await expect(page.getByText("This album is ready for its first track.")).toBeVisible();
+  await expect(page.locator(".status-strip [role='status']")).toContainText("New project created");
+
+  await page.getByRole("button", { name: /Current project Fresh Project QA/ }).click();
+  const saved = page.getByRole("dialog", { name: "Saved Projects" });
+  const oldProject = saved.locator(".saved-project-list li").filter({ hasText: "Fixture Artist — Fixture Album" });
+  await expect(oldProject).toContainText("1 album");
+  await oldProject.getByRole("button", { name: "Load Project" }).click();
+  await expect(page.getByRole("heading", { name: /Fixture Album.*Working Sequence/ })).toBeVisible();
+  await expect(page.getByText("Alpha Tone", { exact: true }).first()).toBeVisible();
+
+  await page.getByRole("button", { name: "Add Album" }).click();
+  await page.getByLabel("Album title").fill("Delete Me");
+  await page.getByRole("button", { name: "Add Album", exact: true }).last().click();
+  await page.getByRole("button", { name: "Delete Delete Me" }).click();
+  const deleteDialog = page.getByRole("dialog", { name: "Delete Album" });
+  await expect(deleteDialog).toContainText("Indexed audio, artwork, lyric files, and rendered exports stay exactly where they are");
+  await deleteDialog.getByRole("button", { name: "Delete Album" }).click();
+  await expect(page.getByRole("heading", { name: /Fixture Album.*Working Sequence/ })).toBeVisible();
+  await expect(page.getByText("Delete Me", { exact: true })).toHaveCount(0);
+  await expect(page.locator(".status-strip [role='status']")).toContainText("Saved locally");
+});
+
+test("an unconfigured installation explains the complete album workflow", async ({ page, request }) => {
+  const freshProject = structuredClone(e2eProjectState);
+  freshProject.settings.project.setupComplete = false;
+  await request.put("/api/state", { data: freshProject, headers: { Origin: origin } });
+  await page.route("**/api/bootstrap", async (route) => {
+    const response = await route.fetch();
+    const payload = await response.json();
+    await route.fulfill({ response, json: { ...payload, library: [], roots: [], supportedFormats: [] } });
+  });
+  await page.reload();
+
+  const guide = page.getByRole("dialog", { name: "Welcome to Project Sequencer" });
+  await expect(guide).toBeVisible();
+  await expect(guide.getByRole("heading", { name: "Audition every version. Build one final album." })).toBeVisible();
+  await expect(guide.getByText("24-bit / 48 kHz WAV", { exact: false })).toBeVisible();
+  await expect(guide.getByText(/EQ, compression, limiting, and effects are planned/)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(guide).toBeVisible();
+
+  await guide.getByLabel("Artist name").fill("Open Orbit Ensemble");
+  await guide.getByRole("button", { name: "Start Project" }).click();
+  await expect(guide.getByRole("button", { name: "Choose Audio Files" })).toBeEnabled();
+  await guide.getByRole("button", { name: "Create a New Album" }).click();
+  await expect(guide).toBeHidden();
+  await expect(page.getByRole("dialog", { name: "Add Album" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Close dialog" }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+  await expect(page.getByRole("dialog", { name: "Welcome to Project Sequencer" })).toBeVisible();
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+});
+
 test("library filters are functional and primary workspaces do not overflow a phone viewport", async ({ page }) => {
   await page.getByRole("button", { name: "Audio Library" }).click();
   await expect(page.getByText("4 of 4 discovered files")).toBeVisible();
@@ -110,7 +177,7 @@ test("library filters are functional and primary workspaces do not overflow a ph
   await expect(rows.first()).toContainText("Alternate Mix.mp3");
 
   await page.setViewportSize({ width: 390, height: 844 });
-  for (const view of ["Sequence", "Track Review", "Mastering", "Assets", "Audio Library", "Settings"]) {
+  for (const view of ["Sequence", "Track Review", "Album Decisions", "Mastering", "Assets", "Audio Library", "Settings"]) {
     await page.getByRole("button", { name: view, exact: true }).click();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflow, `${view} overflowed the 390px viewport`).toBeLessThanOrEqual(1);
@@ -134,9 +201,98 @@ test("the transport waveform stays inside its desktop and phone footer", async (
   expect(bounds.player.bottom).toBeLessThanOrEqual(bounds.bar.bottom);
 });
 
-test("a real render job completes with documented range-readable output", async ({ request }) => {
+test("album decisions persist versions, transition notes, explicit approval, and safe templates", async ({ page, request }) => {
+  await page.getByRole("button", { name: "Album Decisions" }).click();
+  await page.getByLabel("Sequence version name").fill("Opening order");
+  await page.getByRole("button", { name: "Save Current" }).click();
+  await expect(page.locator(".version-list")).toContainText("Opening order");
+  await page.locator(".version-list").getByRole("button", { name: "Duplicate" }).click();
+  await expect(page.locator(".version-list li")).toHaveCount(2);
+
+  await page.getByText("Listening notes").locator("textarea").fill("Hold the decay until the next downbeat.");
+  await page.getByLabel("Marker label").fill("Downbeat");
+  await page.getByLabel("Marker seconds").fill("0.42");
+  await page.getByRole("button", { name: "Marker" }).click();
+  await expect(page.locator(".transition-markers")).toContainText("0.42s");
+  await page.getByLabel("Human approval for Alpha Tone").check();
+
+  await page.getByLabel("Template name").fill("Two-track structure");
+  await page.getByRole("button", { name: "Save Structure" }).click();
+  const templateSelect = page.locator(".template-actions form").nth(1).locator("select");
+  await expect(templateSelect.locator("option")).toHaveCount(2);
+  await templateSelect.selectOption({ label: "Two-track structure" });
+  await page.getByLabel("New album title").fill("Next Fixture");
+  await page.getByRole("button", { name: "Create Empty Album" }).click();
+  await expect(page.getByRole("heading", { name: /Next Fixture.*Album Decisions/ })).toBeVisible();
+  await expect(page.locator(".status-strip [role='status']")).toContainText("Saved locally");
+
+  const bootstrap = await (await request.get("/api/bootstrap")).json();
+  const original = bootstrap.state.albums.find((album) => album.id === "fixture-album");
+  const copy = bootstrap.state.albums.find((album) => album.title === "Next Fixture");
+  expect(original.sequenceVersions).toHaveLength(2);
+  expect(original.transitionNotebook[0].notes).toContain("next downbeat");
+  expect(original.tracks[0].humanApproved).toBe(true);
+  expect(copy.tracks.every((track) => track.candidates.length === 0 && !track.humanApproved)).toBe(true);
+  expect(copy.orderApproved).toBe(false);
+});
+
+test("mastering analysis, chapter cues, and delivery authority remain explicit", async ({ page, request }) => {
+  await page.getByRole("button", { name: "Mastering" }).click();
+  await page.getByLabel("Print requirements").selectOption("archive-wav");
+  await page.getByLabel("Ready to publish").check();
+  await page.getByRole("button", { name: "Analyze Source" }).click();
+  await expect(page.locator(".technical-analysis dl")).toContainText("LUFS");
+  await page.getByRole("button", { name: "Preview chapter 1: Alpha Tone" }).click();
+  await expect(page.locator(".transport-copy")).toContainText("Alpha Tone");
+  await expect(page.locator(".status-strip [role='status']")).toContainText("Saved locally");
+
+  const bootstrap = await (await request.get("/api/bootstrap")).json();
+  expect(bootstrap.state.albums[0].delivery).toEqual({ profileId: "archive-wav", masterApproved: false, readyToPublish: true });
+
+  await page.getByRole("button", { name: "Print / Export Audio" }).click();
+  await expect(page.getByText("Archive WAV", { exact: true })).toBeVisible();
+  await expect(page.getByRole("radio", { name: /MP3 for Review/ })).toBeDisabled();
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+});
+
+test("incremental search, saved filters, undo, and portable checksums stay local and non-destructive", async ({ page, request }) => {
+  const titles = page.locator(".sequence-track .track-title strong");
+  await page.getByRole("button", { name: "Move Alpha Tone down" }).click();
+  await page.getByRole("button", { name: "Undo Project edit" }).click();
+  await expect(titles).toHaveText(["Alpha Tone", "[SIGNAL SOURCE WITHHELD]"]);
+  await page.getByRole("button", { name: "Redo Project edit" }).click();
+  await expect(titles).toHaveText(["[SIGNAL SOURCE WITHHELD]", "Alpha Tone"]);
+
+  await page.getByRole("button", { name: "Audio Library" }).click();
+  await page.getByPlaceholder("Search files").fill("alternate");
+  await page.getByLabel("Filter by format").selectOption("mp3");
+  await page.getByLabel("Saved filter name").fill("Alternate MP3");
+  await page.locator(".saved-filter-bar").getByRole("button", { name: "Save Current" }).click();
+  const savedFilterSelect = page.locator(".saved-filter-bar > label select");
+  await expect(savedFilterSelect.locator("option")).toHaveCount(2);
+  await page.getByPlaceholder("Search files").fill("");
+  await page.getByLabel("Filter by format").selectOption("all");
+  await savedFilterSelect.selectOption({ label: "Alternate MP3" });
+  await expect(page.getByPlaceholder("Search files")).toHaveValue("alternate");
+  await expect(page.getByLabel("Filter by format")).toHaveValue("mp3");
+
+  const rescan = await (await request.post("/api/rescan", { headers: { Origin: origin } })).json();
+  expect(rescan.scan.mode).toBe("incremental");
+  expect(rescan.scan.reusedMetadata).toBe(4);
+  expect(rescan.roots[0].connectionState).toBe("connected");
+
+  await expect(page.locator(".status-strip [role='status']")).toContainText("Saved locally");
+  const bundle = await (await request.get("/api/project-bundle")).json();
+  expect(bundle.mediaIncluded).toBe(false);
+  expect(bundle.kind).toContain("json-checksum-bundle");
+  expect(bundle.sources.filter((source) => source.status === "verified").every((source) => /^[a-f0-9]{64}$/.test(source.sha256))).toBe(true);
+  expect(JSON.stringify(bundle)).not.toContain("/private/tmp/");
+  expect(bundle.project.settings.librarySavedFilters[0].name).toBe("Alternate MP3");
+});
+
+test("a real render job completes with documented range-readable output and appears in history", async ({ page, request }) => {
   const createResponse = await request.post("/api/renders", {
-    data: { album: e2eProjectState.albums[0], scope: "track", trackId: "alpha", format: "wav" },
+    data: { album: e2eProjectState.albums[0], scope: "track", trackId: "alpha", format: "wav", deliveryProfileId: "archive-wav" },
     headers: { Origin: origin },
   });
   expect(createResponse.status()).toBe(202);
@@ -155,5 +311,9 @@ test("a real render job completes with documented range-readable output", async 
   expect((await range.body()).byteLength).toBe(32);
   const manifest = await (await request.get(completedJob.result.manifestUrl)).json();
   expect(manifest.renderId).toBe(completedJob.result.id);
+  expect(manifest.delivery.profileId).toBe("archive-wav");
   expect(manifest.tracks).toHaveLength(1);
+
+  await page.getByRole("button", { name: "Mastering" }).click();
+  await expect(page.locator(".render-history")).toContainText(completedJob.result.audioName);
 });

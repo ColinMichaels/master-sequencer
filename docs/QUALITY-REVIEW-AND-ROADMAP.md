@@ -11,7 +11,7 @@ green. The highest-risk gaps were not missing features; they were overlapping
 state writes, incomplete byte-range behavior, shallow import validation, local
 API request trust, asset symlink boundaries, and keyboard dialog behavior.
 
-Those gaps are addressed in the current working tree. “Perfect” is not a static
+Those gaps are addressed. “Perfect” is not a static
 finish line for an audio tool, so the remaining plan is intentionally ordered by
 risk reduction and user value rather than feature count.
 
@@ -67,72 +67,91 @@ risk reduction and user value rather than feature count.
 | --- | --- | --- |
 | Source preservation | Strong | Indexed media is only read; derivatives use ignored export folders |
 | State durability | Strong | Serialized client/server writes, atomic replace, page-exit flush |
-| State integrity | Strong | Schema and reference validation; formal migrations are still future work |
+| State integrity | Strong | Five schema versions, explicit migrations, validation, last-known-good recovery, and bounded undo/redo |
 | Playback | Strong | Indexed-key lookup, real byte ranges, queue error recovery |
 | Waveforms | Strong | Bounded FFmpeg output, compact response, memory-only cache |
-| Render safety | Good | New destination, cue sheet, manifest; cancellation/progress need a job layer |
+| Render safety | Strong | Queued jobs, progress, cancellation, timeout, partial cleanup, restart discovery, cue sheets, and manifests |
 | Privacy | Strong | Opaque protected aliases and default masking; operator can explicitly reveal |
 | Accessibility | Good | Semantic controls, keyboard markers, focus-managed dialogs; automated audits remain |
-| Responsive UI | Good | No horizontal overflow at 390 px in the reviewed primary workflow |
-| Automated coverage | Good | Domain/server unit tests and build; rendered end-to-end tests remain manual |
-| Maintainability | Good | Clear modules and pure helpers; three composition hubs should be split as features grow |
+| Responsive UI | Strong | Automated primary-workspace overflow checks at 390 px plus Browser/IAB inspection |
+| Automated coverage | Strong | Domain/server/FFmpeg tests, production build, and repository-owned rendered workflows |
+| Maintainability | Strong | API routing, schema/migrations, project commands, search, delivery rules, and style layers are separated |
 
 ## Prioritized roadmap
 
+### Delivery status
+
+| Round | Status | Branch | Evidence |
+| --- | --- | --- | --- |
+| P1 — confidence foundation | Complete | `codex/p1-confidence-foundation` | Repository Playwright coverage, generated-audio FFmpeg integration test, render-job lifecycle, schema migration/recovery, and composition-hub splits |
+| P2 — album decisions | Complete | `codex/p2-album-decisions` | Sequence versions, transition notebook, readiness, comparison previews, and safe templates |
+| P3 — mastering review | Complete | `codex/p3-mastering-review` | Technical analysis, chapter preview, delivery profiles, and render history |
+| P4 — scale and portability | Complete | `codex/p4-scale-portability` | Incremental indexing, saved filters, undoable commands, and JSON/checksum bundles |
+
 ### P1 — confidence before feature expansion
 
-1. Add repository-owned rendered tests for bootstrap, reorder persistence,
+Completed in the P1 branch:
+
+1. Added repository-owned rendered tests for bootstrap, reorder persistence,
    protected masking, candidate/master separation, JSON import rejection,
    modal focus, library filters, and mobile overflow. Keep Browser/IAB as the
    human-visible QA path; use the automated suite for regression coverage.
-2. Introduce a render-job service with progress, cancellation, process timeout,
+2. Introduced a render-job service with progress, cancellation, process timeout,
    partial-output cleanup, and restart-aware result discovery. Never point a job
    at an indexed source path.
-3. Add tiny generated audio fixtures and an automated short FFmpeg print test
+3. Added tiny generated audio fixtures and an automated short FFmpeg print test
    that verifies duration, stream format, cue sheet, and manifest consistency.
-4. Add state migration and recovery: schema-version migrations, a last-known-good
+4. Added state migration and recovery: schema-version migrations, a last-known-good
    snapshot, a recovery screen, and an explicit restore workflow.
-5. Split API route handlers out of `server/index.mjs`, extract project commands
+5. Split API route handlers out of `server/index.mjs`, extracted project commands
    from `src/App.jsx`, and divide `src/styles.css` by tokens, shell, workspaces,
    and responsive rules. Do this as features touch each area, not as a rewrite.
 
 ### P2 — high-value album decisions
 
-1. Sequence versions: name, duplicate, compare, and restore alternate orders
+Completed in the P2 branch:
+
+1. Added sequence versions that can be named, duplicated, compared, and restored
    without changing track records or approvals.
-2. Transition notebook: attach listening notes and markers to each track pair;
+2. Added a transition notebook with listening notes and markers for each track pair,
    support A/B preview of two non-destructive transition settings.
-3. Readiness inspector: show separate gates for playable source, audition choice,
+3. Added a readiness inspector with separate gates for playable source, audition choice,
    master choice, disposition, lyrics, artwork, ordering, and human approval.
    Never infer one gate from another.
-4. Candidate comparison queue: user-chosen loudness-matched *preview derivatives*
-   may be added, but the originals and master decisions must stay untouched and
-   the UI must label every derivative clearly.
-5. Album templates and duplication: copy organizational structure and settings
-   without copying media or carrying approvals into a new album.
+4. Added an explicit candidate comparison queue. Its bounded FFmpeg previews
+   are loudness matched and labeled as derivatives; originals, audition choices,
+   and master decisions stay untouched.
+5. Added album templates that copy track organization and mastering instructions
+   without copying media, artwork, source choices, or approvals.
 
 ### P3 — deeper mastering review
 
-1. Optional compact technical analysis for true peak, integrated loudness,
+Completed in the P3 branch:
+
+1. Added optional compact technical analysis for true peak, integrated loudness,
    loudness range, DC offset, and silence boundaries. Cache only rebuildable
    measurements and never normalize a source automatically.
-2. Chaptered program preview and cue navigation without rendering an entire new
+2. Added chaptered program preview and cue navigation without rendering an entire new
    file for every small sequence change.
-3. Delivery profiles that validate requested output settings and documentation
+3. Added delivery profiles that validate requested output settings and documentation
    while keeping “print,” “approved master,” and “ready to publish” separate.
-4. Render-history browser for derivatives under `exports/`, with manifest
+4. Added a render-history browser for derivatives under `exports/`, with manifest
    comparison and an explicit reveal-in-Finder action. No automatic deletion.
 
 ### P4 — scale and portability
 
-1. Incremental rescans and optional filesystem watching for very large source
+Completed in the P4 branch:
+
+1. Added metadata-incremental rescans and optional filesystem watching for large source
    libraries, with clear offline/reconnected status.
-2. Search indexing and saved filters once catalog size justifies them.
-3. A command/undo layer for project-state edits, enabling reliable multi-step
+2. Added an indexed catalog search and project-persisted saved filters.
+3. Added a bounded command/undo layer for project-state edits, enabling multi-step
    undo without touching source media.
-4. Optional portable project bundles containing JSON and checksums only. Media
-   copying should be a separate, explicit future product decision, not a side
-   effect of export.
+4. Added optional portable project bundles containing JSON and SHA-256 checksums
+   only. Media copying remains outside export and outside this roadmap.
+
+All four roadmap rounds are implemented on separate cumulative branches. The
+release gate remains the ongoing definition of done for later feature work.
 
 ## Features to reject by default
 

@@ -48,11 +48,15 @@ const renderAudio = async (details, options = {}) => {
 export const api = {
   bootstrap: () => jsonFetch("/api/bootstrap"),
   saveState: (state) => jsonFetch("/api/state", { method: "PUT", body: JSON.stringify(state) }),
+  createProject: (details) => jsonFetch("/api/projects", { method: "POST", body: JSON.stringify(details) }),
+  loadProject: (projectId) => jsonFetch(`/api/projects/${encodeURIComponent(projectId)}/load`, { method: "POST" }),
   restoreRecovery: () => jsonFetch("/api/state/recovery/restore", { method: "POST" }),
   beaconState: (state) => typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function"
     ? navigator.sendBeacon("/api/state", new Blob([JSON.stringify(state)], { type: "application/json" }))
     : false,
   rescan: () => jsonFetch("/api/rescan", { method: "POST" }),
+  libraryStatus: () => jsonFetch("/api/library"),
+  portableBundle: () => jsonFetch("/api/project-bundle"),
   registerSource: (source) => jsonFetch("/api/sources/register", { method: "POST", body: JSON.stringify(source) }),
   chooseSources: (kind) => jsonFetch("/api/sources/pick", { method: "POST", body: JSON.stringify({ kind }) }),
   chooseProjectAssets: (kind) => jsonFetch("/api/project-assets/pick", { method: "POST", body: JSON.stringify({ kind }) }),
@@ -62,6 +66,10 @@ export const api = {
   waitForRenderJob,
   cancelRenderJob,
   waveform: (key, points = 900, signal) => jsonFetch(`/api/waveform?key=${encodeURIComponent(key)}&points=${encodeURIComponent(points)}`, { signal }),
+  technicalAnalysis: (key) => jsonFetch(`/api/analysis?key=${encodeURIComponent(key)}`),
+  listRenderJobs: () => jsonFetch("/api/render-jobs"),
+  renderManifest: (url) => jsonFetch(url),
+  revealRender: (id) => jsonFetch("/api/renders/reveal", { method: "POST", body: JSON.stringify({ id }) }),
   addRoot: (root) => jsonFetch("/api/roots", { method: "POST", body: JSON.stringify(root) }),
   removeSource: (sourceId) => jsonFetch(`/api/sources/${encodeURIComponent(sourceId)}`, { method: "DELETE" }),
   removeRoot: (rootId) => jsonFetch(`/api/sources/${encodeURIComponent(rootId)}`, { method: "DELETE" }),

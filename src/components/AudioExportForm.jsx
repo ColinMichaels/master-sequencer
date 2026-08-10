@@ -1,10 +1,12 @@
 import React, { useState } from "react";
 import { formatBytes } from "../lib/format.js";
 import { DownloadIcon, ExportIcon, MusicIcon, WarningIcon } from "./Icons.jsx";
+import { deliveryProfile } from "../lib/delivery-profiles.js";
 
-export function AudioExportForm({ album, selectedTrack, rendering, renderJob, error, result, onRender, onCancelRender, onClear, onCancel }) {
-  const [scope, setScope] = useState(selectedTrack ? "track" : "album");
-  const [format, setFormat] = useState("wav");
+export function AudioExportForm({ album, selectedTrack, deliveryProfileId, rendering, renderJob, error, result, onRender, onCancelRender, onClear, onCancel }) {
+  const profile = deliveryProfile(deliveryProfileId);
+  const [scope, setScope] = useState(profile?.albumOnly ? "album" : selectedTrack ? "track" : "album");
+  const [format, setFormat] = useState(profile?.format || "wav");
   if (result) return (
     <div className="modal-form audio-export-result">
       <div className="render-complete-mark"><MusicIcon size={26}/><div><strong>Audio print complete</strong><small>{result.audioName} · {formatBytes(result.size)}</small></div></div>
@@ -22,15 +24,16 @@ export function AudioExportForm({ album, selectedTrack, rendering, renderJob, er
   );
 
   return (
-    <form className="modal-form audio-export-form" onSubmit={(event) => { event.preventDefault(); onRender({ scope, format, trackId: selectedTrack?.id || "" }); }}>
+    <form className="modal-form audio-export-form" onSubmit={(event) => { event.preventDefault(); onRender({ scope, format, trackId: selectedTrack?.id || "", deliveryProfileId: profile?.id || "" }); }}>
       <p>Print a new audio derivative from the current trims, fades, gaps, and sequence. Source files are read-only.</p>
+      {profile && <div className="delivery-profile-summary"><strong>{profile.name}</strong><span>{profile.description}</span><small>The profile validates this print. It does not approve a master or mark the album ready to publish.</small></div>}
       <fieldset><legend>What to print</legend>
         <label className={scope === "album" ? "is-selected" : ""}><input type="radio" name="scope" value="album" checked={scope === "album"} onChange={() => setScope("album")} /><span><strong>Full Album Program</strong><small>One continuous file with every playable sequenced track and transition.</small></span></label>
-        <label className={`${scope === "track" ? "is-selected" : ""} ${!selectedTrack ? "is-disabled" : ""}`}><input type="radio" name="scope" value="track" checked={scope === "track"} disabled={!selectedTrack} onChange={() => setScope("track")} /><span><strong>Selected Track</strong><small>{selectedTrack ? `${selectedTrack.title} with its trims and fades.` : "Choose a playable track first."}</small></span></label>
+        <label className={`${scope === "track" ? "is-selected" : ""} ${!selectedTrack || profile?.albumOnly ? "is-disabled" : ""}`}><input type="radio" name="scope" value="track" checked={scope === "track"} disabled={!selectedTrack || profile?.albumOnly} onChange={() => setScope("track")} /><span><strong>Selected Track</strong><small>{profile?.albumOnly ? `${profile.name} requires a full album program.` : selectedTrack ? `${selectedTrack.title} with its trims and fades.` : "Choose a playable track first."}</small></span></label>
       </fieldset>
       <fieldset><legend>Audio format</legend>
-        <label className={format === "wav" ? "is-selected" : ""}><input type="radio" name="format" value="wav" checked={format === "wav"} onChange={() => setFormat("wav")} /><span><strong>WAV for Mastering</strong><small>24-bit PCM · 48 kHz · lossless</small></span></label>
-        <label className={format === "mp3" ? "is-selected" : ""}><input type="radio" name="format" value="mp3" checked={format === "mp3"} onChange={() => setFormat("mp3")} /><span><strong>MP3 for Review</strong><small>320 kbps · 48 kHz</small></span></label>
+        <label className={`${format === "wav" ? "is-selected" : ""} ${profile && profile.format !== "wav" ? "is-disabled" : ""}`}><input type="radio" name="format" value="wav" checked={format === "wav"} disabled={profile && profile.format !== "wav"} onChange={() => setFormat("wav")} /><span><strong>WAV for Mastering</strong><small>24-bit PCM · 48 kHz · lossless</small></span></label>
+        <label className={`${format === "mp3" ? "is-selected" : ""} ${profile && profile.format !== "mp3" ? "is-disabled" : ""}`}><input type="radio" name="format" value="mp3" checked={format === "mp3"} disabled={profile && profile.format !== "mp3"} onChange={() => setFormat("mp3")} /><span><strong>MP3 for Review</strong><small>320 kbps · 48 kHz</small></span></label>
       </fieldset>
       {scope === "track" && selectedTrack?.mastering?.endMode === "crossfade" && <p className="render-warning"><WarningIcon /> A selected-track print cannot include the next song, so its crossfade length becomes a fade-out. Choose Full Album Program to print the actual overlap.</p>}
       {rendering && <div className="render-progress" role="status" aria-live="polite">

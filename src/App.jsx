@@ -1,11 +1,14 @@
 import React, { useState } from "react";
 import { AlbumRail } from "./components/AlbumRail.jsx";
+import { AlbumDecisionsWorkspace } from "./components/AlbumDecisionsWorkspace.jsx";
 import { AppHeader } from "./components/AppHeader.jsx";
 import { AssetWorkspace } from "./components/AssetWorkspace.jsx";
 import { AudioExportForm } from "./components/AudioExportForm.jsx";
 import { AudioLibraryWorkspace } from "./components/AudioLibraryWorkspace.jsx";
+import { FirstRunGuide } from "./components/FirstRunGuide.jsx";
 import { Modal } from "./components/Modal.jsx";
 import { ProjectIdentityForm } from "./components/ProjectIdentityForm.jsx";
+import { NewProjectForm, SavedProjects } from "./components/ProjectLibrary.jsx";
 import { RecoveryWorkspace } from "./components/RecoveryWorkspace.jsx";
 import { MasteringWorkspace } from "./components/MasteringWorkspace.jsx";
 import { SequenceWorkspace } from "./components/SequenceWorkspace.jsx";
@@ -19,10 +22,13 @@ import { formatDuration, slugify } from "./lib/format.js";
 import { buildImportedTracks } from "./lib/import-tracks.js";
 import { api, sourceKey } from "./lib/api.js";
 import { sequenceTracks } from "./lib/sequence-tracks.js";
+import { shouldShowFirstRunGuide } from "./lib/first-run.js";
+import { createAlbumFromTemplate, saveAlbumTemplate } from "./lib/album-decisions.js";
 import {
   addAlbum as addAlbumCommand,
   addBlankTrack,
   appendImportedTracks,
+  deleteAlbum as deleteAlbumCommand,
   projectArtistName as projectArtistNameCommand,
   renameAlbum as renameAlbumCommand,
   restoreBaselineOrder,
@@ -32,7 +38,7 @@ import {
   updateAppearance as updateAppearanceCommand,
   updateProjectIdentity as updateProjectIdentityCommand,
 } from "./lib/project-commands.js";
-import { EditIcon, FolderIcon, MusicIcon, PlusIcon } from "./components/Icons.jsx";
+import { EditIcon, FolderIcon, MusicIcon, PlusIcon, TrashIcon } from "./components/Icons.jsx";
 
 function AddAlbumForm({ albums, onSubmit, onCancel }) {
   const [title, setTitle] = useState("");
@@ -57,6 +63,18 @@ function RenameAlbumForm({ album, onSubmit, onCancel }) {
       <dl className="rename-album-identity"><div><dt>Permanent album ID</dt><dd>{album.id}</dd></div><div><dt>Track records preserved</dt><dd>{album.tracks.length}</dd></div></dl>
       <div className="modal-actions"><button type="button" className="text-button" onClick={onCancel}>Cancel</button><button type="submit" className="primary-button" disabled={!normalizedTitle || normalizedTitle === album.title}><EditIcon /> Save New Name</button></div>
     </form>
+  );
+}
+
+function DeleteAlbumForm({ album, onSubmit, onCancel }) {
+  const candidateCount = album.tracks.reduce((total, track) => total + track.candidates.length, 0);
+  return (
+    <div className="modal-form delete-album-form">
+      <p><strong>{album.title}</strong> and its Project Sequencer records will be permanently removed from this project.</p>
+      <dl className="rename-album-identity"><div><dt>Track records</dt><dd>{album.tracks.length}</dd></div><div><dt>Audio candidates referenced</dt><dd>{candidateCount}</dd></div></dl>
+      <p className="deletion-safety-note">Indexed audio, artwork, lyric files, and rendered exports stay exactly where they are. Only this album’s saved decisions and references are deleted.</p>
+      <div className="modal-actions"><button type="button" className="text-button" onClick={onCancel}>Cancel</button><button type="button" className="primary-button primary-button--danger" onClick={onSubmit}><TrashIcon /> Delete Album</button></div>
+    </div>
   );
 }
 
@@ -144,16 +162,21 @@ export default function App() {
   const [renderingAudio, setRenderingAudio] = useState(false);
   const [previewingTrackId, setPreviewingTrackId] = useState("");
   const [transitioningTrackId, setTransitioningTrackId] = useState("");
+  const [previewingDecision, setPreviewingDecision] = useState("");
   const [renameAlbumId, setRenameAlbumId] = useState("");
+  const [deleteAlbumId, setDeleteAlbumId] = useState("");
   const [albumsCollapsed, setAlbumsCollapsed] = useState(false);
   const [layoutPreviewCollapsed, setLayoutPreviewCollapsed] = useState(false);
   const [masteringTrackId, setMasteringTrackId] = useState("");
+  const [firstRunDismissed, setFirstRunDismissed] = useState(false);
   const transport = useTransport({ libraryMap: project.libraryMap });
 
   const configuredArtistName = projectArtistNameCommand(project.state);
   const activeAlbumRecord = project.state?.albums.find((album) => album.id === project.state.activeAlbumId) || project.state?.albums[0];
   const activeAlbum = activeAlbumRecord ? { ...activeAlbumRecord, artist: configuredArtistName } : activeAlbumRecord;
   const albumToRename = project.state?.albums.find((album) => album.id === renameAlbumId);
+  const albumToDelete = project.state?.albums.find((album) => album.id === deleteAlbumId);
+  const currentProject = project.projects.find((item) => item.id === project.activeProjectId);
   const activeSequenceTracks = sequenceTracks(activeAlbum);
   const sequenceAlbum = activeAlbum ? { ...activeAlbum, tracks: activeSequenceTracks } : activeAlbum;
   const playableCount = activeSequenceTracks.filter((track) => transport.fileForTrack(track)).length;
@@ -175,6 +198,8 @@ export default function App() {
     mastering: standaloneCurrentSource ? {} : transportTrack?.mastering || {},
     nextTrackTitle: standaloneCurrentSource ? "" : transport.current?.nextTrackTitle || nextTransportTrack?.title || "",
   };
+  const firstRunEnvironment = shouldShowFirstRunGuide({ roots: project.roots, library: project.library });
+  const showFirstRunGuide = firstRunEnvironment && !firstRunDismissed;
 
   const updateAppearance = (patch) => project.updateState((draft) => {
     updateAppearanceCommand(draft, patch);
@@ -221,6 +246,52 @@ export default function App() {
     project.updateState((draft) => { renameAlbumCommand(draft, renameAlbumId, title); });
     transport.setStatus(`${previousTitle} renamed to ${title}. Album identity and attached records were preserved.`);
     closeRenameAlbum();
+  };
+
+  const openDeleteAlbum = (albumId) => {
+    if (project.state.albums.length <= 1) return;
+    setDeleteAlbumId(albumId);
+    setModal("delete-album");
+  };
+
+  const closeDeleteAlbum = () => {
+    setDeleteAlbumId("");
+    setModal("");
+  };
+
+  const deleteAlbum = () => {
+    const title = albumToDelete?.title || "Album";
+    project.updateState((draft) => { deleteAlbumCommand(draft, deleteAlbumId); });
+    transport.stop(`${title} deleted from this project. Indexed source files were not changed.`);
+    setActiveView("sequence");
+    setAudioRenderResult(null);
+    setAudioRenderJob(null);
+    closeDeleteAlbum();
+  };
+
+  const resetAfterProjectSwitch = () => {
+    transport.stop("Project changed. Ready to audition.");
+    setActiveView("sequence");
+    setPendingImport([]);
+    setAudioRenderResult(null);
+    setAudioRenderJob(null);
+    setRenameAlbumId("");
+    setDeleteAlbumId("");
+    setFirstRunDismissed(true);
+  };
+
+  const createProject = async (details) => {
+    if (await project.createProject(details)) {
+      resetAfterProjectSwitch();
+      setModal("");
+    }
+  };
+
+  const loadProject = async (projectId) => {
+    if (await project.loadProject(projectId)) {
+      resetAfterProjectSwitch();
+      setModal("");
+    }
   };
 
   const addTrack = (title) => {
@@ -327,6 +398,53 @@ export default function App() {
     }
   };
 
+  const previewTransitionVariant = async (pair, name, variant) => {
+    const previewAlbum = structuredClone(activeAlbum);
+    const fromTrack = previewAlbum.tracks.find((track) => track.id === pair.from.id);
+    if (!fromTrack) return;
+    fromTrack.mastering = {
+      ...(fromTrack.mastering || {}),
+      endMode: variant.endMode,
+      endDuration: variant.duration,
+      gapAfter: variant.endMode === "crossfade" ? 0 : variant.gapAfter,
+    };
+    setPreviewingDecision(`transition-${name}`);
+    project.setError("");
+    try {
+      const result = await api.renderAudio({ album: previewAlbum, scope: "preview", trackId: pair.from.id, format: "mp3", previewPart: "transition" });
+      transport.previewRendered(result.audioUrl, `${pair.from.title} → ${pair.to.title} · Variant ${name}`, { status: `Playing non-destructive transition variant ${name}.` });
+    } catch (reason) {
+      project.setError(reason.message);
+    } finally {
+      setPreviewingDecision("");
+    }
+  };
+
+  const previewComparisonCandidate = async (track, candidate) => {
+    const key = `${track.id}-${candidate.id}`;
+    setPreviewingDecision(key);
+    project.setError("");
+    try {
+      const result = await api.renderAudio({ album: activeAlbum, scope: "comparison", trackId: track.id, candidateId: candidate.id, format: "mp3" });
+      transport.previewRendered(result.audioUrl, `${track.title} · ${candidate.label} · matched derivative`, { status: result.derivativeLabel || "Playing a loudness-matched preview derivative." });
+    } catch (reason) {
+      project.setError(reason.message);
+    } finally {
+      setPreviewingDecision("");
+    }
+  };
+
+  const saveTemplate = (name) => {
+    project.updateState((draft) => { saveAlbumTemplate(draft, activeAlbum, name); });
+    transport.setStatus("Album structure saved as a media-free, approval-free template.");
+  };
+
+  const createFromTemplate = (templateId, title) => {
+    project.updateState((draft) => { createAlbumFromTemplate(draft, templateId, title); });
+    transport.stop(`${title} created from structure only. No media or approvals were copied.`);
+    setActiveView("decisions");
+  };
+
   const openAudioExport = (trackId = "") => {
     setAudioExportTrackId(trackId);
     setAudioRenderResult(null);
@@ -394,26 +512,49 @@ export default function App() {
     return project.replaceState(nextState);
   };
 
+  const exportPortableBundle = async () => {
+    project.setError("");
+    try {
+      const bundle = await api.portableBundle();
+      downloadText(`${JSON.stringify(bundle, null, 2)}\n`, `project-sequencer-portable-${new Date().toISOString().slice(0, 10)}.json`, "application/json");
+      transport.setStatus("Portable JSON/checksum bundle created. No media was copied.");
+    } catch (reason) {
+      project.setError(reason.message);
+    }
+  };
+
   if (project.loading) return <div className="loading-screen"><span className="loading-wave" /> <strong>Indexing Project Sequencer…</strong><small>Audio stays in its original location.</small></div>;
   if (project.recovery?.required) return <RecoveryWorkspace recovery={project.recovery} error={project.error} onRestore={project.restoreRecovery} />;
   if (!project.state || !activeAlbum) return <div className="loading-screen is-error"><strong>Project Sequencer could not open.</strong><small>{project.error || "No album data was found."}</small></div>;
 
   return (
     <div className={`app-shell ${albumsCollapsed ? "albums-collapsed" : ""}`}>
-      <AppHeader activeView={activeView} onViewChange={setActiveView} album={sequenceAlbum} playableCount={playableCount} approvalCount={approvalCount} appearance={appearance} resolvedMode={resolvedMode} onAppearanceChange={updateAppearance} onOpenAppearance={() => setActiveView("settings")} />
-      <AlbumRail albums={project.state.albums} activeAlbumId={activeAlbum.id} collapsed={albumsCollapsed} onToggle={() => setAlbumsCollapsed((current) => !current)} onSelectAlbum={selectAlbum} onAddAlbum={() => setModal("album")} onRenameAlbum={openRenameAlbum} />
+      <AppHeader activeView={activeView} onViewChange={setActiveView} album={sequenceAlbum} playableCount={playableCount} approvalCount={approvalCount} appearance={appearance} resolvedMode={resolvedMode} onAppearanceChange={updateAppearance} onOpenAppearance={() => setActiveView("settings")} commandHistory={project.commandHistory} />
+      <AlbumRail albums={project.state.albums} activeAlbumId={activeAlbum.id} currentProject={currentProject} collapsed={albumsCollapsed} projectBusy={project.projectOperation} onToggle={() => setAlbumsCollapsed((current) => !current)} onSelectAlbum={selectAlbum} onAddAlbum={() => setModal("album")} onRenameAlbum={openRenameAlbum} onDeleteAlbum={openDeleteAlbum} onOpenProjects={() => setModal("projects")} onNewProject={() => setModal("new-project")} />
       <div className="content-shell">
         {project.error && <div className="error-banner" role="alert"><strong>Project warning</strong><span>{project.error}</span><button type="button" onClick={() => project.setError("")}>Dismiss</button></div>}
         {activeView === "sequence" && <SequenceWorkspace album={activeAlbum} libraryMap={project.libraryMap} revealPrivateFilenames={revealPrivateFilenames} transitioningTrackId={transitioningTrackId} layoutPreviewCollapsed={layoutPreviewCollapsed} onToggleLayoutPreview={() => setLayoutPreviewCollapsed((current) => !current)} onAlbumChange={onAlbumChange} onAddTracks={() => setModal("tracks")} onPlayFrom={(index) => transport.playSequence(sequenceAlbum, index)} onTransition={previewSequenceTransition} onExport={exportSequence} onRemoveFromSequence={removeTrackFromSequence} onRestoreToSequence={restoreTrackToSequence} />}
         {activeView === "review" && <TrackReviewWorkspace album={activeAlbum} libraryMap={project.libraryMap} revealPrivateFilenames={revealPrivateFilenames} onAlbumChange={onAlbumChange} onPreviewFile={transport.previewFile} onOpenLibrary={() => setActiveView("library")} />}
-        {activeView === "mastering" && <MasteringWorkspace album={activeAlbum} libraryMap={project.libraryMap} onAlbumChange={onAlbumChange} onPreview={previewMasteringEdit} previewingTrackId={previewingTrackId} onOpenExport={openAudioExport} onTrackFocus={setMasteringTrackId} />}
+        {activeView === "decisions" && <AlbumDecisionsWorkspace album={activeAlbum} templates={project.state.albumTemplates || []} libraryMap={project.libraryMap} onAlbumChange={onAlbumChange} onSaveTemplate={saveTemplate} onCreateFromTemplate={createFromTemplate} onPreviewTransition={previewTransitionVariant} onPreviewComparison={previewComparisonCandidate} previewingDecision={previewingDecision} />}
+        {activeView === "mastering" && <MasteringWorkspace album={activeAlbum} libraryMap={project.libraryMap} onAlbumChange={onAlbumChange} onPreview={previewMasteringEdit} previewingTrackId={previewingTrackId} onOpenExport={openAudioExport} onTrackFocus={setMasteringTrackId} onPreviewChapter={(index) => transport.previewChapter(sequenceAlbum, index)} />}
         {activeView === "assets" && <AssetWorkspace album={activeAlbum} revealPrivateFilenames={revealPrivateFilenames} picking={project.pickingAssets} onAlbumChange={onAlbumChange} onPickAssets={project.chooseProjectAssets} />}
-        {activeView === "library" && <AudioLibraryWorkspace state={project.state} activeAlbum={activeAlbum} library={project.library} roots={project.roots} formats={project.formats} revealPrivateFilenames={revealPrivateFilenames} scanning={project.scanning} onRescan={project.rescan} onPreviewFile={transport.previewFile} onAlbumChangeById={onAlbumChangeById} onImportFiles={() => chooseTrackSources("files")} onImportFolder={() => chooseTrackSources("folder")} />}
-        {activeView === "settings" && <SettingsWorkspace state={project.state} roots={project.roots} scanning={project.scanning} projectArtistName={configuredArtistName} revealPrivateFilenames={revealPrivateFilenames} appearance={appearance} resolvedMode={resolvedMode} onProjectIdentityChange={saveProjectIdentity} onAppearanceChange={updateAppearance} onTogglePrivate={(checked) => project.updateState((draft) => { draft.settings ||= {}; draft.settings.revealPrivateFilenames = checked; })} onAddRoot={project.addRoot} onRemoveRoot={project.removeRoot} onChooseSources={project.chooseSources} onRescan={project.rescan} onImportState={importState} />}
+        {activeView === "library" && <AudioLibraryWorkspace state={project.state} activeAlbum={activeAlbum} library={project.library} roots={project.roots} formats={project.formats} scan={project.scan} watching={project.watching} revealPrivateFilenames={revealPrivateFilenames} scanning={project.scanning} onRescan={project.rescan} onPreviewFile={transport.previewFile} onProjectChange={project.updateState} onAlbumChangeById={onAlbumChangeById} onImportFiles={() => chooseTrackSources("files")} onImportFolder={() => chooseTrackSources("folder")} />}
+        {activeView === "settings" && <SettingsWorkspace state={project.state} roots={project.roots} scan={project.scan} watching={project.watching} scanning={project.scanning} projectArtistName={configuredArtistName} currentProject={currentProject} projects={project.projects} projectBusy={project.projectOperation} revealPrivateFilenames={revealPrivateFilenames} appearance={appearance} resolvedMode={resolvedMode} onProjectIdentityChange={saveProjectIdentity} onAppearanceChange={updateAppearance} onTogglePrivate={(checked) => project.updateState((draft) => { draft.settings ||= {}; draft.settings.revealPrivateFilenames = checked; })} onAddRoot={project.addRoot} onRemoveRoot={project.removeRoot} onChooseSources={project.chooseSources} onRescan={project.rescan} onImportState={importState} onOpenProjects={() => setModal("projects")} onNewProject={() => setModal("new-project")} onExportBundle={exportPortableBundle} />}
       </div>
       <TransportBar audioRef={transport.audioRef} audioHandlers={transport.audioHandlers} current={transport.current} status={transport.status} activeAlbum={sequenceAlbum} visual={transportVisual} playing={transport.playing} currentTime={transport.currentTime} mediaDuration={transport.mediaDuration} resetArmed={resetArmed} onTogglePlayback={transport.togglePlayback} onSeek={transport.seek} onPlaySequence={() => transport.playSequence(sequenceAlbum)} onResetOrder={resetOrder} onExport={exportSequence} />
       <div className="status-strip"><span role="status" aria-live="polite">{project.saveStatus}</span><span>{project.library.length} audio files indexed · {project.roots.length} configured path{project.roots.length === 1 ? "" : "s"}</span><strong>Local mode</strong></div>
-      {!project.state.settings.project.setupComplete && (
+      {showFirstRunGuide && (
+        <FirstRunGuide
+          artistName={configuredArtistName}
+          setupComplete={project.state.settings.project.setupComplete}
+          scanning={project.scanning}
+          onSaveIdentity={saveProjectIdentity}
+          onChooseSources={chooseTrackSources}
+          onCreateAlbum={() => { setFirstRunDismissed(true); setModal("album"); }}
+          onExplore={() => setFirstRunDismissed(true)}
+        />
+      )}
+      {!showFirstRunGuide && !project.state.settings.project.setupComplete && (
         <Modal title="Start a New Project" className="modal--project-setup" dismissible={false} onClose={() => {}}>
           <div className="project-setup-intro"><strong>Make this sequencing workspace yours.</strong><p>Set the artist once for the entire project. You can change it later under Settings → Project.</p></div>
           <ProjectIdentityForm artistName={configuredArtistName} setup onSubmit={saveProjectIdentity} />
@@ -421,9 +562,12 @@ export default function App() {
       )}
       {modal === "album" && <Modal title="Add Album" onClose={() => setModal("")}><AddAlbumForm albums={project.state.albums} onSubmit={addAlbum} onCancel={() => setModal("")} /></Modal>}
       {modal === "rename-album" && albumToRename && <Modal title="Rename Album" onClose={closeRenameAlbum}><RenameAlbumForm key={albumToRename.id} album={albumToRename} onSubmit={renameAlbum} onCancel={closeRenameAlbum} /></Modal>}
+      {modal === "delete-album" && albumToDelete && <Modal title="Delete Album" onClose={closeDeleteAlbum}><DeleteAlbumForm key={albumToDelete.id} album={albumToDelete} onSubmit={deleteAlbum} onCancel={closeDeleteAlbum} /></Modal>}
+      {modal === "projects" && <Modal title="Saved Projects" className="modal--wide" onClose={() => setModal("")} dismissible={!project.projectOperation}><SavedProjects projects={project.projects} busy={project.projectOperation} onLoad={loadProject} onNewProject={() => setModal("new-project")} onCancel={() => setModal("")} /></Modal>}
+      {modal === "new-project" && <Modal title="Start a Fresh Project" onClose={() => setModal("")} dismissible={!project.projectOperation}><NewProjectForm defaultArtistName={configuredArtistName === "Untitled Artist" ? "" : configuredArtistName} busy={project.projectOperation} onSubmit={createProject} onCancel={() => setModal("")} /></Modal>}
       {modal === "tracks" && <Modal title="Add Tracks" onClose={() => setModal("")}><AddTracksForm album={activeAlbum} scanning={project.scanning} onChoose={chooseTrackSources} onReviewPath={reviewPath} onAddBlank={addTrack} onCancel={() => setModal("")} /></Modal>}
       {modal === "import-review" && <Modal title="Review Tracks" className="modal--wide" onClose={() => setModal("")}><ImportTracksReview key={pendingImport.map((file) => file.key).join("|")} album={activeAlbum} files={pendingImport} onSubmit={addImportedTracks} onBack={() => setModal("tracks")} /></Modal>}
-      {modal === "audio-export" && <Modal title="Print / Export Audio" className="modal--wide" onClose={() => { if (!renderingAudio) setModal(""); }}><AudioExportForm album={activeAlbum} selectedTrack={activeAlbum.tracks.find((track) => track.id === audioExportTrackId)} rendering={renderingAudio} renderJob={audioRenderJob} error={audioRenderError} result={audioRenderResult} onRender={renderMasteringAudio} onCancelRender={cancelAudioRender} onClear={() => { setAudioRenderResult(null); setAudioRenderJob(null); setAudioRenderError(""); }} onCancel={() => setModal("")} /></Modal>}
+      {modal === "audio-export" && <Modal title="Print / Export Audio" className="modal--wide" onClose={() => { if (!renderingAudio) setModal(""); }}><AudioExportForm album={activeAlbum} selectedTrack={activeAlbum.tracks.find((track) => track.id === audioExportTrackId)} deliveryProfileId={activeAlbum.delivery?.profileId || ""} rendering={renderingAudio} renderJob={audioRenderJob} error={audioRenderError} result={audioRenderResult} onRender={renderMasteringAudio} onCancelRender={cancelAudioRender} onClear={() => { setAudioRenderResult(null); setAudioRenderJob(null); setAudioRenderError(""); }} onCancel={() => setModal("")} /></Modal>}
     </div>
   );
 }

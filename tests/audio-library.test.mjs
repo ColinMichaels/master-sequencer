@@ -27,6 +27,14 @@ test("audio scanning finds supported files and respects ignored directories", as
   assert.equal(result.files.length, 1);
   assert.equal(result.files[0].relativePath, "Album/source.mp3");
   assert.match(result.files[0].probeError, /ffprobe|Invalid data|failed/i);
+  const incremental = await scanAudioLibrary({
+    roots: [{ id: "test", label: "Test", path: root }],
+    ignoreDirectories: ["node_modules"],
+    cachePath: path.join(root, "cache.json"),
+    metadataConcurrency: 1,
+  });
+  assert.equal(incremental.scan.reusedMetadata, 1);
+  assert.equal(incremental.scan.probedMetadata, 0);
 });
 
 test("audio scanning accepts an explicit file without copying it", async () => {

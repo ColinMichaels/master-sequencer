@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { chooseAudioPaths, chooseProjectAssetPaths, parsePickedPaths } from "../server/native-picker.mjs";
+import { chooseAudioPaths, chooseProjectAssetPaths, parsePickedPaths, revealInFinder } from "../server/native-picker.mjs";
 
 test("native picker output becomes clean file paths", () => {
   assert.deepEqual(parsePickedPaths("/Music/One.wav\n/Music/Two.mp3\n"), ["/Music/One.wav", "/Music/Two.mp3"]);
@@ -30,4 +30,10 @@ test("native lyric picker treats cancellation as a normal empty choice", async (
     throw error;
   };
   assert.deepEqual(await chooseProjectAssetPaths({ kind: "lyrics", platform: "darwin", run }), []);
+});
+
+test("Finder reveal receives only a server-resolved completed-render path", async () => {
+  const calls = [];
+  assert.deepEqual(await revealInFinder({ filePath: "/safe/exports/render.wav", platform: "darwin", run: async (...args) => { calls.push(args); } }), { revealed: true });
+  assert.deepEqual(calls, [["open", ["-R", "/safe/exports/render.wav"]]]);
 });

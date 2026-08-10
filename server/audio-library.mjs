@@ -135,10 +135,15 @@ export const scanAudioLibrary = async ({ roots, audioFiles = [], ignoreDirectori
 
   const cache = await readCache(cachePath);
   const nextCache = {};
+  let reusedMetadata = 0;
+  let probedMetadata = 0;
   const enriched = await mapLimit(files, metadataConcurrency, async (file) => {
     const fingerprint = `${file.size}:${Math.round(file.mtimeMs)}`;
     const cached = cache[file.key];
-    const metadata = cached?.fingerprint === fingerprint ? cached.metadata : await probeAudio(file);
+    const cacheHit = cached?.fingerprint === fingerprint;
+    if (cacheHit) reusedMetadata += 1;
+    else probedMetadata += 1;
+    const metadata = cacheHit ? cached.metadata : await probeAudio(file);
     nextCache[file.key] = { fingerprint, metadata };
     return {
       ...file,
@@ -148,5 +153,15 @@ export const scanAudioLibrary = async ({ roots, audioFiles = [], ignoreDirectori
   });
   await writeFile(cachePath, `${JSON.stringify(nextCache, null, 2)}\n`);
   enriched.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
-  return { files: enriched, roots: connectedRoots };
+  return {
+    files: enriched,
+    roots: connectedRoots,
+    scan: {
+      mode: "incremental",
+      discoveredFiles: enriched.length,
+      reusedMetadata,
+      probedMetadata,
+      completedAt: new Date().toISOString(),
+    },
+  };
 };
