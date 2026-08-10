@@ -45,6 +45,8 @@ export const api = {
     ? navigator.sendBeacon("/api/state", new Blob([JSON.stringify(state)], { type: "application/json" }))
     : false,
   rescan: () => jsonFetch("/api/rescan", { method: "POST" }),
+  libraryStatus: () => jsonFetch("/api/library"),
+  portableBundle: () => jsonFetch("/api/project-bundle"),
   registerSource: (source) => jsonFetch("/api/sources/register", { method: "POST", body: JSON.stringify(source) }),
   chooseSources: (kind) => jsonFetch("/api/sources/pick", { method: "POST", body: JSON.stringify({ kind }) }),
   chooseProjectAssets: (kind) => jsonFetch("/api/project-assets/pick", { method: "POST", body: JSON.stringify({ kind }) }),

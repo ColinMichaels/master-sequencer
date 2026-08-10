@@ -75,17 +75,23 @@ npm start
   an album cover, and associate both Suno prompt lyrics and clean DistroKid
   lyrics with the exact audio candidate they describe.
 - **Audio Library:** search every discovered source, filter by root/format/use,
-  preview files, add a file as a candidate, or create a new track from it.
+  save and restore indexed searches/facets, preview files, add a file as a
+  candidate, or create a new track from it. Incremental rescan status shows
+  reused versus reprobed metadata and explicitly reports offline/reconnected
+  roots.
 - **Settings:** click a file-path or folder-path control to open the native
   macOS picker; manual path entry remains under an optional fallback. Choose
   dark, light, or system mode; adjust interface text from 90% to 120%; and mix
   four color themes with four font pairings. Disconnect sources, rescan, keep
   protected filenames masked, and export/import the complete Project Sequencer
-  JSON record.
+  JSON record. Export an optional portable bundle containing project JSON and
+  source checksums only; it never copies media.
 
 The application shell uses compact icon tabs and transport actions with
 accessible hover/focus labels. The Albums rail and Sequence layout preview can
 be collapsed independently when more editing space is needed.
+Project edits also have a bounded 100-step undo/redo history. Undo changes only
+the local project record; it never reverses a filesystem operation.
 
 Albums can be added or renamed directly from the album rail, and blank tracks
 can be added from the sequence workspace. Renaming changes only the album title;
@@ -136,6 +142,11 @@ Hidden directories are skipped by default. Set `includeHiddenDirectories` to
 `true` in configuration if a library intentionally stores source audio there;
 the Dreadnauts installation leaves it off so `.whisper` cache and sample audio
 do not enter album work.
+
+Rescans always reuse cached metadata for unchanged files. Optional debounced
+filesystem watching can be enabled with `"watchAudioRoots": true` in the ignored
+local configuration. It is off in the portable default; manual rescans remain
+available, and disconnected roots report Offline or Reconnected explicitly.
 
 ## Local data
 

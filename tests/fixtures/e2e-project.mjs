@@ -1,5 +1,5 @@
 export const e2eProjectState = {
-  schemaVersion: 4,
+  schemaVersion: 5,
   albumTemplates: [],
   activeAlbumId: "fixture-album",
   settings: {

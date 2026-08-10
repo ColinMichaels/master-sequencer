@@ -1,4 +1,4 @@
-export const CURRENT_SCHEMA_VERSION = 4;
+export const CURRENT_SCHEMA_VERSION = 5;
 const deliveryProfileIds = new Set(["", "archive-wav", "distribution-wav", "review-mp3"]);
 
 const validateAssetReference = (reference, label) => {
@@ -35,6 +35,15 @@ const validateSettings = (settings) => {
   if (settings === undefined) return;
   if (!settings || typeof settings !== "object" || Array.isArray(settings)) throw new Error("Project settings must be an object.");
   if (settings.revealPrivateFilenames !== undefined && typeof settings.revealPrivateFilenames !== "boolean") throw new Error("Protected-filename visibility must be a boolean.");
+  if (settings.librarySavedFilters !== undefined) {
+    if (!Array.isArray(settings.librarySavedFilters)) throw new Error("Saved library filters must be an array.");
+    const filterIds = new Set();
+    for (const filter of settings.librarySavedFilters) {
+      if (!filter?.id || !filter.name || ["query", "format", "rootId", "usageFilter"].some((field) => typeof filter[field] !== "string")) throw new Error("Every saved library filter needs an id, name, query, and facets.");
+      if (filterIds.has(filter.id)) throw new Error(`Duplicate saved library filter id: ${filter.id}`);
+      filterIds.add(filter.id);
+    }
+  }
   if (settings.appearance === undefined) return;
   if (!settings.appearance || typeof settings.appearance !== "object" || Array.isArray(settings.appearance)) throw new Error("Appearance settings must be an object.");
   for (const [field, options] of Object.entries(appearanceOptions)) {
@@ -174,6 +183,14 @@ const migrations = new Map([
         ? album.delivery
         : { profileId: "", masterApproved: false, readyToPublish: false },
     })),
+  })],
+  [4, (state) => ({
+    ...state,
+    schemaVersion: 5,
+    settings: {
+      ...(state.settings || {}),
+      librarySavedFilters: Array.isArray(state.settings?.librarySavedFilters) ? state.settings.librarySavedFilters : [],
+    },
   })],
 ]);
 

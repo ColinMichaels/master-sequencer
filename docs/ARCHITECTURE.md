@@ -15,6 +15,7 @@ Local Node server (127.0.0.1)
   |                              `-> ignored last-known-good snapshot
   |-- configuration store -----> ignored config/sequencer.local.json
   |-- audio index -------------> ignored data/audio-index-cache.json
+  |   `-- optional watcher ----> debounced incremental metadata rescans
   |-- range media service -----> already-indexed source audio (read-only)
   |-- waveform service --------> compact in-memory peak arrays
   |-- analysis service --------> compact rebuildable mastering measurements
@@ -55,6 +56,9 @@ Every feature must preserve these rules:
 11. A delivery profile validates a print request and its documentation. It does
     not imply an approved master or publication readiness; those remain
     separate explicit album fields.
+12. Undo/redo stores bounded project-state snapshots only. It never performs a
+    filesystem inverse operation. Portable bundles contain JSON and checksums,
+    never media bytes or absolute indexed-source paths.
 
 ## Server modules
 
@@ -65,6 +69,8 @@ Every feature must preserve these rules:
 | `server/http-response.mjs` | Size-bounded JSON input, JSON output, MIME lookup, and range-file streaming |
 | `server/config-store.mjs` | Merge portable/local/environment configuration and atomically register or disconnect sources |
 | `server/audio-library.mjs` | Recursively discover supported audio, probe metadata, and maintain the rebuildable cache |
+| `server/audio-watch-service.mjs` | Optionally watch connected folders and debounce incremental metadata rescans |
+| `server/portable-project-bundle.mjs` | Hash indexed candidate sources and build JSON/checksum-only portable bundles |
 | `server/state-schema.mjs` | Validate the current state schema and apply explicit migrations from older versions |
 | `server/state-store.mjs` | Serialize atomic state writes and maintain a validated last-known-good snapshot |
 | `server/http-utils.mjs` | Byte-range parsing, local Host/Origin guards, and response security headers |
@@ -91,6 +97,7 @@ baseline order references before disk state changes.
 | `src/hooks/useAppearance.js` | Resolve and apply persisted display preferences |
 | `src/components/*Workspace.jsx` | Own one user workflow and its local interaction state |
 | `src/lib/project-commands.js` | Immutable commands for albums, tracks, candidates, assets, and sequence edits |
+| `src/lib/library-search.js` | Build the in-memory catalog index and define portable saved-filter records |
 | `src/lib/*.js` | Pure import, sequence, formatting, appearance, and mastering rules |
 | `src/styles/*.css` | Tokens/base rules, shell chrome, workspace features, and responsive/motion rules |
 
@@ -140,6 +147,13 @@ Schema version 4 adds the delivery record. Optional technical analysis remains
 outside project authority in an in-memory, rebuildable cache. Render history is
 rediscovered from completed manifests below `exports/`; the UI can compare
 manifests and reveal a server-resolved result in Finder, but cannot delete one.
+
+Schema version 5 adds saved library filters. The audio metadata cache reports
+reused versus reprobed records on each incremental scan. Optional filesystem
+watching is disabled in portable configuration by default and can be enabled
+locally. Undo/redo is session-local; autosave persists the resulting state.
+Portable bundles are generated on demand and downloaded directly without
+creating a second media tree.
 
 ## Adding a feature safely
 

@@ -29,6 +29,7 @@ await writeFile(baseConfigPath, JSON.stringify({
   ignoreDirectories: [],
   metadataConcurrency: 2,
   renderTimeoutMs: 20_000,
+  watchAudioRoots: false,
   includeHiddenDirectories: false,
 }));
 await writeFile(localConfigPath, "{}\n");
