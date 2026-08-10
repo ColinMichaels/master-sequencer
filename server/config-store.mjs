@@ -5,8 +5,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const baseConfigPath = path.join(projectRoot, "config", "sequencer.config.json");
-const localConfigPath = path.join(projectRoot, "config", "sequencer.local.json");
+const configuredPath = (name, fallback) => process.env[name] ? path.resolve(process.env[name]) : fallback;
+const baseConfigPath = configuredPath("PROJECT_SEQUENCER_CONFIG_PATH", path.join(projectRoot, "config", "sequencer.config.json"));
+const localConfigPath = configuredPath("PROJECT_SEQUENCER_LOCAL_CONFIG_PATH", path.join(projectRoot, "config", "sequencer.local.json"));
 const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".flac", ".aiff", ".aif", ".m4a", ".aac", ".ogg", ".opus"]);
 let configMutationQueue = Promise.resolve();
 

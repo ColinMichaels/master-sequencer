@@ -1,8 +1,10 @@
-node_modules/
+node_modules
 dist/
 exports/
 data/sequencer-state.json
 data/sequencer-state.json.tmp
+data/sequencer-state.last-known-good.json
+data/sequencer-state.last-known-good.json.tmp
 data/audio-index-cache.json
 config/sequencer.local.json
 .DS_Store
