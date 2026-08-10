@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 1,
+  "activeAlbumId": "no-planet-to-call-home",
+  "settings": {
+    "revealPrivateFilenames": false,
+    "appearance": {
+      "mode": "dark",
+      "colorTheme": "signal",
+      "fontTheme": "condensed",
+      "textScale": 1
+    }
+  },
+  "albums": [
+    {
+      "id": "cosmic-reggae-sessions",
+      "artist": "The Dreadnauts",
+      "title": "Cosmic Reggae Sessions",
+      "era": "past",
+      "status": "released",
+      "orderApproved": true,
+      "baselineTrackOrder": ["funky-space-reggae-vibes", "intergalactic-mind-traveler", "captain-of-the-cosmic-tide", "nebula-meditation", "solar-wind-surfer", "spacerock", "black-hole-dub", "one-love-across-the-universe", "return-to-earth"],
+      "coverRef": {
+        "rootId": "dreadnauts",
+        "relativePath": "Website/src/assets/images/album/cosmic-reggae-sessions-cover.png"
+      },
+      "tracks": [
+        { "id": "funky-space-reggae-vibes", "title": "Funky Space Reggae Vibes", "decisionStatus": "released", "masterCandidateId": "a1t1", "auditionCandidateId": "a1t1", "notes": "", "candidates": [{ "id": "a1t1", "label": "Released master", "sourceRef": { "rootId": "dreadnauts", "relativePath": "Website/src/assets/audio/01-funky-space-reggae-vibes.mp3" }, "flags": ["Released source"] }] },
+        { "id": "intergalactic-mind-traveler", "title": "Intergalactic Mind Traveler", "decisionStatus": "released", "masterCandidateId": "a1t2", "auditionCandidateId": "a1t2", "notes": "", "candidates": [{ "id": "a1t2", "label": "Released master", "sourceRef": { "rootId": "dreadnauts", "relativePath": "Website/src/assets/audio/02-intergalactic-mind-traveler.mp3" }, "flags": ["Released source"] }] },
+        { "id": "captain-of-the-cosmic-tide", "title": "Captain of the Cosmic Tide", "decisionStatus": "released", "masterCandidateId": "a1t3", "auditionCandidateId": "a1t3", "notes": "", "candidates": [{ "id": "a1t3", "label": "Released master", "sourceRef": { "rootId": "dreadnauts", "relativePath": "Website/src/assets/audio/03-captain-of-the-cosmic-tide.mp3" }, "flags": ["Released source"] }] },
+        { "id": "nebula-meditation", "title": "Nebula Meditation", "decisionStatus": "released", "masterCandidateId": "a1t4", "auditionCandidateId": "a1t4", "notes": "", "candidates": [{ "id": "a1t4", "label": "Released master", "sourceRef": { "rootId": "dreadnauts", "relativePath": "Website/src/assets/audio/04-nebula-meditation.mp3" }, "flags": ["Released source"] }] },
+        { "id": "solar-wind-surfer", "title": "Solar Wind Surfer", "decisionStatus": "released", "masterCandidateId": "a1t5", "auditionCandidateId": "a1t5", "notes": "", "candidates": [{ "id": "a1t5", "label": "Released master", "sourceRef": { "rootId": "dreadnauts", "relativePath": "Website/src/assets/audio/05-solar-wind-surfer.mp3" }, "flags": ["Released source"] }] },
+        { "id": "spacerock", "title": "SpaceRock", "decisionStatus": "released", "masterCandidateId": "a1t6", "auditionCandidateId": "a1t6", "notes": "", "candidates": [{ "id": "a1t6", "label": "Released master", "sourceRef": { "rootId": "dreadnauts", "relativePath": "Website/src/assets/audio/06-spacerock.mp3" }, "flags": ["Released source"] }] },
+        { "id": "black-hole-dub", "title": "Black Hole Dub", "decisionStatus": "released", "masterCandidateId": "a1t7", "auditionCandidateId": "a1t7", "notes": "", "candidates": [{ "id": "a1t7", "label": "Released master", "sourceRef": { "rootId": "dreadnauts", "relativePath": "Website/src/assets/audio/07-black-hole-dub.mp3" }, "flags": ["Released source"] }] },
+        { "id": "one-love-across-the-universe", "title": "One Love Across the Universe", "decisionStatus": "released", "masterCandidateId": "a1t8", "auditionCandidateId": "a1t8", "notes": "", "candidates": [{ "id": "a1t8", "label": "Released master", "sourceRef": { "rootId": "dreadnauts", "relativePath": "Website/src/assets/audio/08-one-love-across-the-universe.mp3" }, "flags": ["Released source"] }] },
+        { "id": "return-to-earth", "title": "Return to Earth", "decisionStatus": "released", "masterCandidateId": "a1t9", "auditionCandidateId": "a1t9", "notes": "", "candidates": [{ "id": "a1t9", "label": "Released master", "sourceRef": { "rootId": "dreadnauts", "relativePath": "Website/src/assets/audio/09-return-to-earth.mp3" }, "flags": ["Released source"] }] }
+      ]
+    },
+    {
+      "id": "no-planet-to-call-home",
+      "artist": "The Dreadnauts",
+      "title": "No Planet to Call Home",
+      "era": "current",
+      "status": "working",
+      "orderApproved": false,
+      "baselineTrackOrder": ["return-address", "open-carrier", "crosses-inna-di-cosmos", "ophira", "the-alien-within", "lost-in-space", "no-planet-to-call-home-track", "signal-source-withheld", "remember-the-road"],
+      "coverRef": {
+        "rootId": "dreadnauts",
+        "relativePath": "Website/src/assets/images/album/no-planet-to-call-home-cover.png"
+      },
+      "tracks": [
+        { "id": "return-address", "title": "Return Address", "decisionStatus": "undecided", "masterCandidateId": "", "auditionCandidateId": "1A", "notes": "", "candidates": [
+          { "id": "1A", "label": "Candidate 1A", "sourceRef": { "rootId": "dreadnauts", "relativePath": "SONGS/Audio/Return Address.mp3" }, "flags": [] },
+          { "id": "1B", "label": "Candidate 1B", "sourceRef": { "rootId": "dreadnauts", "relativePath": "SONGS/Audio/Return Address (1).mp3" }, "flags": [] },
+          { "id": "1C", "label": "Candidate 1C", "sourceRef": { "rootId": "dreadnauts", "relativePath": "SONGS/Audio/Return Address (2).mp3" }, "flags": [] }
+        ] },
+        { "id": "open-carrier", "title": "Open Carrier", "decisionStatus": "undecided", "masterCandidateId": "", "auditionCandidateId": "2A", "notes": "", "candidates": [
+          { "id": "2A", "label": "Candidate 2A", "sourceRef": { "rootId": "dreadnauts", "relativePath": "SONGS/Audio/OPEN CARRIER.mp3" }, "flags": [] },
+          { "id": "2B", "label": "Candidate 2B", "sourceRef": { "rootId": "dreadnauts", "relativePath": "SONGS/Audio/OPEN CARRIER (1).mp3" }, "flags": [] }
+        ] },
+        { "id": "crosses-inna-di-cosmos", "title": "Crosses Inna Di Cosmos", "decisionStatus": "undecided", "masterCandidateId": "", "auditionCandidateId": "3A", "notes": "", "candidates": [
+          { "id": "3A", "label": "Candidate 3A", "sourceRef": { "rootId": "dreadnauts", "relativePath": "SONGS/Audio/Wi Deh Yah (Void Transmission) 3.mp3" }, "flags": [] },
+          { "id": "3A-copy", "label": "Candidate 3A copy", "sourceRef": { "rootId": "dreadnauts", "relativePath": "SONGS/Audio/Wi Deh Yah (Void Transmission) 3 (1).mp3" }, "flags": ["Exact duplicate of 3A"] },
+          { "id": "3B", "label": "Candidate 3B", "sourceRef": { "rootId": "dreadnauts", "relativePath": "SONGS/Audio/Wi Deh Yah (Void Transmission) 3 (Lead Vocal).mp3" }, "flags": ["Lead-vocal version"] },
+          { "id": "3C", "label": "Candidate 3C", "sourceRef": { "rootId": "dreadnauts", "relativePath": "SONGS/Audio/Wi Deh Yah (Void Transmission) 3 (Without Lead Vocal) (Without No Lead Vocal).mp3" }, "flags": ["Conflicting filename labels"] },
+          { "id": "3D", "label": "Candidate 3D", "sourceRef": { "rootId": "dreadnauts", "relativePath": "SONGS/Audio/Wi Deh Yah (Void Transmission) 3 x Untitled (Mashup).mp3" }, "flags": ["Mashup candidate"] }
+        ] },
+        { "id": "ophira", "title": "Ophira", "decisionStatus": "undecided", "masterCandidateId": "", "auditionCandidateId": "4A", "notes": "", "candidates": [
+          { "id": "4A", "label": "Candidate 4A", "sourceRef": { "rootId": "dreadnauts", "relativePath": "SONGS/Audio/Ophira.mp3" }, "flags": ["Approve or replace"] }
+        ] },
+        { "id": "the-alien-within", "title": "The Alien Within", "decisionStatus": "undecided", "masterCandidateId": "", "auditionCandidateId": "5A", "notes": "", "candidates": [
+          { "id": "5A", "label": "Candidate 5A", "sourceRef": { "rootId": "dreadnauts", "relativePath": "SONGS/Audio/The Alien Within (less).mp3" }, "flags": ["Current video timing source"] },
+          { "id": "5B", "label": "Candidate 5B", "sourceRef": { "rootId": "dreadnauts", "relativePath": "SONGS/Audio/The Alien Within (Lo‑Fi Drift).mp3" }, "flags": ["Lo-Fi Drift version"] }
+        ] },
+        { "id": "lost-in-space", "title": "Lost in Space", "decisionStatus": "undecided", "masterCandidateId": "", "auditionCandidateId": "6A", "notes": "", "candidates": [
+          { "id": "6A", "label": "Candidate 6A", "sourceRef": { "rootId": "dreadnauts", "relativePath": "SONGS/Audio/Lost in Space.mp3" }, "flags": [] },
+          { "id": "6B", "label": "Candidate 6B", "sourceRef": { "rootId": "dreadnauts", "relativePath": "SONGS/Audio/Lost in Space (weirder).mp3" }, "flags": ["Weirder version"] }
+        ] },
+        { "id": "no-planet-to-call-home-track", "title": "No Planet to Call Home", "decisionStatus": "missing", "masterCandidateId": "", "auditionCandidateId": "", "notes": "Title-track audio missing.", "candidates": [] },
+        { "id": "signal-source-withheld", "title": "[SIGNAL SOURCE WITHHELD]", "privacy": "protected", "decisionStatus": "undecided", "masterCandidateId": "", "auditionCandidateId": "8A", "notes": "Keep title and filenames private before the approved reveal.", "candidates": [
+          { "id": "8A", "label": "Private candidate A", "sourceRef": { "privateSourceId": "album2-protected-a" }, "flags": ["Protected before release"] },
+          { "id": "8B", "label": "Private candidate B", "sourceRef": { "privateSourceId": "album2-protected-b" }, "flags": ["Protected before release"] }
+        ] },
+        { "id": "remember-the-road", "title": "Remember the Road", "decisionStatus": "legacy", "masterCandidateId": "", "auditionCandidateId": "9A", "notes": "Only source is marked old.", "candidates": [
+          { "id": "9A", "label": "Legacy candidate 9A", "sourceRef": { "rootId": "dreadnauts", "relativePath": "SONGS/Audio/Remember the Road = old (1).mp3" }, "flags": ["Only candidate", "Filename marked old"] }
+        ] }
+      ]
+    },
+    {
+      "id": "untitled-future-album",
+      "artist": "The Dreadnauts",
+      "title": "Untitled Album",
+      "era": "future",
+      "status": "empty",
+      "orderApproved": false,
+      "baselineTrackOrder": [],
+      "tracks": []
+    }
+  ]
+}

@@ -1,0 +1,132 @@
+# Project Sequencer Architecture
+
+Project Sequencer is a local-first album sequencing and source-review tool. It
+owns project decisions and non-destructive edit instructions. It does not own,
+move, rewrite, or publish the audio and visual files it indexes.
+
+## System shape
+
+```text
+React workspace
+  | JSON API, same origin only
+  v
+Local Node server (127.0.0.1)
+  |-- project state store ------> ignored data/sequencer-state.json
+  |-- configuration store -----> ignored config/sequencer.local.json
+  |-- audio index -------------> ignored data/audio-index-cache.json
+  |-- range media service -----> already-indexed source audio (read-only)
+  |-- waveform service --------> compact in-memory peak arrays
+  |-- project asset service ---> configured-root images and lyric text (read-only)
+  `-- audio renderer ----------> ignored exports/YYYY-MM-DD derivatives
+```
+
+The browser never receives an absolute source-audio path. Audio playback,
+waveform analysis, and rendering identify a source through its indexed key.
+Protected sources use an opaque `privateSourceId`; their original filename and
+relative path are removed before library data reaches the browser.
+
+## Core invariants
+
+Every feature must preserve these rules:
+
+1. Indexed source media is read-only. No sequencing action may rename, move,
+   copy, delete, normalize, transcode, or overwrite it.
+2. Album order, audition source, master candidate, disposition, and order
+   approval are separate fields and separate decisions.
+3. A track removed from the working sequence remains a complete track record.
+   Deleting that record is a distinct, explicitly confirmed action.
+4. Trims, fades, gaps, and crossfades are instructions. A print creates a new
+   derivative below `exports/`; it never writes to a source location.
+5. A media request is valid only when its key is present in the current index.
+6. Project assets must resolve inside a configured folder after symlinks are
+   resolved. State stores only a configured-root ID and relative path.
+7. Waveform analysis returns compact peak data, keeps its cache in memory, and
+   never writes a sidecar beside audio.
+8. Machine-specific source paths belong only in ignored local configuration or
+   `PROJECT_SEQUENCER_AUDIO_PATHS`.
+
+## Server modules
+
+| Module | Responsibility |
+| --- | --- |
+| `server/index.mjs` | Process startup, API routing, static delivery, and composition of server services |
+| `server/config-store.mjs` | Merge portable/local/environment configuration and atomically register or disconnect sources |
+| `server/audio-library.mjs` | Recursively discover supported audio, probe metadata, and maintain the rebuildable cache |
+| `server/state-store.mjs` | Validate schema version 1 and serialize atomic state writes |
+| `server/http-utils.mjs` | Byte-range parsing, local Host/Origin guards, and response security headers |
+| `server/waveform.mjs` | Bound FFmpeg analysis and maintain an in-memory LRU-style waveform cache |
+| `server/audio-renderer.mjs` | Normalize edit instructions, build FFmpeg graphs, and create documented derivatives |
+| `server/project-assets.mjs` | Convert selected images/lyrics into safe configured-root references |
+| `server/native-picker.mjs` | Register paths selected by the native macOS picker without copying files |
+
+The state and configuration stores serialize writes before replacing their
+target file. This prevents overlapping requests from sharing a temporary write
+at the same time. Server state validation rejects duplicate IDs, unsafe relative
+paths, ambiguous source references, stale candidate choices, and invalid
+baseline order references before disk state changes.
+
+## Client modules
+
+| Area | Responsibility |
+| --- | --- |
+| `src/App.jsx` | Compose workspaces and coordinate cross-workspace actions |
+| `src/hooks/useProjectData.js` | Bootstrap state/library data, serialize autosaves, rescan sources, and manage imports |
+| `src/hooks/useTransport.js` | Preview individual sources, queue album playback, and recover from media errors |
+| `src/hooks/useAppearance.js` | Resolve and apply persisted display preferences |
+| `src/components/*Workspace.jsx` | Own one user workflow and its local interaction state |
+| `src/lib/*.js` | Pure album, import, sequence, formatting, appearance, and mastering rules |
+
+Autosave uses a short debounce for editing comfort, then puts each snapshot on a
+single promise chain. A later save cannot be overtaken by an earlier request.
+When the page is being left, an unsaved final snapshot is sent through the
+same-origin state endpoint with `sendBeacon`. Imported JSON is validated and
+persisted by the server before it replaces the open client state.
+
+## HTTP and local security boundary
+
+The default server binds to `127.0.0.1`. It accepts only the configured local
+Host and port, and state-changing browser requests must have a matching Origin.
+This limits DNS-rebinding and cross-site request risks against the local API.
+Responses deny framing, disable MIME sniffing, use a same-origin resource
+policy, and apply a restrictive content security policy. User-supplied SVG
+assets receive an additional sandbox policy.
+
+Audio delivery supports single HTTP byte ranges, including suffix ranges used
+by media clients. Malformed, multiple, reversed, and out-of-bounds ranges return
+`416` instead of falling back to an unintended full response.
+
+## State lifecycle and recovery
+
+- `data/seed-state.json` is portable initial state and must remain free of
+  machine-specific paths.
+- `data/sequencer-state.json` is the ignored, mutable project record.
+- Every normal edit shows `Changes pending`, `Saving changes`, or `Saved locally`
+  in a live status region.
+- A failed save leaves the open client state intact and shows a recoverable
+  warning. Export Project JSON before large catalog changes.
+- Invalid imported JSON never replaces the open project.
+- `data/audio-index-cache.json` can be deleted and rebuilt; it is not authority
+  for album decisions.
+
+## Adding a feature safely
+
+1. Put domain rules in a pure `src/lib` module when they can be independent of
+   React or the filesystem.
+2. Add server behavior through a narrow service that receives indexed records,
+   not arbitrary browser-supplied absolute paths.
+3. Extend state validation before adding new persisted fields. Introduce a new
+   schema version and migration for incompatible changes.
+4. Keep source selection, sequencing, approval, and printing explicit in the
+   UI; do not collapse them into one overloaded status.
+5. Add unit coverage for boundaries and run the rendered workflow in the
+   in-app browser at desktop and mobile sizes.
+6. For mastering changes, run at least one short FFmpeg print and inspect the
+   derivative, cue sheet, and manifest together.
+
+## Architectural pressure points
+
+`src/App.jsx`, `server/index.mjs`, and `src/styles.css` are the current
+composition hubs. They are understandable at the present scale, but new feature
+families should extract routing/controllers, project commands, and workspace
+style layers instead of growing these files indefinitely. The prioritized plan
+is maintained in [QUALITY-REVIEW-AND-ROADMAP.md](./QUALITY-REVIEW-AND-ROADMAP.md).

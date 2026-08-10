@@ -1,0 +1,23 @@
+{
+  "audioRoots": [
+    {
+      "id": "music-library",
+      "label": "Music Library",
+      "path": "/absolute/path/to/your/music"
+    }
+  ],
+  "audioFiles": [
+    {
+      "id": "single-master",
+      "label": "Single Master",
+      "path": "/absolute/path/to/audio/master.wav"
+    }
+  ],
+  "privateSourceAliases": [
+    {
+      "id": "private-track-a",
+      "rootId": "music-library",
+      "relativePath": "Private/Source A.wav"
+    }
+  ]
+}
