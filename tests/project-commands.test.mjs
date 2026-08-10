@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { addAlbum, addBlankTrack, addTracksFromFiles, restoreBaselineOrder, selectAlbum, setTrackInSequence, updateAlbum } from "../src/lib/project-commands.js";
+import { addAlbum, addBlankTrack, addTracksFromFiles, deleteTrackRecord, restoreBaselineOrder, selectAlbum, setTrackInSequence, updateAlbum } from "../src/lib/project-commands.js";
 
 const project = () => ({
   activeAlbumId: "one",
@@ -23,7 +23,18 @@ test("album and blank-track commands create unique stable ids", () => {
   assert.equal(first, "one-2");
   const album = state.albums[0];
   assert.equal(addBlankTrack(album, "A"), "a-2");
+  assert.equal(album.tracks.at(-1).humanApproved, false);
   assert.equal(album.baselineTrackOrder.at(-1), "a-2");
+  assert.equal(album.orderApproved, false);
+});
+
+test("deleting a track record removes stale version and transition references", () => {
+  const album = project().albums[0];
+  album.sequenceVersions = [{ id: "version", name: "Version", trackOrder: ["a", "b"] }];
+  album.transitionNotebook = [{ id: "a--b", fromTrackId: "a", toTrackId: "b" }];
+  assert.equal(deleteTrackRecord(album, "a"), true);
+  assert.deepEqual(album.sequenceVersions[0].trackOrder, ["b"]);
+  assert.deepEqual(album.transitionNotebook, []);
   assert.equal(album.orderApproved, false);
 });
 

@@ -104,4 +104,38 @@ test("cancelling a real FFmpeg print removes its partial derivative directory", 
   }), /cancelled/i);
   const remaining = await readdir(outputRoot, { recursive: true });
   assert.equal(remaining.some((name) => /\.(?:part\.)?(?:wav|mp3|json|txt)$/.test(name)), false);
-}); 
+});
+
+test("comparison previews create labeled loudness-matched derivatives without changing candidates", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "project-sequencer-comparison-"));
+  const sourcePath = path.join(root, "quiet.wav");
+  await generateSineWave(sourcePath, { duration: 0.6, frequency: 260 });
+  const before = await checksum(sourcePath);
+  const album = {
+    id: "comparison-album",
+    artist: "Fixture Artist",
+    title: "Comparison Fixture",
+    tracks: [{
+      id: "song",
+      title: "Song",
+      auditionCandidateId: "source-a",
+      masterCandidateId: "source-a",
+      candidates: [{ id: "source-a", sourceRef: { rootId: "fixture", relativePath: "quiet.wav" } }],
+    }],
+  };
+  const result = await renderAudio({
+    album,
+    scope: "comparison",
+    trackId: "song",
+    candidateId: "source-a",
+    format: "mp3",
+    getLibraryFile: () => ({ absolutePath: sourcePath, duration: 0.6 }),
+    outputRoot: path.join(root, "exports"),
+  });
+  const probe = await probeAudio(result.audioPath);
+  assert.equal(probe.streams[0].codec_name, "mp3");
+  assert.equal(result.derivativeLabel, "Loudness-matched preview derivative");
+  assert.equal(result.cuePath, "");
+  assert.equal(await checksum(sourcePath), before);
+  assert.equal(album.tracks[0].masterCandidateId, "source-a");
+});

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { AlbumRail } from "./components/AlbumRail.jsx";
+import { AlbumDecisionsWorkspace } from "./components/AlbumDecisionsWorkspace.jsx";
 import { AppHeader } from "./components/AppHeader.jsx";
 import { AssetWorkspace } from "./components/AssetWorkspace.jsx";
 import { AudioExportForm } from "./components/AudioExportForm.jsx";
@@ -18,6 +19,7 @@ import { formatDuration, slugify } from "./lib/format.js";
 import { buildImportedTracks } from "./lib/import-tracks.js";
 import { api, sourceKey } from "./lib/api.js";
 import { sequenceTracks } from "./lib/sequence-tracks.js";
+import { createAlbumFromTemplate, saveAlbumTemplate } from "./lib/album-decisions.js";
 import {
   addAlbum as addAlbumCommand,
   addBlankTrack,
@@ -141,6 +143,7 @@ export default function App() {
   const [renderingAudio, setRenderingAudio] = useState(false);
   const [previewingTrackId, setPreviewingTrackId] = useState("");
   const [transitioningTrackId, setTransitioningTrackId] = useState("");
+  const [previewingDecision, setPreviewingDecision] = useState("");
   const [renameAlbumId, setRenameAlbumId] = useState("");
   const [albumsCollapsed, setAlbumsCollapsed] = useState(false);
   const [layoutPreviewCollapsed, setLayoutPreviewCollapsed] = useState(false);
@@ -289,6 +292,53 @@ export default function App() {
     }
   };
 
+  const previewTransitionVariant = async (pair, name, variant) => {
+    const previewAlbum = structuredClone(activeAlbum);
+    const fromTrack = previewAlbum.tracks.find((track) => track.id === pair.from.id);
+    if (!fromTrack) return;
+    fromTrack.mastering = {
+      ...(fromTrack.mastering || {}),
+      endMode: variant.endMode,
+      endDuration: variant.duration,
+      gapAfter: variant.endMode === "crossfade" ? 0 : variant.gapAfter,
+    };
+    setPreviewingDecision(`transition-${name}`);
+    project.setError("");
+    try {
+      const result = await api.renderAudio({ album: previewAlbum, scope: "preview", trackId: pair.from.id, format: "mp3", previewPart: "transition" });
+      transport.previewRendered(result.audioUrl, `${pair.from.title} → ${pair.to.title} · Variant ${name}`, { status: `Playing non-destructive transition variant ${name}.` });
+    } catch (reason) {
+      project.setError(reason.message);
+    } finally {
+      setPreviewingDecision("");
+    }
+  };
+
+  const previewComparisonCandidate = async (track, candidate) => {
+    const key = `${track.id}-${candidate.id}`;
+    setPreviewingDecision(key);
+    project.setError("");
+    try {
+      const result = await api.renderAudio({ album: activeAlbum, scope: "comparison", trackId: track.id, candidateId: candidate.id, format: "mp3" });
+      transport.previewRendered(result.audioUrl, `${track.title} · ${candidate.label} · matched derivative`, { status: result.derivativeLabel || "Playing a loudness-matched preview derivative." });
+    } catch (reason) {
+      project.setError(reason.message);
+    } finally {
+      setPreviewingDecision("");
+    }
+  };
+
+  const saveTemplate = (name) => {
+    project.updateState((draft) => { saveAlbumTemplate(draft, activeAlbum, name); });
+    transport.setStatus("Album structure saved as a media-free, approval-free template.");
+  };
+
+  const createFromTemplate = (templateId, title) => {
+    project.updateState((draft) => { createAlbumFromTemplate(draft, templateId, title); });
+    transport.stop(`${title} created from structure only. No media or approvals were copied.`);
+    setActiveView("decisions");
+  };
+
   const openAudioExport = (trackId = "") => {
     setAudioExportTrackId(trackId);
     setAudioRenderResult(null);
@@ -367,6 +417,7 @@ export default function App() {
         {project.error && <div className="error-banner" role="alert"><strong>Project warning</strong><span>{project.error}</span><button type="button" onClick={() => project.setError("")}>Dismiss</button></div>}
         {activeView === "sequence" && <SequenceWorkspace album={activeAlbum} libraryMap={project.libraryMap} revealPrivateFilenames={revealPrivateFilenames} transitioningTrackId={transitioningTrackId} layoutPreviewCollapsed={layoutPreviewCollapsed} onToggleLayoutPreview={() => setLayoutPreviewCollapsed((current) => !current)} onAlbumChange={onAlbumChange} onAddTracks={() => setModal("tracks")} onPlayFrom={(index) => transport.playSequence(sequenceAlbum, index)} onTransition={previewSequenceTransition} onExport={exportSequence} onRemoveFromSequence={removeTrackFromSequence} onRestoreToSequence={restoreTrackToSequence} />}
         {activeView === "review" && <TrackReviewWorkspace album={activeAlbum} libraryMap={project.libraryMap} revealPrivateFilenames={revealPrivateFilenames} onAlbumChange={onAlbumChange} onPreviewFile={transport.previewFile} onOpenLibrary={() => setActiveView("library")} />}
+        {activeView === "decisions" && <AlbumDecisionsWorkspace album={activeAlbum} templates={project.state.albumTemplates || []} libraryMap={project.libraryMap} onAlbumChange={onAlbumChange} onSaveTemplate={saveTemplate} onCreateFromTemplate={createFromTemplate} onPreviewTransition={previewTransitionVariant} onPreviewComparison={previewComparisonCandidate} previewingDecision={previewingDecision} />}
         {activeView === "mastering" && <MasteringWorkspace album={activeAlbum} libraryMap={project.libraryMap} onAlbumChange={onAlbumChange} onPreview={previewMasteringEdit} previewingTrackId={previewingTrackId} onOpenExport={openAudioExport} />}
         {activeView === "assets" && <AssetWorkspace album={activeAlbum} revealPrivateFilenames={revealPrivateFilenames} picking={project.pickingAssets} onAlbumChange={onAlbumChange} onPickAssets={project.chooseProjectAssets} />}
         {activeView === "library" && <AudioLibraryWorkspace state={project.state} activeAlbum={activeAlbum} library={project.library} roots={project.roots} formats={project.formats} revealPrivateFilenames={revealPrivateFilenames} scanning={project.scanning} onRescan={project.rescan} onPreviewFile={transport.previewFile} onAlbumChangeById={onAlbumChangeById} onImportFiles={() => chooseTrackSources("files")} onImportFolder={() => chooseTrackSources("folder")} />}

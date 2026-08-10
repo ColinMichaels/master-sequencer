@@ -15,7 +15,7 @@ test.beforeEach(async ({ request, page }) => {
 
 test("bootstrap renders the project and protected sources remain masked", async ({ page, request }) => {
   const bootstrap = await (await request.get("/api/bootstrap")).json();
-  expect(bootstrap.state.schemaVersion).toBe(2);
+  expect(bootstrap.state.schemaVersion).toBe(3);
   expect(bootstrap.library).toHaveLength(4);
   expect(bootstrap.library.some((file) => file.name === "Hidden Coda.wav")).toBeFalsy();
   expect(bootstrap.library.some((file) => file.name === "[Private source file]")).toBeTruthy();
@@ -81,11 +81,46 @@ test("library filters are functional and primary workspaces do not overflow a ph
   await expect(rows.first()).toContainText("Alternate Mix.mp3");
 
   await page.setViewportSize({ width: 390, height: 844 });
-  for (const view of ["Sequence", "Track Review", "Mastering", "Assets", "Audio Library", "Settings"]) {
+  for (const view of ["Sequence", "Track Review", "Album Decisions", "Mastering", "Assets", "Audio Library", "Settings"]) {
     await page.getByRole("button", { name: view, exact: true }).click();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflow, `${view} overflowed the 390px viewport`).toBeLessThanOrEqual(1);
   }
+});
+
+test("album decisions persist versions, transition notes, explicit approval, and safe templates", async ({ page, request }) => {
+  await page.getByRole("button", { name: "Album Decisions" }).click();
+  await page.getByLabel("Sequence version name").fill("Opening order");
+  await page.getByRole("button", { name: "Save Current" }).click();
+  await expect(page.locator(".version-list")).toContainText("Opening order");
+  await page.locator(".version-list").getByRole("button", { name: "Duplicate" }).click();
+  await expect(page.locator(".version-list li")).toHaveCount(2);
+
+  await page.getByText("Listening notes").locator("textarea").fill("Hold the decay until the next downbeat.");
+  await page.getByLabel("Marker label").fill("Downbeat");
+  await page.getByLabel("Marker seconds").fill("0.42");
+  await page.getByRole("button", { name: "Marker" }).click();
+  await expect(page.locator(".transition-markers")).toContainText("0.42s");
+  await page.getByLabel("Human approval for Alpha Tone").check();
+
+  await page.getByLabel("Template name").fill("Two-track structure");
+  await page.getByRole("button", { name: "Save Structure" }).click();
+  const templateSelect = page.locator(".template-actions form").nth(1).locator("select");
+  await expect(templateSelect.locator("option")).toHaveCount(2);
+  await templateSelect.selectOption({ label: "Two-track structure" });
+  await page.getByLabel("New album title").fill("Next Fixture");
+  await page.getByRole("button", { name: "Create Empty Album" }).click();
+  await expect(page.getByRole("heading", { name: /Next Fixture.*Album Decisions/ })).toBeVisible();
+  await expect(page.locator(".status-strip [role='status']")).toContainText("Saved locally");
+
+  const bootstrap = await (await request.get("/api/bootstrap")).json();
+  const original = bootstrap.state.albums.find((album) => album.id === "fixture-album");
+  const copy = bootstrap.state.albums.find((album) => album.title === "Next Fixture");
+  expect(original.sequenceVersions).toHaveLength(2);
+  expect(original.transitionNotebook[0].notes).toContain("next downbeat");
+  expect(original.tracks[0].humanApproved).toBe(true);
+  expect(copy.tracks.every((track) => track.candidates.length === 0 && !track.humanApproved)).toBe(true);
+  expect(copy.orderApproved).toBe(false);
 });
 
 test("a real render job completes with documented range-readable output", async ({ request }) => {

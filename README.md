@@ -53,7 +53,13 @@ npm start
   record, restore unsequenced tracks, review the live back-cover layout, reset
   to the baseline order, and export a Markdown sequence.
 - **Track Review:** compare every candidate, play sources, record notes, choose
-  a master candidate, and set a separate disposition.
+  a master candidate, set a separate disposition, and explicitly queue sources
+  for loudness-matched derivative previews without changing either choice.
+- **Album Decisions:** name, duplicate, compare, and restore sequence versions;
+  keep notes, markers, and A/B settings for every adjacent transition; inspect
+  eight independent readiness gates; audition clearly labeled loudness-matched
+  comparison derivatives; and create reusable album structures that carry no
+  media or approvals.
 - **Mastering:** read the real source waveform, drag or keyboard-adjust
   accessible start/end markers, see trimmed, kept, fade, and crossfade regions,
   and retain next-track context while sequencing. Set non-destructive opening

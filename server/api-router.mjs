@@ -18,6 +18,7 @@ const resultPayload = (result) => result ? {
   outputDirectory: result.outputDirectory,
   warnings: result.warnings,
   recovered: Boolean(result.recovered),
+  derivativeLabel: result.derivativeLabel || "",
   audioUrl: `/api/renders/file?id=${encodeURIComponent(result.id)}&kind=audio`,
   cueUrl: result.cuePath ? `/api/renders/file?id=${encodeURIComponent(result.id)}&kind=cue` : "",
   manifestUrl: result.manifestPath ? `/api/renders/file?id=${encodeURIComponent(result.id)}&kind=manifest` : "",

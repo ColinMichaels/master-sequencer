@@ -6,7 +6,8 @@ import test from "node:test";
 import { createStateStore, migrateState, validateState } from "../server/state-store.mjs";
 
 const seed = {
-  schemaVersion: 2,
+  schemaVersion: 3,
+  albumTemplates: [],
   activeAlbumId: "album",
   settings: { revealPrivateFilenames: false },
   albums: [{ id: "album", title: "Album", tracks: [{ id: "track", title: "Track", candidates: [] }] }],
@@ -36,9 +37,11 @@ test("version 1 project state migrates to the current schema without changing al
   const legacy = structuredClone(seed);
   legacy.schemaVersion = 1;
   const migrated = migrateState(legacy);
-  assert.equal(migrated.schemaVersion, 2);
+  assert.equal(migrated.schemaVersion, 3);
+  assert.deepEqual(migrated.albumTemplates, []);
+  assert.deepEqual(migrated.albums[0].sequenceVersions, []);
   assert.equal(migrated.activeAlbumId, legacy.activeAlbumId);
-  assert.deepEqual(migrated.albums, legacy.albums);
+  assert.deepEqual(migrated.albums.map(({ sequenceVersions, transitionNotebook, ...album }) => album), legacy.albums);
 });
 
 test("future project-state versions are rejected without guessing", () => {

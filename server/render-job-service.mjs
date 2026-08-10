@@ -173,7 +173,7 @@ export const createRenderJobService = ({
       const job = {
         id,
         scope: details.scope,
-        format: details.scope === "preview" ? "mp3" : details.format,
+        format: ["preview", "comparison"].includes(details.scope) ? "mp3" : details.format,
         status: "queued",
         phase: "queued",
         progress: 0,

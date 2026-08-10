@@ -5,6 +5,7 @@ import { ScreenControls } from "./ScreenControls.jsx";
 const navItems = [
   ["sequence", "Sequence", SequenceIcon],
   ["review", "Track Review", ReviewIcon],
+  ["decisions", "Album Decisions", CheckIcon],
   ["mastering", "Mastering", ScissorsIcon],
   ["assets", "Assets", ImageIcon],
   ["library", "Audio Library", MusicIcon],

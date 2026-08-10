@@ -1,5 +1,6 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
+  "albumTemplates": [],
   "activeAlbumId": "no-planet-to-call-home",
   "settings": {
     "revealPrivateFilenames": false,
