@@ -105,7 +105,7 @@ export const createStateStore = ({
   const updateProjectRecord = (projectId, state, updatedAt = new Date().toISOString()) => {
     const record = projectIndex.projects.find((project) => project.id === projectId);
     if (!record) throw new Error("The active saved project is missing from the index.");
-    Object.assign(record, projectSummary(state), { updatedAt });
+    Object.assign(record, projectSummary(state), { updatedAt: updatedAt || record.updatedAt || new Date().toISOString() });
     return record;
   };
 
@@ -119,7 +119,8 @@ export const createStateStore = ({
     await mkdir(projectsRoot, { recursive: true });
     try {
       projectIndex = validateProjectIndex(await readJson(projectsIndexPath));
-    } catch {
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
       const now = new Date().toISOString();
       const id = randomUUID();
       projectIndex = {

@@ -82,5 +82,8 @@ test("album templates copy structure and mastering instructions without media or
   assert.deepEqual(copy.tracks[0].candidates, []);
   assert.equal(copy.tracks[0].humanApproved, false);
   assert.equal(copy.orderApproved, false);
+  assert.equal(copy.masterBus.bypass, false);
+  assert.equal(copy.masterBus.eq.enabled, false);
+  assert.equal(copy.masterBus.compressor.enabled, false);
   assert.equal(copy.coverRef, undefined);
 });

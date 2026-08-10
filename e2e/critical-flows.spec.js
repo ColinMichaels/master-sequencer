@@ -96,6 +96,39 @@ test("project setup owns the artist used by layouts and new albums", async ({ pa
   expect(bootstrap.state.albums.every((album) => album.artist === "Open Orbit Ensemble")).toBeTruthy();
 });
 
+test("a fresh project saves the old project, can load it again, and albums can be deleted", async ({ page }) => {
+  await page.getByRole("button", { name: "New Project", exact: true }).click();
+  const fresh = page.getByRole("dialog", { name: "Start a Fresh Project" });
+  await fresh.getByLabel("Project name").fill("Fresh Project QA");
+  await fresh.getByLabel("Artist name").fill("Fresh Artist");
+  await fresh.getByLabel("First album title").fill("Clean Slate");
+  await fresh.getByLabel("Album era").selectOption("current");
+  await fresh.getByRole("button", { name: "Start Fresh Project" }).click();
+
+  await expect(page.getByRole("heading", { name: /Clean Slate.*Working Sequence/ })).toBeVisible();
+  await expect(page.getByText("This album is ready for its first track.")).toBeVisible();
+  await expect(page.locator(".status-strip [role='status']")).toContainText("New project created");
+
+  await page.getByRole("button", { name: /Current project Fresh Project QA/ }).click();
+  const saved = page.getByRole("dialog", { name: "Saved Projects" });
+  const oldProject = saved.locator(".saved-project-list li").filter({ hasText: "Fixture Artist — Fixture Album" });
+  await expect(oldProject).toContainText("1 album");
+  await oldProject.getByRole("button", { name: "Load Project" }).click();
+  await expect(page.getByRole("heading", { name: /Fixture Album.*Working Sequence/ })).toBeVisible();
+  await expect(page.getByText("Alpha Tone", { exact: true }).first()).toBeVisible();
+
+  await page.getByRole("button", { name: "Add Album" }).click();
+  await page.getByLabel("Album title").fill("Delete Me");
+  await page.getByRole("button", { name: "Add Album", exact: true }).last().click();
+  await page.getByRole("button", { name: "Delete Delete Me" }).click();
+  const deleteDialog = page.getByRole("dialog", { name: "Delete Album" });
+  await expect(deleteDialog).toContainText("Indexed audio, artwork, lyric files, and rendered exports stay exactly where they are");
+  await deleteDialog.getByRole("button", { name: "Delete Album" }).click();
+  await expect(page.getByRole("heading", { name: /Fixture Album.*Working Sequence/ })).toBeVisible();
+  await expect(page.getByText("Delete Me", { exact: true })).toHaveCount(0);
+  await expect(page.locator(".status-strip [role='status']")).toContainText("Saved locally");
+});
+
 test("an unconfigured installation explains the complete album workflow", async ({ page, request }) => {
   const freshProject = structuredClone(e2eProjectState);
   freshProject.settings.project.setupComplete = false;

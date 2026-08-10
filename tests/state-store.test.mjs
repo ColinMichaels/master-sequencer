@@ -34,6 +34,47 @@ test("state store initializes from seed and writes atomically", async () => {
   assert.equal((await store.read()).albums[0].title, "Updated Album");
 });
 
+test("saved projects preserve the old project when creating and loading a fresh one", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "project-sequencer-projects-"));
+  const seedPath = path.join(root, "seed.json");
+  const statePath = path.join(root, "state.json");
+  const projectsIndexPath = path.join(root, "project-index.json");
+  const projectsRoot = path.join(root, "projects");
+  await writeFile(seedPath, JSON.stringify(seed));
+  const store = createStateStore({ seedPath, statePath, projectsIndexPath, projectsRoot });
+  await store.initialize();
+
+  const originalId = store.activeProjectId();
+  const original = structuredClone(await store.read());
+  original.albums[0].title = "Saved Old Album";
+  await store.write(original);
+
+  const created = await store.createProject({ name: "Fresh Sessions", artistName: "New Artist", firstAlbumTitle: "Clean Slate", era: "current" });
+  assert.notEqual(created.activeProjectId, originalId);
+  assert.equal(created.projects.length, 2);
+  assert.equal(created.state.settings.project.artistName, "New Artist");
+  assert.equal(created.state.albums[0].title, "Clean Slate");
+  assert.equal(created.state.albums[0].tracks.length, 0);
+
+  const loaded = await store.loadProject(originalId);
+  assert.equal(loaded.activeProjectId, originalId);
+  assert.equal(loaded.state.albums[0].title, "Saved Old Album");
+  assert.equal(JSON.parse(await readFile(path.join(projectsRoot, `${originalId}.json`), "utf8")).albums[0].title, "Saved Old Album");
+});
+
+test("a malformed saved-project index is preserved instead of silently replaced", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "project-sequencer-project-index-"));
+  const seedPath = path.join(root, "seed.json");
+  const statePath = path.join(root, "state.json");
+  const projectsIndexPath = path.join(root, "project-index.json");
+  await writeFile(seedPath, JSON.stringify(seed));
+  await writeFile(statePath, JSON.stringify(seed));
+  await writeFile(projectsIndexPath, "{ broken project index");
+  const store = createStateStore({ seedPath, statePath, projectsIndexPath, projectsRoot: path.join(root, "projects") });
+  await assert.rejects(() => store.initialize());
+  assert.equal(await readFile(projectsIndexPath, "utf8"), "{ broken project index");
+});
+
 test("version 1 project state migrates to the current schema without changing album authority", () => {
   const legacy = structuredClone(seed);
   legacy.schemaVersion = 1;

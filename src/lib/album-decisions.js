@@ -1,4 +1,5 @@
 import { slugify } from "./format.js";
+import { normalizeMasterBus } from "./mastering.js";
 import { isTrackSequenced } from "./sequence-tracks.js";
 
 const uniqueId = (base, existingIds) => {
@@ -163,6 +164,7 @@ export const createAlbumFromTemplate = (state, templateId, title) => {
     era: template.era,
     status: "empty",
     orderApproved: false,
+    masterBus: normalizeMasterBus(),
     delivery: { profileId: "", masterApproved: false, readyToPublish: false },
     baselineTrackOrder: tracks.map((track) => track.id),
     sequenceVersions: [],

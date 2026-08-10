@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { addAlbum, addBlankTrack, addTracksFromFiles, deleteTrackRecord, projectArtistName, restoreBaselineOrder, selectAlbum, setTrackInSequence, updateAlbum, updateProjectIdentity } from "../src/lib/project-commands.js";
+import { addAlbum, addBlankTrack, addTracksFromFiles, deleteAlbum, deleteTrackRecord, projectArtistName, restoreBaselineOrder, selectAlbum, setTrackInSequence, updateAlbum, updateProjectIdentity } from "../src/lib/project-commands.js";
 import { normalizeMasterBus } from "../src/lib/mastering.js";
 
 const project = () => ({
@@ -30,6 +30,17 @@ test("album and blank-track commands create unique stable ids", () => {
   assert.equal(album.tracks.at(-1).humanApproved, false);
   assert.equal(album.baselineTrackOrder.at(-1), "a-2");
   assert.equal(album.orderApproved, false);
+});
+
+test("album deletion selects a neighboring album and never removes the final album", () => {
+  const state = project();
+  addAlbum(state, { title: "Two", era: "future" });
+  assert.equal(state.activeAlbumId, "two");
+  assert.equal(deleteAlbum(state, "two"), true);
+  assert.equal(state.activeAlbumId, "one");
+  assert.deepEqual(state.albums.map((album) => album.id), ["one"]);
+  assert.equal(deleteAlbum(state, "one"), false);
+  assert.deepEqual(state.albums.map((album) => album.id), ["one"]);
 });
 
 test("project identity is authoritative for existing layouts and future albums", () => {
