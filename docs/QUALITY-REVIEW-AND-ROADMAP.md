@@ -67,15 +67,15 @@ risk reduction and user value rather than feature count.
 | --- | --- | --- |
 | Source preservation | Strong | Indexed media is only read; derivatives use ignored export folders |
 | State durability | Strong | Serialized client/server writes, atomic replace, page-exit flush |
-| State integrity | Strong | Schema and reference validation; formal migrations are still future work |
+| State integrity | Strong | Five schema versions, explicit migrations, validation, last-known-good recovery, and bounded undo/redo |
 | Playback | Strong | Indexed-key lookup, real byte ranges, queue error recovery |
 | Waveforms | Strong | Bounded FFmpeg output, compact response, memory-only cache |
-| Render safety | Good | New destination, cue sheet, manifest; cancellation/progress need a job layer |
+| Render safety | Strong | Queued jobs, progress, cancellation, timeout, partial cleanup, restart discovery, cue sheets, and manifests |
 | Privacy | Strong | Opaque protected aliases and default masking; operator can explicitly reveal |
 | Accessibility | Good | Semantic controls, keyboard markers, focus-managed dialogs; automated audits remain |
-| Responsive UI | Good | No horizontal overflow at 390 px in the reviewed primary workflow |
-| Automated coverage | Good | Domain/server unit tests and build; rendered end-to-end tests remain manual |
-| Maintainability | Good | Clear modules and pure helpers; three composition hubs should be split as features grow |
+| Responsive UI | Strong | Automated primary-workspace overflow checks at 390 px plus Browser/IAB inspection |
+| Automated coverage | Strong | Domain/server/FFmpeg tests, production build, and repository-owned rendered workflows |
+| Maintainability | Strong | API routing, schema/migrations, project commands, search, delivery rules, and style layers are separated |
 
 ## Prioritized roadmap
 
@@ -86,7 +86,7 @@ risk reduction and user value rather than feature count.
 | P1 — confidence foundation | Complete | `codex/p1-confidence-foundation` | Repository Playwright coverage, generated-audio FFmpeg integration test, render-job lifecycle, schema migration/recovery, and composition-hub splits |
 | P2 — album decisions | Complete | `codex/p2-album-decisions` | Sequence versions, transition notebook, readiness, comparison previews, and safe templates |
 | P3 — mastering review | Complete | `codex/p3-mastering-review` | Technical analysis, chapter preview, delivery profiles, and render history |
-| P4 — scale and portability | Next | `codex/p4-scale-portability` | Incremental indexing, saved filters, undoable commands, and JSON/checksum bundles |
+| P4 — scale and portability | Complete | `codex/p4-scale-portability` | Incremental indexing, saved filters, undoable commands, and JSON/checksum bundles |
 
 ### P1 — confidence before feature expansion
 
@@ -140,14 +140,18 @@ Completed in the P3 branch:
 
 ### P4 — scale and portability
 
-1. Incremental rescans and optional filesystem watching for very large source
+Completed in the P4 branch:
+
+1. Added metadata-incremental rescans and optional filesystem watching for large source
    libraries, with clear offline/reconnected status.
-2. Search indexing and saved filters once catalog size justifies them.
-3. A command/undo layer for project-state edits, enabling reliable multi-step
+2. Added an indexed catalog search and project-persisted saved filters.
+3. Added a bounded command/undo layer for project-state edits, enabling multi-step
    undo without touching source media.
-4. Optional portable project bundles containing JSON and checksums only. Media
-   copying should be a separate, explicit future product decision, not a side
-   effect of export.
+4. Added optional portable project bundles containing JSON and SHA-256 checksums
+   only. Media copying remains outside export and outside this roadmap.
+
+All four roadmap rounds are implemented on separate cumulative branches. The
+release gate remains the ongoing definition of done for later feature work.
 
 ## Features to reject by default
 

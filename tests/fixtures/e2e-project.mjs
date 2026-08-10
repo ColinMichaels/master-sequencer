@@ -1,7 +1,7 @@
 import { normalizeMasterBus } from "../../src/lib/mastering.js";
 
 export const e2eProjectState = {
-  schemaVersion: 4,
+  schemaVersion: 5,
   albumTemplates: [],
   activeAlbumId: "fixture-album",
   settings: {

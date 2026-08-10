@@ -7,7 +7,7 @@ import { createStateStore, migrateState, validateState } from "../server/state-s
 import { normalizeMasterBus } from "../src/lib/mastering.js";
 
 const seed = {
-  schemaVersion: 4,
+  schemaVersion: 5,
   albumTemplates: [],
   activeAlbumId: "album",
   settings: { project: { artistName: "Test Artist", setupComplete: true }, revealPrivateFilenames: false },
@@ -39,8 +39,9 @@ test("version 1 project state migrates to the current schema without changing al
   legacy.schemaVersion = 1;
   delete legacy.settings.project;
   const migrated = migrateState(legacy);
-  assert.equal(migrated.schemaVersion, 4);
+  assert.equal(migrated.schemaVersion, 5);
   assert.deepEqual(migrated.albumTemplates, []);
+  assert.deepEqual(migrated.settings.librarySavedFilters, []);
   assert.equal(migrated.activeAlbumId, legacy.activeAlbumId);
   assert.deepEqual(migrated.albums[0].tracks, legacy.albums[0].tracks);
   assert.deepEqual(migrated.albums[0].masterBus, normalizeMasterBus());
@@ -56,8 +57,9 @@ test("version 2 project state inherits its artist without interrupting an existi
   legacy.albums[0].artist = "Legacy Ensemble";
   delete legacy.settings.project;
   const migrated = migrateState(legacy);
-  assert.equal(migrated.schemaVersion, 4);
+  assert.equal(migrated.schemaVersion, 5);
   assert.deepEqual(migrated.albumTemplates, []);
+  assert.deepEqual(migrated.settings.librarySavedFilters, []);
   assert.deepEqual(migrated.settings.project, { artistName: "Legacy Ensemble", setupComplete: true });
   assert.deepEqual(migrated.albums[0].tracks, legacy.albums[0].tracks);
   assert.deepEqual(migrated.albums[0].masterBus, normalizeMasterBus());
@@ -71,14 +73,25 @@ test("version 3 project state gains a neutral MASTER bus without changing track 
   legacy.albums[0].tracks[0].masterCandidateId = "";
   legacy.albums[0].tracks[0].auditionCandidateId = "";
   const migrated = migrateState(legacy);
-  assert.equal(migrated.schemaVersion, 4);
+  assert.equal(migrated.schemaVersion, 5);
   assert.deepEqual(migrated.albumTemplates, []);
+  assert.deepEqual(migrated.settings.librarySavedFilters, []);
   assert.deepEqual(migrated.albums[0].masterBus, normalizeMasterBus());
   assert.deepEqual(migrated.albums[0].delivery, { profileId: "", masterApproved: false, readyToPublish: false });
   assert.deepEqual(migrated.albums[0].sequenceVersions, []);
   assert.deepEqual(migrated.albums[0].transitionNotebook, []);
   assert.equal(migrated.albums[0].tracks[0].masterCandidateId, "");
   assert.equal(migrated.albums[0].tracks[0].auditionCandidateId, "");
+});
+
+test("version 4 project state gains neutral saved library filters", () => {
+  const legacy = structuredClone(seed);
+  legacy.schemaVersion = 4;
+  delete legacy.settings.librarySavedFilters;
+  const migrated = migrateState(legacy);
+  assert.equal(migrated.schemaVersion, 5);
+  assert.deepEqual(migrated.settings.librarySavedFilters, []);
+  assert.deepEqual(migrated.albums[0].masterBus, normalizeMasterBus());
 });
 
 test("future project-state versions are rejected without guessing", () => {
@@ -268,4 +281,13 @@ test("state validation keeps delivery profile, master approval, and publish read
   const invalid = structuredClone(valid);
   invalid.albums[0].delivery.profileId = "automatic-publisher";
   assert.throws(() => validateState(invalid), /unsupported delivery profile/);
+});
+
+test("state validation accepts unique saved library filters and rejects malformed entries", () => {
+  const valid = structuredClone(seed);
+  valid.settings.librarySavedFilters = [{ id: "wav", name: "WAV", query: "master", format: "wav", rootId: "all", usageFilter: "all" }];
+  assert.equal(validateState(valid), valid);
+  const invalid = structuredClone(valid);
+  invalid.settings.librarySavedFilters.push({ ...invalid.settings.librarySavedFilters[0] });
+  assert.throws(() => validateState(invalid), /Duplicate saved library filter/);
 });

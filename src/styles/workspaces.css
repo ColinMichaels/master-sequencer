@@ -129,6 +129,10 @@
 .library-heading p { margin: 0; color: var(--bone-muted); font-family: var(--ui); font-size: 0.68rem; }
 .library-filters { display: grid; grid-template-columns: minmax(220px, 1fr) 115px 125px 120px auto; gap: 0.45rem; margin: 0.65rem 0; }
 .library-filters input, .library-filters select { width: 100%; min-height: 38px; border: 1px solid var(--line); border-radius: 0; background: var(--ink); color: var(--bone); font-family: var(--display); font-size: 0.68rem; text-transform: uppercase; }
+.saved-filter-bar { display: grid; grid-template-columns: minmax(180px, 0.7fr) minmax(260px, 1fr) auto; gap: 0.45rem; align-items: end; margin-bottom: 0.65rem; padding: 0.55rem; border: 1px solid var(--line-soft); }
+.saved-filter-bar label { display: grid; gap: 0.25rem; color: var(--bone-muted); font-size: 0.55rem; text-transform: uppercase; }
+.saved-filter-bar form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.45rem; }
+.saved-filter-bar input, .saved-filter-bar select { width: 100%; min-height: 38px; padding: 0.4rem; border: 1px solid var(--line); border-radius: 0; background: var(--ink); color: var(--bone); }
 .search-field { display: flex; align-items: center; gap: 0.45rem; padding: 0 0.55rem; border: 1px solid var(--line); }
 .search-field input { border: 0; outline: 0; }
 .audio-table { height: calc(100% - 82px); min-height: 0; border: 1px solid var(--line); overflow: hidden; }
@@ -156,6 +160,9 @@
 .is-connected { color: var(--lime); }
 .is-offline { color: var(--orange); }
 .source-summary p { margin: 0.55rem 0; color: var(--bone-muted); font-family: var(--ui); font-size: 0.63rem; font-style: italic; }
+.watch-status { display: grid; gap: 0.2rem; padding: 0.55rem; border-left: 3px solid var(--lime); background: rgb(var(--lime-rgb) / 5%); font-style: normal !important; }
+.watch-status strong { color: var(--lime); font-family: var(--display); font-size: 0.62rem; text-transform: uppercase; }
+.watch-status span { color: var(--bone-muted); font-size: 0.56rem; }
 .source-summary-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; margin-bottom: 0.6rem; }
 .scan-summary { display: grid; grid-template-columns: 1fr 1fr; margin: 0.75rem 0; border: 1px solid var(--line); }
 .scan-summary div { display: grid; min-height: 62px; place-items: center; align-content: center; border-right: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); }

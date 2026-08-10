@@ -512,13 +512,24 @@ export default function App() {
     return project.replaceState(nextState);
   };
 
+  const exportPortableBundle = async () => {
+    project.setError("");
+    try {
+      const bundle = await api.portableBundle();
+      downloadText(`${JSON.stringify(bundle, null, 2)}\n`, `project-sequencer-portable-${new Date().toISOString().slice(0, 10)}.json`, "application/json");
+      transport.setStatus("Portable JSON/checksum bundle created. No media was copied.");
+    } catch (reason) {
+      project.setError(reason.message);
+    }
+  };
+
   if (project.loading) return <div className="loading-screen"><span className="loading-wave" /> <strong>Indexing Project Sequencer…</strong><small>Audio stays in its original location.</small></div>;
   if (project.recovery?.required) return <RecoveryWorkspace recovery={project.recovery} error={project.error} onRestore={project.restoreRecovery} />;
   if (!project.state || !activeAlbum) return <div className="loading-screen is-error"><strong>Project Sequencer could not open.</strong><small>{project.error || "No album data was found."}</small></div>;
 
   return (
     <div className={`app-shell ${albumsCollapsed ? "albums-collapsed" : ""}`}>
-      <AppHeader activeView={activeView} onViewChange={setActiveView} album={sequenceAlbum} playableCount={playableCount} approvalCount={approvalCount} appearance={appearance} resolvedMode={resolvedMode} onAppearanceChange={updateAppearance} onOpenAppearance={() => setActiveView("settings")} />
+      <AppHeader activeView={activeView} onViewChange={setActiveView} album={sequenceAlbum} playableCount={playableCount} approvalCount={approvalCount} appearance={appearance} resolvedMode={resolvedMode} onAppearanceChange={updateAppearance} onOpenAppearance={() => setActiveView("settings")} commandHistory={project.commandHistory} />
       <AlbumRail albums={project.state.albums} activeAlbumId={activeAlbum.id} currentProject={currentProject} collapsed={albumsCollapsed} projectBusy={project.projectOperation} onToggle={() => setAlbumsCollapsed((current) => !current)} onSelectAlbum={selectAlbum} onAddAlbum={() => setModal("album")} onRenameAlbum={openRenameAlbum} onDeleteAlbum={openDeleteAlbum} onOpenProjects={() => setModal("projects")} onNewProject={() => setModal("new-project")} />
       <div className="content-shell">
         {project.error && <div className="error-banner" role="alert"><strong>Project warning</strong><span>{project.error}</span><button type="button" onClick={() => project.setError("")}>Dismiss</button></div>}
@@ -527,8 +538,8 @@ export default function App() {
         {activeView === "decisions" && <AlbumDecisionsWorkspace album={activeAlbum} templates={project.state.albumTemplates || []} libraryMap={project.libraryMap} onAlbumChange={onAlbumChange} onSaveTemplate={saveTemplate} onCreateFromTemplate={createFromTemplate} onPreviewTransition={previewTransitionVariant} onPreviewComparison={previewComparisonCandidate} previewingDecision={previewingDecision} />}
         {activeView === "mastering" && <MasteringWorkspace album={activeAlbum} libraryMap={project.libraryMap} onAlbumChange={onAlbumChange} onPreview={previewMasteringEdit} previewingTrackId={previewingTrackId} onOpenExport={openAudioExport} onTrackFocus={setMasteringTrackId} onPreviewChapter={(index) => transport.previewChapter(sequenceAlbum, index)} />}
         {activeView === "assets" && <AssetWorkspace album={activeAlbum} revealPrivateFilenames={revealPrivateFilenames} picking={project.pickingAssets} onAlbumChange={onAlbumChange} onPickAssets={project.chooseProjectAssets} />}
-        {activeView === "library" && <AudioLibraryWorkspace state={project.state} activeAlbum={activeAlbum} library={project.library} roots={project.roots} formats={project.formats} revealPrivateFilenames={revealPrivateFilenames} scanning={project.scanning} onRescan={project.rescan} onPreviewFile={transport.previewFile} onAlbumChangeById={onAlbumChangeById} onImportFiles={() => chooseTrackSources("files")} onImportFolder={() => chooseTrackSources("folder")} />}
-        {activeView === "settings" && <SettingsWorkspace state={project.state} roots={project.roots} scanning={project.scanning} projectArtistName={configuredArtistName} currentProject={currentProject} projects={project.projects} projectBusy={project.projectOperation} revealPrivateFilenames={revealPrivateFilenames} appearance={appearance} resolvedMode={resolvedMode} onProjectIdentityChange={saveProjectIdentity} onAppearanceChange={updateAppearance} onTogglePrivate={(checked) => project.updateState((draft) => { draft.settings ||= {}; draft.settings.revealPrivateFilenames = checked; })} onAddRoot={project.addRoot} onRemoveRoot={project.removeRoot} onChooseSources={project.chooseSources} onRescan={project.rescan} onImportState={importState} onOpenProjects={() => setModal("projects")} onNewProject={() => setModal("new-project")} />}
+        {activeView === "library" && <AudioLibraryWorkspace state={project.state} activeAlbum={activeAlbum} library={project.library} roots={project.roots} formats={project.formats} scan={project.scan} watching={project.watching} revealPrivateFilenames={revealPrivateFilenames} scanning={project.scanning} onRescan={project.rescan} onPreviewFile={transport.previewFile} onProjectChange={project.updateState} onAlbumChangeById={onAlbumChangeById} onImportFiles={() => chooseTrackSources("files")} onImportFolder={() => chooseTrackSources("folder")} />}
+        {activeView === "settings" && <SettingsWorkspace state={project.state} roots={project.roots} scan={project.scan} watching={project.watching} scanning={project.scanning} projectArtistName={configuredArtistName} currentProject={currentProject} projects={project.projects} projectBusy={project.projectOperation} revealPrivateFilenames={revealPrivateFilenames} appearance={appearance} resolvedMode={resolvedMode} onProjectIdentityChange={saveProjectIdentity} onAppearanceChange={updateAppearance} onTogglePrivate={(checked) => project.updateState((draft) => { draft.settings ||= {}; draft.settings.revealPrivateFilenames = checked; })} onAddRoot={project.addRoot} onRemoveRoot={project.removeRoot} onChooseSources={project.chooseSources} onRescan={project.rescan} onImportState={importState} onOpenProjects={() => setModal("projects")} onNewProject={() => setModal("new-project")} onExportBundle={exportPortableBundle} />}
       </div>
       <TransportBar audioRef={transport.audioRef} audioHandlers={transport.audioHandlers} current={transport.current} status={transport.status} activeAlbum={sequenceAlbum} visual={transportVisual} playing={transport.playing} currentTime={transport.currentTime} mediaDuration={transport.mediaDuration} resetArmed={resetArmed} onTogglePlayback={transport.togglePlayback} onSeek={transport.seek} onPlaySequence={() => transport.playSequence(sequenceAlbum)} onResetOrder={resetOrder} onExport={exportSequence} />
       <div className="status-strip"><span role="status" aria-live="polite">{project.saveStatus}</span><span>{project.library.length} audio files indexed · {project.roots.length} configured path{project.roots.length === 1 ? "" : "s"}</span><strong>Local mode</strong></div>

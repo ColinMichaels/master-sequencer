@@ -15,7 +15,7 @@ test.beforeEach(async ({ request, page }) => {
 
 test("bootstrap renders the project and protected sources remain masked", async ({ page, request }) => {
   const bootstrap = await (await request.get("/api/bootstrap")).json();
-  expect(bootstrap.state.schemaVersion).toBe(4);
+  expect(bootstrap.state.schemaVersion).toBe(5);
   expect(bootstrap.library).toHaveLength(4);
   expect(bootstrap.library.some((file) => file.name === "Hidden Coda.wav")).toBeFalsy();
   expect(bootstrap.library.some((file) => file.name === "[Private source file]")).toBeTruthy();
@@ -220,6 +220,41 @@ test("mastering analysis, chapter cues, and delivery authority remain explicit",
   await expect(page.getByText("Archive WAV", { exact: true })).toBeVisible();
   await expect(page.getByRole("radio", { name: /MP3 for Review/ })).toBeDisabled();
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
+});
+
+test("incremental search, saved filters, undo, and portable checksums stay local and non-destructive", async ({ page, request }) => {
+  const titles = page.locator(".sequence-track .track-title strong");
+  await page.getByRole("button", { name: "Move Alpha Tone down" }).click();
+  await page.getByRole("button", { name: "Undo Project edit" }).click();
+  await expect(titles).toHaveText(["Alpha Tone", "[SIGNAL SOURCE WITHHELD]"]);
+  await page.getByRole("button", { name: "Redo Project edit" }).click();
+  await expect(titles).toHaveText(["[SIGNAL SOURCE WITHHELD]", "Alpha Tone"]);
+
+  await page.getByRole("button", { name: "Audio Library" }).click();
+  await page.getByPlaceholder("Search files").fill("alternate");
+  await page.getByLabel("Filter by format").selectOption("mp3");
+  await page.getByLabel("Saved filter name").fill("Alternate MP3");
+  await page.locator(".saved-filter-bar").getByRole("button", { name: "Save Current" }).click();
+  const savedFilterSelect = page.locator(".saved-filter-bar > label select");
+  await expect(savedFilterSelect.locator("option")).toHaveCount(2);
+  await page.getByPlaceholder("Search files").fill("");
+  await page.getByLabel("Filter by format").selectOption("all");
+  await savedFilterSelect.selectOption({ label: "Alternate MP3" });
+  await expect(page.getByPlaceholder("Search files")).toHaveValue("alternate");
+  await expect(page.getByLabel("Filter by format")).toHaveValue("mp3");
+
+  const rescan = await (await request.post("/api/rescan", { headers: { Origin: origin } })).json();
+  expect(rescan.scan.mode).toBe("incremental");
+  expect(rescan.scan.reusedMetadata).toBe(4);
+  expect(rescan.roots[0].connectionState).toBe("connected");
+
+  await expect(page.locator(".status-strip [role='status']")).toContainText("Saved locally");
+  const bundle = await (await request.get("/api/project-bundle")).json();
+  expect(bundle.mediaIncluded).toBe(false);
+  expect(bundle.kind).toContain("json-checksum-bundle");
+  expect(bundle.sources.filter((source) => source.status === "verified").every((source) => /^[a-f0-9]{64}$/.test(source.sha256))).toBe(true);
+  expect(JSON.stringify(bundle)).not.toContain("/private/tmp/");
+  expect(bundle.project.settings.librarySavedFilters[0].name).toBe("Alternate MP3");
 });
 
 test("a real render job completes with documented range-readable output and appears in history", async ({ page, request }) => {

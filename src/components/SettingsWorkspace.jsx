@@ -3,7 +3,7 @@ import { FolderIcon, LockIcon, MusicIcon, PlusIcon, RefreshIcon, TrashIcon } fro
 import { AppearanceSettings } from "./AppearanceSettings.jsx";
 import { ProjectIdentityForm } from "./ProjectIdentityForm.jsx";
 
-export function SettingsWorkspace({ state, roots, scanning, projectArtistName, currentProject, projects, projectBusy, revealPrivateFilenames, appearance, resolvedMode, onProjectIdentityChange, onAppearanceChange, onTogglePrivate, onAddRoot, onRemoveRoot, onChooseSources, onRescan, onImportState, onOpenProjects, onNewProject }) {
+export function SettingsWorkspace({ state, roots, scan, watching, scanning, projectArtistName, currentProject, projects, projectBusy, revealPrivateFilenames, appearance, resolvedMode, onProjectIdentityChange, onAppearanceChange, onTogglePrivate, onAddRoot, onRemoveRoot, onChooseSources, onRescan, onImportState, onOpenProjects, onNewProject, onExportBundle }) {
   const [folderPath, setFolderPath] = useState("");
   const [folderLabel, setFolderLabel] = useState("");
   const [importError, setImportError] = useState("");
@@ -58,7 +58,8 @@ export function SettingsWorkspace({ state, roots, scanning, projectArtistName, c
             <button type="button" className="native-path-field" disabled={scanning} onClick={() => onChooseSources("files")}><MusicIcon /><span><strong>Audio file path</strong><small>{scanning ? "Waiting for the system picker…" : "Click to choose one or more audio files"}</small></span><em>Browse</em></button>
             <button type="button" className="native-path-field native-path-field--yellow" disabled={scanning} onClick={() => onChooseSources("folder")}><FolderIcon /><span><strong>Audio folder path</strong><small>Click to choose a full folder</small></span><em>Browse</em></button>
           </div>
-          <ul className="root-list">{roots.map((root) => <li key={root.id}>{root.kind === "file" ? <MusicIcon size={28}/> : <FolderIcon size={28}/>}<span><strong>{root.label}</strong><small>{root.path}</small></span><em className={root.connected ? "is-connected" : "is-offline"}>{root.connected ? "Connected" : "Offline"}</em><button type="button" className="icon-button" onClick={() => onRemoveRoot(root.id)} aria-label={`Remove ${root.label}`}><TrashIcon /></button></li>)}</ul>
+          <p className="watch-status"><strong>{watching?.enabled ? "Filesystem watching active" : watching?.configured ? "Filesystem watching waiting for a connected folder" : "Filesystem watching off"}</strong><span>{scan ? `Last incremental scan reused ${scan.reusedMetadata} metadata records and probed ${scan.probedMetadata}.` : "Run a rescan to refresh status."}</span></p>
+          <ul className="root-list">{roots.map((root) => <li key={root.id}>{root.kind === "file" ? <MusicIcon size={28}/> : <FolderIcon size={28}/>}<span><strong>{root.label}</strong><small>{root.path}</small></span><em className={root.connected ? "is-connected" : "is-offline"}>{root.connectionState === "reconnected" ? "Reconnected" : root.connected ? "Connected" : "Offline"}</em><button type="button" className="icon-button" onClick={() => onRemoveRoot(root.id)} aria-label={`Remove ${root.label}`}><TrashIcon /></button></li>)}</ul>
           <details className="manual-path-fallback manual-path-fallback--settings">
             <summary>Enter a path manually</summary>
             <form className="root-form" onSubmit={submitRoot}>
@@ -72,7 +73,8 @@ export function SettingsWorkspace({ state, roots, scanning, projectArtistName, c
         <section className="settings-section">
           <h3>Privacy and Project Data</h3>
           <label className="privacy-toggle"><span><LockIcon /><strong>Reveal protected filenames</strong><small>Off by default. Sequence and review views keep protected sources masked.</small></span><input type="checkbox" checked={revealPrivateFilenames} onChange={(event) => onTogglePrivate(event.target.checked)} /></label>
-          <div className="data-actions"><button type="button" className="primary-button" onClick={exportProject}>Export Project JSON</button><button type="button" className="primary-button primary-button--yellow" onClick={() => fileInput.current?.click()}>Import Project JSON</button><input ref={fileInput} type="file" accept="application/json,.json" hidden onChange={importProject}/></div>
+          <div className="data-actions"><button type="button" className="primary-button" onClick={exportProject}>Export Project JSON</button><button type="button" className="primary-button" onClick={onExportBundle}>Export Portable Checksums</button><button type="button" className="primary-button primary-button--yellow" onClick={() => fileInput.current?.click()}>Import Project JSON</button><input ref={fileInput} type="file" accept="application/json,.json" hidden onChange={importProject}/></div>
+          <p className="settings-note"><strong>Portable checksum bundle:</strong> exports project JSON plus SHA-256 records for currently indexed sources. It contains no media bytes and does not copy audio.</p>
           {importError && <p className="render-error" role="alert">{importError}</p>}
           <dl className="data-locations"><div><dt>Open project</dt><dd>data/sequencer-state.json</dd></div><div><dt>Saved projects</dt><dd>data/projects/</dd></div><div><dt>Audio metadata cache</dt><dd>data/audio-index-cache.json</dd></div><div><dt>File and folder paths</dt><dd>config/sequencer.local.json</dd></div></dl>
           <p className="settings-note"><strong>Local project storage:</strong> paths, notes, sequence order, audition choices, and approvals are stored in ignored JSON files on this device. Audio bytes are never stored in the project.</p>

@@ -22,7 +22,7 @@
 @media (max-width: 1240px) {
   .app-shell { grid-template-columns: 240px minmax(0, 1fr); }
   .app-shell.albums-collapsed { grid-template-columns: 50px minmax(0, 1fr); }
-  .app-header { grid-template-columns: auto auto minmax(0, 1fr); }
+  .app-header { grid-template-columns: auto auto auto minmax(0, 1fr); }
   .header-summary { width: min(100%, 360px); }
   .album-rail { padding-inline: 0.8rem; }
   .album-item { grid-template-columns: 58px minmax(0, 1fr) 22px; }
@@ -57,6 +57,7 @@
   .primary-nav { width: 100%; grid-template-columns: repeat(var(--nav-count, 6), minmax(0, 1fr)); }
   .primary-nav button { width: 100%; min-width: 0; min-height: 36px; }
   .primary-nav button:last-child[data-tooltip]::after { right: 0; left: auto; transform: none; }
+  .command-history { grid-column: 1 / -1; justify-self: end; }
   .header-summary { grid-column: 1 / -1; width: 100%; margin: 0; border-top: 1px solid var(--line-soft); }
   .header-summary div { min-height: 44px; }
   .album-rail { display: block; padding: 0.45rem 0.5rem; border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; }
@@ -114,6 +115,8 @@
   .decision-fields { grid-template-columns: 1fr; }
   .library-main { padding: 0.85rem 0.5rem; }
   .library-filters { grid-template-columns: 1fr 1fr; }
+  .saved-filter-bar { grid-template-columns: 1fr; }
+  .saved-filter-bar form { grid-template-columns: 1fr; }
   .search-field { grid-column: 1 / -1; }
   .audio-table { height: 590px; }
   .audio-table-head, .audio-row { grid-template-columns: minmax(190px, 1.2fr) 75px 72px 58px 70px; }

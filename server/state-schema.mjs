@@ -1,6 +1,6 @@
 import { MASTERING_LIMITS, normalizeMasterBus } from "../src/lib/mastering.js";
 
-export const CURRENT_SCHEMA_VERSION = 4;
+export const CURRENT_SCHEMA_VERSION = 5;
 
 const DEFAULT_PROJECT_ARTIST = "Untitled Artist";
 const deliveryProfileIds = new Set(["", "archive-wav", "distribution-wav", "review-mp3"]);
@@ -91,6 +91,15 @@ const validateSettings = (settings) => {
   if (!settings.project || typeof settings.project !== "object" || Array.isArray(settings.project)) throw new Error("Project identity settings must be an object.");
   if (typeof settings.project.artistName !== "string" || !settings.project.artistName.trim() || settings.project.artistName.length > 120) throw new Error("Project artist name must be between 1 and 120 characters.");
   if (typeof settings.project.setupComplete !== "boolean") throw new Error("Project setup status must be a boolean.");
+  if (settings.librarySavedFilters !== undefined) {
+    if (!Array.isArray(settings.librarySavedFilters)) throw new Error("Saved library filters must be an array.");
+    const filterIds = new Set();
+    for (const filter of settings.librarySavedFilters) {
+      if (!filter?.id || !filter.name || ["query", "format", "rootId", "usageFilter"].some((field) => typeof filter[field] !== "string")) throw new Error("Every saved library filter needs an id, name, query, and facets.");
+      if (filterIds.has(filter.id)) throw new Error(`Duplicate saved library filter id: ${filter.id}`);
+      filterIds.add(filter.id);
+    }
+  }
   if (settings.appearance !== undefined) {
     if (!settings.appearance || typeof settings.appearance !== "object" || Array.isArray(settings.appearance)) throw new Error("Appearance settings must be an object.");
     for (const [field, options] of Object.entries(appearanceOptions)) {
@@ -243,6 +252,14 @@ const migrations = new Map([
       sequenceVersions: Array.isArray(album.sequenceVersions) ? album.sequenceVersions : [],
       transitionNotebook: Array.isArray(album.transitionNotebook) ? album.transitionNotebook : [],
     })) : state.albums,
+  })],
+  [4, (state) => ({
+    ...state,
+    schemaVersion: 5,
+    settings: {
+      ...(state.settings || {}),
+      librarySavedFilters: Array.isArray(state.settings?.librarySavedFilters) ? state.settings.librarySavedFilters : [],
+    },
   })],
 ]);
 

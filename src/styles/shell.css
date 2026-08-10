@@ -12,7 +12,7 @@
 .app-header {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
+  grid-template-columns: auto auto auto minmax(0, 1fr);
   gap: 0.9rem;
   align-items: center;
   min-height: 68px;
@@ -30,6 +30,9 @@
 .primary-nav button:hover { color: var(--bone); background: rgb(var(--bone-rgb) / 3%); }
 .primary-nav button.is-active { color: var(--lime); }
 .primary-nav button.is-active::before { position: absolute; right: 24%; bottom: -1px; left: 24%; height: 3px; background: var(--lime); content: ""; }
+.command-history { display: grid; grid-template-columns: 32px 32px; border: 1px solid var(--line-soft); }
+.command-history button { min-height: 32px; padding: 0; border: 0; border-left: 1px solid var(--line-soft); background: transparent; color: var(--lime); cursor: pointer; }
+.command-history button:first-child { border-left: 0; }
 .header-summary { display: grid; width: min(100%, 390px); grid-template-columns: repeat(4, minmax(0, 1fr)); justify-self: end; margin: 0; }
 .header-summary div { display: grid; grid-template-columns: auto auto; grid-template-rows: auto auto; align-items: center; justify-content: center; column-gap: 0.3rem; min-height: 50px; padding: 0 0.35rem; border-left: 1px solid var(--line); color: var(--lime); }
 .header-summary svg { grid-row: 1 / 3; }

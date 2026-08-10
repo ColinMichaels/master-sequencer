@@ -6,6 +6,8 @@ export const useProjectData = () => {
   const [library, setLibrary] = useState([]);
   const [roots, setRoots] = useState([]);
   const [formats, setFormats] = useState([]);
+  const [scan, setScan] = useState(null);
+  const [watching, setWatching] = useState({ configured: false, enabled: false, watchedRootIds: [] });
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [pickingAssets, setPickingAssets] = useState(false);
@@ -20,6 +22,9 @@ export const useProjectData = () => {
   const saveChain = useRef(Promise.resolve());
   const latestState = useRef(null);
   const lastSavedJson = useRef("");
+  const undoStack = useRef([]);
+  const redoStack = useRef([]);
+  const [historyRevision, setHistoryRevision] = useState(0);
 
   const persistState = useCallback((snapshot) => {
     const serialized = JSON.stringify(snapshot);
@@ -52,6 +57,8 @@ export const useProjectData = () => {
       setLibrary(payload.library);
       setRoots(payload.roots);
       setFormats(payload.supportedFormats);
+      setScan(payload.scan || null);
+      setWatching(payload.watching || { configured: false, enabled: false, watchedRootIds: [] });
       setRecovery(payload.recovery || { required: false });
       setProjects(payload.projects || []);
       setActiveProjectId(payload.activeProjectId || "");
@@ -86,19 +93,55 @@ export const useProjectData = () => {
     return () => window.removeEventListener("pagehide", flushPendingState);
   }, []);
 
-  const updateState = useCallback((recipe) => {
+  const updateState = useCallback((recipe, label = "Project edit") => {
     setState((current) => {
+      if (!current) return current;
       const next = structuredClone(current);
       recipe(next);
+      if (JSON.stringify(next) === JSON.stringify(current)) return current;
+      undoStack.current.push({ state: current, label });
+      if (undoStack.current.length > 100) undoStack.current.shift();
+      redoStack.current = [];
       return next;
     });
+    setHistoryRevision((revision) => revision + 1);
+  }, []);
+
+  const undo = useCallback(() => {
+    setState((current) => {
+      const previous = undoStack.current.pop();
+      if (!current || !previous) return current;
+      redoStack.current.push({ state: current, label: previous.label });
+      return structuredClone(previous.state);
+    });
+    setHistoryRevision((revision) => revision + 1);
+  }, []);
+
+  const redo = useCallback(() => {
+    setState((current) => {
+      const next = redoStack.current.pop();
+      if (!current || !next) return current;
+      undoStack.current.push({ state: current, label: next.label });
+      return structuredClone(next.state);
+    });
+    setHistoryRevision((revision) => revision + 1);
   }, []);
 
   const applyLibraryPayload = useCallback((payload) => {
     setLibrary(payload.library);
     setRoots(payload.roots);
     setFormats([...new Set(payload.library.map((file) => file.extension))].sort());
+    if (payload.scan) setScan(payload.scan);
+    if (payload.watching) setWatching(payload.watching);
   }, []);
+
+  useEffect(() => {
+    if (!watching.configured) return undefined;
+    const timer = window.setInterval(() => {
+      api.libraryStatus().then(applyLibraryPayload).catch(() => {});
+    }, 3_000);
+    return () => window.clearInterval(timer);
+  }, [applyLibraryPayload, watching.configured]);
 
   const rescan = useCallback(async () => {
     setScanning(true);
@@ -186,6 +229,9 @@ export const useProjectData = () => {
       latestState.current = payload.state;
       lastSavedJson.current = JSON.stringify(payload.state);
       setState(payload.state);
+      undoStack.current = [];
+      redoStack.current = [];
+      setHistoryRevision((revision) => revision + 1);
       setSaveStatus("Imported project saved locally.");
       return true;
     } catch (reason) {
@@ -256,6 +302,9 @@ export const useProjectData = () => {
       latestState.current = payload.state;
       lastSavedJson.current = serialized;
       setState(payload.state);
+      undoStack.current = [];
+      redoStack.current = [];
+      setHistoryRevision((revision) => revision + 1);
       setRecovery(payload.recovery || { required: false });
       if (payload.projects) setProjects(payload.projects);
       if (payload.activeProjectId) setActiveProjectId(payload.activeProjectId);
@@ -276,6 +325,8 @@ export const useProjectData = () => {
     libraryMap,
     roots,
     formats,
+    scan,
+    watching,
     loading,
     scanning,
     pickingAssets,
@@ -286,12 +337,20 @@ export const useProjectData = () => {
     saveStatus,
     error,
     setError,
-    setState,
     replaceState,
     createProject,
     loadProject,
     restoreRecovery,
     updateState,
+    commandHistory: {
+      canUndo: undoStack.current.length > 0,
+      canRedo: redoStack.current.length > 0,
+      undoLabel: undoStack.current.at(-1)?.label || "",
+      redoLabel: redoStack.current.at(-1)?.label || "",
+      undo,
+      redo,
+      revision: historyRevision,
+    },
     rescan,
     registerSource,
     chooseSources,

@@ -12,7 +12,7 @@ const navItems = [
   ["settings", "Settings", SettingsIcon],
 ];
 
-export function AppHeader({ activeView, onViewChange, album, playableCount, approvalCount, appearance, resolvedMode, onAppearanceChange, onOpenAppearance }) {
+export function AppHeader({ activeView, onViewChange, album, playableCount, approvalCount, appearance, resolvedMode, onAppearanceChange, onOpenAppearance, commandHistory }) {
   const trackCount = album?.tracks.length || 0;
   const missingCount = Math.max(0, trackCount - playableCount);
   return (
@@ -29,6 +29,7 @@ export function AppHeader({ activeView, onViewChange, album, playableCount, appr
           </button>
         ))}
       </nav>
+      <div className="command-history" role="group" aria-label="Project edit history"><button type="button" disabled={!commandHistory.canUndo} onClick={commandHistory.undo} aria-label={commandHistory.canUndo ? `Undo ${commandHistory.undoLabel}` : "Nothing to undo"}>↶</button><button type="button" disabled={!commandHistory.canRedo} onClick={commandHistory.redo} aria-label={commandHistory.canRedo ? `Redo ${commandHistory.redoLabel}` : "Nothing to redo"}>↷</button></div>
       <dl className="header-summary" aria-label={`${album?.title || "Album"} summary`}>
         <div><WaveIcon /><dt>{trackCount}</dt><dd>Tracks</dd></div>
         <div><MusicIcon /><dt>{playableCount}</dt><dd>Playable</dd></div>

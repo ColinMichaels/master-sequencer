@@ -1,13 +1,16 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { sourceKey } from "../lib/api.js";
 import { formatBytes, formatDuration, slugify, titleFromFilename } from "../lib/format.js";
+import { createLibrarySearchIndex, saveLibraryFilter } from "../lib/library-search.js";
 import { FolderIcon, LockIcon, MusicIcon, PlayIcon, PlusIcon, RefreshIcon, SearchIcon, WaveIcon } from "./Icons.jsx";
 
-export function AudioLibraryWorkspace({ state, activeAlbum, library, roots, formats, revealPrivateFilenames, scanning, onRescan, onPreviewFile, onAlbumChangeById, onImportFiles, onImportFolder }) {
+export function AudioLibraryWorkspace({ state, activeAlbum, library, roots, formats, scan, watching, revealPrivateFilenames, scanning, onRescan, onPreviewFile, onProjectChange, onAlbumChangeById, onImportFiles, onImportFolder }) {
   const [query, setQuery] = useState("");
   const [format, setFormat] = useState("all");
   const [rootId, setRootId] = useState("all");
   const [usageFilter, setUsageFilter] = useState("all");
+  const [filterName, setFilterName] = useState("");
+  const [savedFilterId, setSavedFilterId] = useState("");
   const [selectedKey, setSelectedKey] = useState(library[0]?.key || "");
   const [targetAlbumId, setTargetAlbumId] = useState(activeAlbum.id);
   const [targetTrackId, setTargetTrackId] = useState(activeAlbum.tracks[0]?.id || "");
@@ -31,15 +34,43 @@ export function AudioLibraryWorkspace({ state, activeAlbum, library, roots, form
   }, [state.albums]);
   const protectedKeys = useMemo(() => new Set([...usageMap.entries()].filter(([, usages]) => usages.some((usage) => usage.protected)).map(([key]) => key)), [usageMap]);
   const rootMap = useMemo(() => new Map(roots.map((root) => [root.id, root])), [roots]);
+  const searchIndex = useMemo(() => createLibrarySearchIndex(library), [library]);
+  const matchingKeys = useMemo(() => searchIndex.search(query), [searchIndex, query]);
+  const savedFilters = state.settings?.librarySavedFilters || [];
 
   const filtered = useMemo(() => library.filter((file) => {
-    const haystack = `${file.name} ${file.relativePath}`.toLowerCase();
     const used = usageMap.has(file.key);
-    return (!query || haystack.includes(query.toLowerCase()))
+    return matchingKeys.has(file.key)
       && (format === "all" || file.extension === format)
       && (rootId === "all" || file.rootId === rootId)
       && (usageFilter === "all" || (usageFilter === "assigned" ? used : !used));
-  }), [library, query, format, rootId, usageFilter, usageMap]);
+  }), [library, matchingKeys, format, rootId, usageFilter, usageMap]);
+
+  const applySavedFilter = (id) => {
+    setSavedFilterId(id);
+    const saved = savedFilters.find((filter) => filter.id === id);
+    if (!saved) return;
+    setQuery(saved.query);
+    setFormat(saved.format);
+    setRootId(saved.rootId);
+    setUsageFilter(saved.usageFilter);
+  };
+  const saveCurrentFilter = (event) => {
+    event.preventDefault();
+    onProjectChange((draft) => {
+      draft.settings ||= {};
+      saveLibraryFilter(draft.settings, { name: filterName, query, format, rootId, usageFilter });
+    });
+    setFilterName("");
+  };
+  const deleteSavedFilter = () => {
+    if (!savedFilterId) return;
+    onProjectChange((draft) => {
+      draft.settings ||= {};
+      draft.settings.librarySavedFilters = (draft.settings.librarySavedFilters || []).filter((filter) => filter.id !== savedFilterId);
+    });
+    setSavedFilterId("");
+  };
 
   const selectedFile = library.find((file) => file.key === selectedKey);
   const targetAlbum = state.albums.find((album) => album.id === targetAlbumId) || activeAlbum;
@@ -98,6 +129,7 @@ export function AudioLibraryWorkspace({ state, activeAlbum, library, roots, form
           <select aria-label="Filter by usage" value={usageFilter} onChange={(event) => setUsageFilter(event.target.value)}><option value="all">All usage</option><option value="unassigned">Unassigned</option><option value="assigned">Assigned</option></select>
           <button type="button" className="text-button" disabled={scanning} onClick={onRescan}><RefreshIcon /> {scanning ? "Scanning…" : "Rescan"}</button>
         </div>
+        <div className="saved-filter-bar"><label>Saved filter<select value={savedFilterId} onChange={(event) => applySavedFilter(event.target.value)}><option value="">Choose saved filter</option>{savedFilters.map((filter) => <option key={filter.id} value={filter.id}>{filter.name}</option>)}</select></label><form onSubmit={saveCurrentFilter}><input aria-label="Saved filter name" required value={filterName} onChange={(event) => setFilterName(event.target.value)} placeholder="Filter name" /><button type="submit" className="text-button">Save Current</button></form><button type="button" className="text-button text-button--danger" disabled={!savedFilterId} onClick={deleteSavedFilter}>Delete</button></div>
         <div className="audio-table" role="table" aria-label="Audio files">
           <div className="audio-table-head" role="row"><span>File</span><span>Path</span><span>Format</span><span>Duration</span><span>Used by</span><span>Preview</span><span>Action</span></div>
           <div className="audio-table-body">
@@ -123,8 +155,9 @@ export function AudioLibraryWorkspace({ state, activeAlbum, library, roots, form
       <aside className="library-inspector">
         <section className="source-summary">
           <h2>Audio Sources</h2>
+          <p className="watch-status"><strong>{watching?.enabled ? "Watching connected folders" : watching?.configured ? "Watching unavailable" : "Manual incremental rescans"}</strong><span>{scan ? `${scan.reusedMetadata} cached · ${scan.probedMetadata} updated` : "Scan status unavailable"}</span></p>
           <div className="source-summary-actions"><button type="button" className="text-button" disabled={scanning} onClick={onImportFiles}><MusicIcon /> Add Files</button><button type="button" className="text-button" disabled={scanning} onClick={onImportFolder}><FolderIcon /> Add Folder</button></div>
-          <ul>{roots.map((root) => <li key={root.id}><span>{root.label}<small>{root.path}</small></span><strong className={root.connected ? "is-connected" : "is-offline"}>{root.connected ? "Connected" : "Offline"}</strong></li>)}</ul>
+          <ul>{roots.map((root) => <li key={root.id}><span>{root.label}<small>{root.path}</small></span><strong className={root.connected ? "is-connected" : "is-offline"}>{root.connectionState === "reconnected" ? "Reconnected" : root.connected ? "Connected" : "Offline"}</strong></li>)}</ul>
           <p>Audio remains in its original location.</p>
         </section>
         <dl className="scan-summary">

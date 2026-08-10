@@ -35,6 +35,7 @@ export const createApiRouter = ({
   getLibraryFile,
   getConfig,
   isScanning,
+  getWatchStatus,
   refreshLibrary,
   publicFile,
   responsePayloadForPaths,
@@ -43,6 +44,7 @@ export const createApiRouter = ({
   chooseProjectAssetPaths,
   createProjectAssetReferences,
   revealRenderResult,
+  createPortableBundle,
 }) => async (request, response, url) => {
   const library = getLibrary();
   if (request.method === "GET" && url.pathname === "/api/health") {
@@ -59,6 +61,8 @@ export const createApiRouter = ({
       roots: library.roots,
       supportedFormats: [...new Set(library.files.map((file) => file.extension))].sort(),
       scanning: isScanning(),
+      scan: library.scan,
+      watching: getWatchStatus(),
       dataFiles: {
         state: "data/sequencer-state.json",
         recovery: "data/sequencer-state.last-known-good.json",
@@ -66,6 +70,20 @@ export const createApiRouter = ({
         localConfig: "config/sequencer.local.json",
       },
     });
+    return true;
+  }
+  if (request.method === "GET" && url.pathname === "/api/library") {
+    sendJson(response, 200, {
+      library: library.files.map(publicFile),
+      roots: library.roots,
+      scan: library.scan,
+      watching: getWatchStatus(),
+      scanning: isScanning(),
+    });
+    return true;
+  }
+  if (request.method === "GET" && url.pathname === "/api/project-bundle") {
+    sendJson(response, 200, await createPortableBundle());
     return true;
   }
   if (["PUT", "POST"].includes(request.method) && url.pathname === "/api/state") {
@@ -95,7 +113,7 @@ export const createApiRouter = ({
   }
   if (request.method === "POST" && url.pathname === "/api/rescan") {
     const scanned = await refreshLibrary();
-    sendJson(response, 200, { library: scanned.files.map(publicFile), roots: scanned.roots });
+    sendJson(response, 200, { library: scanned.files.map(publicFile), roots: scanned.roots, scan: scanned.scan, watching: getWatchStatus() });
     return true;
   }
   if (request.method === "POST" && url.pathname === "/api/sources/register") {
@@ -175,7 +193,7 @@ export const createApiRouter = ({
     const sourceId = decodeURIComponent(url.pathname.slice(prefix.length));
     await removeAudioSource(sourceId);
     const scanned = await refreshLibrary();
-    sendJson(response, 200, { library: scanned.files.map(publicFile), roots: scanned.roots });
+    sendJson(response, 200, { library: scanned.files.map(publicFile), roots: scanned.roots, scan: scanned.scan, watching: getWatchStatus() });
     return true;
   }
   if (request.method === "GET" && url.pathname === "/api/waveform") {

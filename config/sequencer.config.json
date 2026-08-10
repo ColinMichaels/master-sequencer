@@ -15,5 +15,6 @@
   ],
   "metadataConcurrency": 4,
   "renderTimeoutMs": 600000,
+  "watchAudioRoots": false,
   "includeHiddenDirectories": false
 }
