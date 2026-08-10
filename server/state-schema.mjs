@@ -178,6 +178,7 @@ export const validateState = (state) => {
     albumIds.add(album.id);
     if (album.orderApproved !== undefined && typeof album.orderApproved !== "boolean") throw new Error(`${album.title} orderApproved must be a boolean.`);
     validateMasterBus(album.masterBus, `${album.title} MASTER bus`);
+    if (album.masteringReferenceSourceRef !== undefined) validateSourceReference(album.masteringReferenceSourceRef, `${album.title} mastering reference`);
     if (album.delivery !== undefined) {
       if (!album.delivery || typeof album.delivery !== "object" || Array.isArray(album.delivery)) throw new Error(`${album.title} delivery record must be an object.`);
       if (!deliveryProfileIds.has(album.delivery.profileId || "")) throw new Error(`${album.title} has an unsupported delivery profile.`);

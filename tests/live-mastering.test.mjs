@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { activeMasteringProcessors, applyLiveMasteringSettings, createLiveMasteringGraph, decibelsToGain } from "../src/lib/live-mastering.js";
+import { activeMasteringProcessors, applyLiveMasteringSettings, comparisonPlaybackStart, createLiveMasteringGraph, decibelsToGain, playbackBypassesMastering } from "../src/lib/live-mastering.js";
 
 const parameter = () => ({ value: 0 });
 const filter = () => ({ type: "", frequency: parameter(), gain: parameter(), Q: parameter() });
@@ -75,6 +75,16 @@ test("raw library and rendered previews bypass live processing to prevent altere
   assert.equal(graph.bypassGain.gain.value, 0);
   assert.equal(graph.processedGain.gain.value, 0);
   assert.equal(graph.trackGain.gain.value, decibelsToGain(-12));
+});
+
+test("reference playback is explicitly classified for the clean direct output", () => {
+  assert.equal(playbackBypassesMastering({ track: { id: "current" }, referenceTrack: true }), true);
+  assert.equal(playbackBypassesMastering({ track: { id: "current" } }), false);
+});
+
+test("A/B switching keeps elapsed time when possible and restarts when the target is shorter", () => {
+  assert.equal(comparisonPlaybackStart({ baseStart: 2, elapsed: 10, duration: 30 }), 12);
+  assert.equal(comparisonPlaybackStart({ baseStart: 2, elapsed: 28, duration: 20 }), 2);
 });
 
 test("the live graph connects one media source to direct, bypass, and processed destinations", () => {

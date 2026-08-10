@@ -87,3 +87,11 @@
 .error-banner { position: absolute; z-index: 20; top: 0.5rem; right: 0.5rem; left: 0.5rem; display: grid; grid-template-columns: auto 1fr auto; gap: 1rem; align-items: center; padding: 0.75rem 1rem; border: 1px solid var(--orange); background: var(--error-bg); color: var(--bone); font-family: var(--ui); font-size: 0.82rem; }
 .error-banner strong { color: var(--orange); text-transform: uppercase; }
 .error-banner button { border: 0; background: transparent; color: var(--orange); cursor: pointer; }
+.content-shell.has-hosted-notice .error-banner { top: 5rem; }
+.hosted-tester-notice { position: absolute; z-index: 19; top: 0.5rem; right: 0.5rem; left: 0.5rem; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 0.85rem; align-items: center; padding: 0.72rem 0.85rem; border: 1px solid rgb(var(--lime-rgb) / 55%); background: rgb(var(--ink-rgb) / 96%); box-shadow: 0 10px 28px rgb(0 0 0 / 32%); color: var(--bone); font-family: var(--ui); font-size: 0.72rem; line-height: 1.35; }
+.hosted-tester-notice strong { color: var(--lime); letter-spacing: 0.08em; text-transform: uppercase; }
+.hosted-tester-notice span { color: var(--bone-muted); }
+.hosted-tester-notice button { display: grid; width: 30px; height: 30px; padding: 0; border: 1px solid var(--line); background: transparent; color: var(--bone-muted); cursor: pointer; place-items: center; font-size: 1.1rem; }
+.hosted-tester-notice button:hover { border-color: var(--lime); color: var(--lime); }
+.hosted-capability-note { padding: 0.7rem 0.8rem; border: 1px solid rgb(var(--lime-rgb) / 35%); background: rgb(var(--lime-rgb) / 5%); color: var(--bone-muted); line-height: 1.45; }
+.hosted-capability-note strong { color: var(--lime); }

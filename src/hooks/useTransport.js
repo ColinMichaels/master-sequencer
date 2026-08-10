@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, sourceKey } from "../lib/api.js";
 import { normalizeMastering } from "../lib/mastering.js";
-import { applyLiveMasteringSettings, createLiveMasteringGraph } from "../lib/live-mastering.js";
+import { applyLiveMasteringSettings, comparisonPlaybackStart, createLiveMasteringGraph, playbackBypassesMastering } from "../lib/live-mastering.js";
 
 export const useTransport = ({ libraryMap, masterBus, liveTracks = [] }) => {
   const audioRef = useRef(null);
@@ -27,7 +27,7 @@ export const useTransport = ({ libraryMap, masterBus, liveTracks = [] }) => {
 
   const liveSettingsForEntry = useCallback((entry) => {
     const liveTrack = entry?.track?.id ? liveTracksRef.current.find((track) => track.id === entry.track.id) : null;
-    const sourceBypassed = !entry?.track || Boolean(entry.renderedPreview);
+    const sourceBypassed = playbackBypassesMastering(entry);
     const trackGainDb = sourceBypassed ? 0 : Number(liveTrack?.mastering?.gainDb ?? entry.track?.mastering?.gainDb ?? 0);
     return { sourceBypassed, trackGainDb };
   }, []);
@@ -128,6 +128,39 @@ export const useTransport = ({ libraryMap, masterBus, liveTracks = [] }) => {
       nextTrackTitle: options.nextTrackTitle || "",
       renderedPreview: true,
     });
+  }, [playEntry]);
+
+  const previewMasteringComparison = useCallback(({ channel, track, file, referenceFile, referenceLabel = "Reference track", albumTitle }) => {
+    const cleanReference = channel === "B";
+    const targetFile = cleanReference ? referenceFile : file;
+    if (!track || !file || !referenceFile || !targetFile) return;
+
+    const comparisonId = `${track.id}::${referenceFile.key}`;
+    const activeEntry = currentRef.current;
+    const activeAudio = audioRef.current;
+    const elapsed = activeEntry?.masteringComparison?.id === comparisonId && activeAudio
+      ? Math.max(0, activeAudio.currentTime - Number(activeEntry.comparisonStartAt || 0))
+      : 0;
+    const settings = normalizeMastering(track.mastering, file.duration);
+    const comparisonStartAt = cleanReference ? 0 : settings.trimStart;
+    const startAt = comparisonPlaybackStart({ baseStart: comparisonStartAt, elapsed, duration: targetFile.duration });
+    const safeReferenceLabel = referenceLabel || "Reference track";
+
+    mode.current = "single";
+    queue.current = [];
+    completionMessage.current = `${channel} reference comparison complete.`;
+    setStatus(cleanReference
+      ? "B: Playing the clean reference. Track gain and MASTER effects are bypassed."
+      : "A: Playing the current track through live track gain and MASTER effects.");
+    playEntry({
+      file: targetFile,
+      ...(cleanReference ? {} : { track }),
+      trackTitle: cleanReference ? `Reference · ${safeReferenceLabel}` : track.title,
+      albumTitle: `${albumTitle} · Reference A/B`,
+      referenceTrack: cleanReference,
+      masteringComparison: { id: comparisonId, channel, trackId: track.id, referenceKey: referenceFile.key },
+      comparisonStartAt,
+    }, startAt);
   }, [playEntry]);
 
   const playSequence = useCallback((album, startIndex = 0) => {
@@ -255,5 +288,5 @@ export const useTransport = ({ libraryMap, masterBus, liveTracks = [] }) => {
     onError: handleError,
   }), [handleEnded, handleError]);
 
-  return { audioRef, audioHandlers, meteringRef, current, status, setStatus, playing, currentTime, mediaDuration, liveMasteringAvailable, fileForTrack, previewFile, previewRendered, playSequence, previewChapter, stop, togglePlayback, seek };
+  return { audioRef, audioHandlers, meteringRef, current, status, setStatus, playing, currentTime, mediaDuration, liveMasteringAvailable, fileForTrack, previewFile, previewRendered, previewMasteringComparison, playSequence, previewChapter, stop, togglePlayback, seek };
 };

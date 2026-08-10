@@ -1,3 +1,5 @@
+import { hostedDemoApi } from "./hosted-demo.js";
+
 const jsonFetch = async (url, options = {}) => {
   const response = await fetch(url, {
     ...options,
@@ -45,7 +47,8 @@ const renderAudio = async (details, options = {}) => {
   return waitForRenderJob(job.id, options);
 };
 
-export const api = {
+const localApi = {
+  hostedDemo: false,
   bootstrap: () => jsonFetch("/api/bootstrap"),
   saveState: (state) => jsonFetch("/api/state", { method: "PUT", body: JSON.stringify(state) }),
   createProject: (details) => jsonFetch("/api/projects", { method: "POST", body: JSON.stringify(details) }),
@@ -78,6 +81,8 @@ export const api = {
     ? `/api/asset?rootId=${encodeURIComponent(reference.rootId)}&path=${encodeURIComponent(reference.relativePath)}`
     : "",
 };
+
+export const api = import.meta.env?.VITE_HOSTED_DEMO === "true" ? hostedDemoApi : localApi;
 
 export const sourceKey = (sourceRef) => sourceRef
   ? sourceRef.privateSourceId

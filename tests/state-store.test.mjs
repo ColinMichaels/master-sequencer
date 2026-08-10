@@ -271,6 +271,16 @@ test("state validation accepts mastering settings and rejects invalid endings", 
   assert.throws(() => validateState(excessiveGain), /gainDb must be between -24 and 12/);
 });
 
+test("state validation accepts a portable mastering reference and rejects unsafe reference paths", () => {
+  const valid = structuredClone(seed);
+  valid.albums[0].masteringReferenceSourceRef = { rootId: "references", relativePath: "approved/reference.wav" };
+  assert.equal(validateState(valid), valid);
+
+  const unsafe = structuredClone(seed);
+  unsafe.albums[0].masteringReferenceSourceRef = { rootId: "references", relativePath: "../outside.wav" };
+  assert.throws(() => validateState(unsafe), /safe relative path/i);
+});
+
 test("state validation accepts a complete MASTER bus and rejects unsafe DSP values", () => {
   const valid = structuredClone(seed);
   valid.albums[0].masterBus.eq.enabled = true;

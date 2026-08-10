@@ -26,6 +26,15 @@ export const activeMasteringProcessors = (masterBus = {}) => {
   ].filter(Boolean);
 };
 
+export const playbackBypassesMastering = (entry) => !entry?.track || Boolean(entry.renderedPreview) || Boolean(entry.referenceTrack);
+
+export const comparisonPlaybackStart = ({ baseStart = 0, elapsed = 0, duration = 0 }) => {
+  const safeBaseStart = Math.max(0, Number(baseStart) || 0);
+  const requestedStart = safeBaseStart + Math.max(0, Number(elapsed) || 0);
+  const latestStart = Math.max(safeBaseStart, (Number(duration) || 0) - 0.2);
+  return requestedStart <= latestStart ? requestedStart : safeBaseStart;
+};
+
 export const applyLiveMasteringSettings = (graph, masterBus = {}, options = {}) => {
   const settings = normalizeMasterBus(masterBus);
   const sourceBypassed = Boolean(options.sourceBypassed);

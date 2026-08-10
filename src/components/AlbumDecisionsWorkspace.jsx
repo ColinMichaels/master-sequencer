@@ -25,19 +25,19 @@ const gateLabels = [
   ["humanApproval", "Human approval"],
 ];
 
-function TransitionVariant({ name, value, busy, onChange, onPreview }) {
+function TransitionVariant({ name, value, busy, renderingAvailable, onChange, onPreview }) {
   return (
     <fieldset className="transition-variant">
       <legend>Variant {name}</legend>
       <label>Ending<select value={value.endMode} onChange={(event) => onChange("endMode", event.target.value)}><option value="natural">Natural</option><option value="cut">Hard cut</option><option value="fade">Fade</option><option value="crossfade">Crossfade</option></select></label>
       <label>Duration<input type="number" min="0" max="30" step="0.1" value={value.duration} onChange={(event) => onChange("duration", Number(event.target.value))} /></label>
       <label>Gap after<input type="number" min="0" max="30" step="0.1" value={value.gapAfter} disabled={value.endMode === "crossfade"} onChange={(event) => onChange("gapAfter", Number(event.target.value))} /></label>
-      <button type="button" className="text-button" disabled={busy} onClick={onPreview}><PlayIcon /> {busy ? "Preparing…" : `Preview ${name}`}</button>
+      <button type="button" className="text-button" disabled={!renderingAvailable || busy} title={renderingAvailable ? `Render transition variant ${name}` : "Rendered transition previews require the local app"} onClick={onPreview}><PlayIcon /> {busy ? "Preparing…" : renderingAvailable ? `Preview ${name}` : "Local Preview Only"}</button>
     </fieldset>
   );
 }
 
-export function AlbumDecisionsWorkspace({ album, templates, libraryMap, onAlbumChange, onSaveTemplate, onCreateFromTemplate, onPreviewTransition, onPreviewComparison, previewingDecision }) {
+export function AlbumDecisionsWorkspace({ album, templates, libraryMap, renderingAvailable = true, onAlbumChange, onSaveTemplate, onCreateFromTemplate, onPreviewTransition, onPreviewComparison, previewingDecision }) {
   const tracks = useMemo(() => sequenceTracks(album), [album]);
   const pairs = useMemo(() => tracks.slice(0, -1).map((track, index) => ({ from: track, to: tracks[index + 1], id: transitionPairId(track.id, tracks[index + 1].id) })), [tracks]);
   const [versionName, setVersionName] = useState("");
@@ -108,7 +108,7 @@ export function AlbumDecisionsWorkspace({ album, templates, libraryMap, onAlbumC
         {transition && selectedPair ? <>
           <label className="transition-notes">Listening notes<textarea value={transition.notes} onChange={(event) => updateTransition((entry) => { entry.notes = event.target.value; })} placeholder="Decay, lyric collision, energy, timing…" /></label>
           <div className="transition-markers"><form onSubmit={(event) => { event.preventDefault(); updateTransition((entry) => { addTransitionMarker(entry, { label: markerLabel, seconds: markerSeconds }); }); setMarkerLabel(""); }}><input aria-label="Marker label" required value={markerLabel} onChange={(event) => setMarkerLabel(event.target.value)} placeholder="Vocal enters" /><input aria-label="Marker seconds" type="number" min="0" step="0.01" value={markerSeconds} onChange={(event) => setMarkerSeconds(event.target.value)} /><button type="submit" className="text-button"><PlusIcon /> Marker</button></form><ul>{transition.markers.map((marker) => <li key={marker.id}><span>{marker.seconds.toFixed(2)}s</span><strong>{marker.label}</strong><button type="button" onClick={() => updateTransition((entry) => { entry.markers = entry.markers.filter((item) => item.id !== marker.id); })}>Remove</button></li>)}</ul></div>
-          <div className="transition-variants">{["A", "B"].map((name) => <TransitionVariant key={name} name={name} value={transition.variants[name]} busy={previewingDecision === `transition-${name}`} onChange={(field, value) => updateTransition((entry) => { entry.variants[name][field] = value; })} onPreview={() => onPreviewTransition(selectedPair, name, transition.variants[name])} />)}</div>
+          <div className="transition-variants">{["A", "B"].map((name) => <TransitionVariant key={name} name={name} value={transition.variants[name]} busy={previewingDecision === `transition-${name}`} renderingAvailable={renderingAvailable} onChange={(field, value) => updateTransition((entry) => { entry.variants[name][field] = value; })} onPreview={() => onPreviewTransition(selectedPair, name, transition.variants[name])} />)}</div>
         </> : <p className="module-empty">At least two sequenced tracks are required.</p>}
       </section>
 
@@ -119,7 +119,7 @@ export function AlbumDecisionsWorkspace({ album, templates, libraryMap, onAlbumC
 
       <section className="decision-module comparison-queue" aria-labelledby="comparison-title">
         <header><div><h3 id="comparison-title">Candidate Comparison Queue</h3><p>Loudness matching creates temporary labeled previews only. Originals and master decisions do not change.</p></div></header>
-        {queued.length ? <ol>{queued.map(({ track, candidate }) => <li key={`${track.id}-${candidate.id}`}><div><strong>{track.title}</strong><small>{candidate.label} · original indexed source</small></div><button type="button" className="text-button" disabled={Boolean(previewingDecision)} onClick={() => onPreviewComparison(track, candidate)}><PlayIcon /> {previewingDecision === `${track.id}-${candidate.id}` ? "Matching…" : "Play Matched Derivative"}</button></li>)}</ol> : <p className="module-empty">Add candidates from Track Review. Nothing is selected automatically.</p>}
+        {queued.length ? <ol>{queued.map(({ track, candidate }) => <li key={`${track.id}-${candidate.id}`}><div><strong>{track.title}</strong><small>{candidate.label} · original indexed source</small></div><button type="button" className="text-button" disabled={!renderingAvailable || Boolean(previewingDecision)} title={renderingAvailable ? "Create and play a loudness-matched derivative" : "Matched derivatives require the local app"} onClick={() => onPreviewComparison(track, candidate)}><PlayIcon /> {previewingDecision === `${track.id}-${candidate.id}` ? "Matching…" : renderingAvailable ? "Play Matched Derivative" : "Local Preview Only"}</button></li>)}</ol> : <p className="module-empty">Add candidates from Track Review. Nothing is selected automatically.</p>}
       </section>
 
       <section className="decision-module album-templates" aria-labelledby="templates-title">

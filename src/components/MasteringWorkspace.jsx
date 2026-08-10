@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { sourceKey } from "../lib/api.js";
 import { api } from "../lib/api.js";
 import { DELIVERY_PROFILES } from "../lib/delivery-profiles.js";
@@ -11,6 +11,7 @@ import { TransitionCurve } from "./TransitionCurve.jsx";
 import { transitionCurve } from "../lib/waveform.js";
 import { RenderHistory } from "./RenderHistory.jsx";
 import { MasterBusControls, MasteringNumberField as NumberField, TrackLevelControl } from "./MasteringControls.jsx";
+import { MasteringReferenceAB } from "./MasteringReferenceAB.jsx";
 
 const fileForTrack = (track, libraryMap) => {
   const candidate = track.candidates.find((item) => item.id === track.auditionCandidateId);
@@ -19,7 +20,7 @@ const fileForTrack = (track, libraryMap) => {
 
 const timeLabel = (value, precise = false) => value <= 0 ? (precise ? "0:00.000" : "0:00") : formatDuration(value, precise);
 
-export function MasteringWorkspace({ album, libraryMap, presets, onAlbumChange, onPreview, previewingTrackId, onOpenExport, onTrackFocus, onPreviewChapter, onSavePreset, onLoadPreset, onDeletePreset, meteringRef, meteringAvailable, playing, monitorLabel }) {
+export function MasteringWorkspace({ album, libraryMap, presets, renderingAvailable = true, revealPrivateFilenames = false, protectedSourceKeys, activeComparison, onAlbumChange, onPreview, onReferenceCompare, previewingTrackId, onOpenExport, onTrackFocus, onPreviewChapter, onSavePreset, onLoadPreset, onDeletePreset, meteringRef, meteringAvailable, playing, monitorLabel }) {
   const tracks = useMemo(() => sequenceTracks(album), [album]);
   const [selectedTrackId, setSelectedTrackId] = useState(tracks[0]?.id || "");
   const [analysisByKey, setAnalysisByKey] = useState({});
@@ -80,6 +81,18 @@ export function MasteringWorkspace({ album, libraryMap, presets, onAlbumChange, 
     draft.masterBus = normalizeMasterBus(next);
   });
   const resetMasterBus = () => onAlbumChange((draft) => { draft.masterBus = normalizeMasterBus(); });
+  const updateReference = (sourceRef) => onAlbumChange((draft) => {
+    if (sourceRef) draft.masteringReferenceSourceRef = sourceRef;
+    else delete draft.masteringReferenceSourceRef;
+  });
+  const compareReference = useCallback((channel, referenceFile, referenceLabel) => onReferenceCompare({
+    channel,
+    track: selectedTrack,
+    file: selectedFile,
+    referenceFile,
+    referenceLabel,
+    albumTitle: album.title,
+  }), [album.title, onReferenceCompare, selectedFile, selectedTrack]);
 
   if (!tracks.length) return <main className="mastering-workspace"><div className="empty-state"><ScissorsIcon size={30}/><h2>No tracks are currently sequenced.</h2><p>Restore or add a track in Sequence before creating timing and fade instructions.</p></div></main>;
 
@@ -88,7 +101,7 @@ export function MasteringWorkspace({ album, libraryMap, presets, onAlbumChange, 
       <header className="mastering-heading">
         <div><h2>{album.title} <span>— Timing &amp; Fades</span></h2><p>All edits are instructions. Indexed source audio is never changed.</p></div>
         <dl><div><dt>{formatDuration(programDuration(entries))}</dt><dd>Estimated program</dd></div><div><dt>{editedCount}/{tracks.length}</dt><dd>Tracks edited</dd></div><div className={missingCount ? "is-warning" : ""}><dt>{missingCount}</dt><dd>Missing audio</dd></div></dl>
-        <button type="button" className="primary-button primary-button--yellow" onClick={() => onOpenExport(selectedFile ? selectedTrackId : "")} disabled={!entries.length}><ExportIcon /> Print / Export Audio</button>
+        <button type="button" className="primary-button primary-button--yellow" onClick={() => onOpenExport(selectedFile ? selectedTrackId : "")} disabled={!renderingAvailable || !entries.length} title={renderingAvailable ? "Print a documented audio derivative" : "FFmpeg audio printing stays in the local app"}><ExportIcon /> {renderingAvailable ? "Print / Export Audio" : "Local Print Only"}</button>
       </header>
 
       <section className="delivery-profile-panel" aria-labelledby="delivery-profile-title">
@@ -97,6 +110,18 @@ export function MasteringWorkspace({ album, libraryMap, presets, onAlbumChange, 
         <label className={delivery.masterApproved ? "is-checked" : ""}><input type="checkbox" checked={Boolean(delivery.masterApproved)} onChange={(event) => updateDelivery("masterApproved", event.target.checked)} /> Approved master</label>
         <label className={delivery.readyToPublish ? "is-checked" : ""}><input type="checkbox" checked={Boolean(delivery.readyToPublish)} onChange={(event) => updateDelivery("readyToPublish", event.target.checked)} /> Ready to publish</label>
       </section>
+
+      <MasteringReferenceAB
+        track={selectedTrack}
+        currentFile={selectedFile}
+        libraryMap={libraryMap}
+        referenceSourceRef={album.masteringReferenceSourceRef}
+        protectedSourceKeys={protectedSourceKeys}
+        revealPrivateFilenames={revealPrivateFilenames}
+        activeComparison={activeComparison}
+        onReferenceChange={updateReference}
+        onCompare={compareReference}
+      />
 
       <MasterBusControls bus={masterBus} presets={presets} onChange={updateMasterBus} onReset={resetMasterBus} onSavePreset={onSavePreset} onLoadPreset={onLoadPreset} onDeletePreset={onDeletePreset} meteringRef={meteringRef} meteringAvailable={meteringAvailable} playing={playing} monitorLabel={monitorLabel} />
 
@@ -146,7 +171,7 @@ export function MasteringWorkspace({ album, libraryMap, presets, onAlbumChange, 
                   <NumberField label="End at" value={settings.trimEnd.toFixed(3)} minimum={settings.trimStart + 0.1} maximum={selectedFile.duration} step={0.01} onCommit={(value) => updateMastering("trimEnd", value)} />
                   <NumberField label="Fade in" value={settings.fadeIn.toFixed(2)} maximum={settings.duration - 0.05} step={0.1} onCommit={(value) => updateMastering("fadeIn", value)} />
                 </div>
-                <button type="button" className="text-button preview-edit-button" disabled={previewingTrackId === selectedTrack.id} onClick={() => onPreview(selectedTrack.id, "start")}><PlayIcon /> {previewingTrackId === selectedTrack.id ? "Printing Preview…" : "Preview Edited Start"}</button>
+                <button type="button" className="text-button preview-edit-button" disabled={!renderingAvailable || previewingTrackId === selectedTrack.id} title={renderingAvailable ? "Print a short edited-start preview" : "Rendered edit previews require the local app"} onClick={() => onPreview(selectedTrack.id, "start")}><PlayIcon /> {previewingTrackId === selectedTrack.id ? "Printing Preview…" : renderingAvailable ? "Preview Edited Start" : "Local Preview Only"}</button>
               </section>
 
               <section className="mastering-control-section mastering-ending-section">
@@ -164,7 +189,7 @@ export function MasteringWorkspace({ album, libraryMap, presets, onAlbumChange, 
                   <NumberField label="Silence after" value={settings.gapAfter.toFixed(2)} maximum={30} step={0.1} disabled={settings.endMode === "crossfade" || !hasNextPlayable} onCommit={(value) => updateMastering("gapAfter", value)} />
                   <div className="ending-result"><span>Result</span><strong>{masteringSummary(settings)}</strong></div>
                 </div>
-                <button type="button" className="primary-button preview-ending-button" disabled={previewingTrackId === selectedTrack.id} onClick={() => onPreview(selectedTrack.id, "end")}><PlayIcon /> {previewingTrackId === selectedTrack.id ? "Printing Preview…" : "Preview Edited Ending"}</button>
+                <button type="button" className="primary-button preview-ending-button" disabled={!renderingAvailable || previewingTrackId === selectedTrack.id} title={renderingAvailable ? "Print a short edited-ending preview" : "Rendered edit previews require the local app"} onClick={() => onPreview(selectedTrack.id, "end")}><PlayIcon /> {previewingTrackId === selectedTrack.id ? "Printing Preview…" : renderingAvailable ? "Preview Edited Ending" : "Local Preview Only"}</button>
               </section>
             </>
           )}

@@ -9,7 +9,7 @@ const sourceLabel = (track, candidate, file, revealPrivateFilenames) => {
   return `${candidate.label} · ${file?.name || "Source offline"}`;
 };
 
-export function SequenceWorkspace({ album, libraryMap, revealPrivateFilenames, transitioningTrackId, layoutPreviewCollapsed, onToggleLayoutPreview, onAlbumChange, onAddTracks, onPlayFrom, onTransition, onExport, onRemoveFromSequence, onRestoreToSequence }) {
+export function SequenceWorkspace({ album, libraryMap, revealPrivateFilenames, transitioningTrackId, renderingAvailable = true, layoutPreviewCollapsed, onToggleLayoutPreview, onAlbumChange, onAddTracks, onPlayFrom, onTransition, onExport, onRemoveFromSequence, onRestoreToSequence }) {
   const [draggedTrackId, setDraggedTrackId] = useState("");
   const [removeArmedTrackId, setRemoveArmedTrackId] = useState("");
   const tracks = useMemo(() => album.tracks.filter(isTrackSequenced), [album.tracks]);
@@ -117,7 +117,7 @@ export function SequenceWorkspace({ album, libraryMap, revealPrivateFilenames, t
                     </div>
                     <div className="track-status"><strong>{file ? formatDuration(file.duration) : "No audio"}</strong><small>{missing ? "Missing source" : legacy ? "Legacy source" : track.decisionStatus === "released" ? "Released source" : track.masterCandidateId === candidate?.id ? "Master-sheet choice" : "Temporary audition"}</small></div>
                     <button type="button" className="icon-button sequence-play-button" disabled={!file} onClick={() => onPlayFrom(index)} aria-label={`Play sequence from ${track.title}`}><PlayIcon /></button>
-                    <button type="button" className={`icon-button sequence-transition-button ${preparingTransition ? "is-busy" : ""}`} disabled={!file || !nextFile || Boolean(transitioningTrackId)} onClick={() => onTransition(index)} aria-busy={preparingTransition} aria-label={preparingTransition ? `Preparing ${track.title} into ${nextTrack?.title || "the next track"}` : `Preview ${track.title} through ${nextTrack?.title || "the next track"}`} title="Preview the edited ending and continue through the next track"><TransitionIcon /></button>
+                    <button type="button" className={`icon-button sequence-transition-button ${preparingTransition ? "is-busy" : ""}`} disabled={!renderingAvailable || !file || !nextFile || Boolean(transitioningTrackId)} onClick={() => onTransition(index)} aria-busy={preparingTransition} aria-label={renderingAvailable ? (preparingTransition ? `Preparing ${track.title} into ${nextTrack?.title || "the next track"}` : `Preview ${track.title} through ${nextTrack?.title || "the next track"}`) : "Rendered transition previews require the local app"} title={renderingAvailable ? "Preview the edited ending and continue through the next track" : "Rendered transition previews require the local app"}><TransitionIcon /></button>
                     <button type="button" className={`icon-button sequence-remove-button ${removeArmed ? "is-armed" : ""}`} onClick={() => requestRemove(track)} aria-label={removeArmed ? `Confirm remove ${track.title} from sequence` : `Remove ${track.title} from sequence`} title={removeArmed ? "Press again to remove from sequence; the track record will be preserved" : "Remove from sequence"}><TrashIcon /></button>
                   </li>
                 );

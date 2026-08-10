@@ -27,7 +27,7 @@ function VisualAssetCard({ asset, cover, protectedAsset, onUseAsCover, onRemove 
   );
 }
 
-function LyricAttachment({ kind, label, description, attachment, protectedAsset, picking, onAttach, onRemove }) {
+function LyricAttachment({ kind, label, description, attachment, protectedAsset, picking, sourcePickingAvailable, onAttach, onRemove }) {
   return (
     <section className={`lyric-attachment ${attachment ? "has-file" : ""}`}>
       <div className="lyric-attachment-heading"><DocumentIcon /><span><strong>{label}</strong><small>{description}</small></span></div>
@@ -36,16 +36,16 @@ function LyricAttachment({ kind, label, description, attachment, protectedAsset,
           <span><strong>{protectedAsset ? "Protected lyric file" : fileName(attachment)}</strong><small>{protectedAsset ? "Filename masked" : attachment.relativePath}</small></span>
           <div>
             {!protectedAsset ? <a className="text-button" href={api.assetUrl(attachment)} target="_blank" rel="noreferrer">Open</a> : null}
-            <button type="button" className="text-button" disabled={picking} onClick={() => onAttach(kind)}>Replace</button>
+            <button type="button" className="text-button" disabled={!sourcePickingAvailable || picking} title={sourcePickingAvailable ? "Replace this attachment" : "Device asset picking requires the local app"} onClick={() => onAttach(kind)}>Replace</button>
             <button type="button" className="icon-button" onClick={() => onRemove(kind)} aria-label={`Remove ${label}`}><TrashIcon /></button>
           </div>
         </div>
-      ) : <button type="button" className="asset-add-button" disabled={picking} onClick={() => onAttach(kind)}><PlusIcon /> Attach {label}</button>}
+      ) : <button type="button" className="asset-add-button" disabled={!sourcePickingAvailable || picking} title={sourcePickingAvailable ? `Attach ${label}` : "Device asset picking requires the local app"} onClick={() => onAttach(kind)}><PlusIcon /> Attach {label}</button>}
     </section>
   );
 }
 
-export function AssetWorkspace({ album, revealPrivateFilenames, picking, onAlbumChange, onPickAssets }) {
+export function AssetWorkspace({ album, revealPrivateFilenames, picking, sourcePickingAvailable = true, onAlbumChange, onPickAssets }) {
   const [selectedTrackId, setSelectedTrackId] = useState(album.tracks[0]?.id || "");
   useEffect(() => {
     if (!album.tracks.some((track) => track.id === selectedTrackId)) setSelectedTrackId(album.tracks[0]?.id || "");
@@ -121,7 +121,7 @@ export function AssetWorkspace({ album, revealPrivateFilenames, picking, onAlbum
 
       <div className="assets-columns">
         <section className="asset-pane album-assets-pane" aria-labelledby="album-assets-title">
-          <header><div><h3 id="album-assets-title">Album Visuals</h3><p>Cover art, back-cover ideas, campaign art, and layout references.</p></div><button type="button" className="primary-button" disabled={picking} onClick={() => addVisuals("album")}><ImageIcon /> {picking ? "Waiting…" : "Add Visuals"}</button></header>
+          <header><div><h3 id="album-assets-title">Album Visuals</h3><p>Cover art, back-cover ideas, campaign art, and layout references.</p></div><button type="button" className="primary-button" disabled={!sourcePickingAvailable || picking} title={sourcePickingAvailable ? "Attach existing visual files" : "Device asset picking requires the local app"} onClick={() => addVisuals("album")}><ImageIcon /> {picking ? "Waiting…" : sourcePickingAvailable ? "Add Visuals" : "Local Assets Only"}</button></header>
           <div className="visual-asset-list">
             {albumAssets.map((asset) => <VisualAssetCard key={referenceKey(asset)} asset={asset} cover={referenceKey(asset) === coverKey} onUseAsCover={() => setCover(asset)} onRemove={() => removeAlbumVisual(asset)} />)}
             {!albumAssets.length ? <div className="asset-empty"><ImageIcon size={28}/><strong>No album visuals attached</strong><span>Add existing artwork without copying it.</span></div> : null}
@@ -136,7 +136,7 @@ export function AssetWorkspace({ album, revealPrivateFilenames, picking, onAlbum
 
           {!track ? <div className="asset-empty asset-empty--large"><strong>Add a track before attaching assets.</strong></div> : <>
             <section className="track-visuals-section">
-              <div className="subsection-heading"><div><h3>Track Visuals</h3><p>Concept art, storyboards, thumbnails, and social artwork.</p></div><button type="button" className="text-button" disabled={picking} onClick={() => addVisuals("track")}><PlusIcon /> Add Track Visuals</button></div>
+              <div className="subsection-heading"><div><h3>Track Visuals</h3><p>Concept art, storyboards, thumbnails, and social artwork.</p></div><button type="button" className="text-button" disabled={!sourcePickingAvailable || picking} title={sourcePickingAvailable ? "Attach existing visual files" : "Device asset picking requires the local app"} onClick={() => addVisuals("track")}><PlusIcon /> {sourcePickingAvailable ? "Add Track Visuals" : "Local Assets Only"}</button></div>
               <div className="visual-asset-list visual-asset-list--track">
                 {(track.visualAssets || []).map((asset) => <VisualAssetCard key={referenceKey(asset)} asset={asset} protectedAsset={trackProtected} onRemove={() => removeTrackVisual(asset)} />)}
                 {!track.visualAssets?.length ? <div className="asset-empty"><ImageIcon size={24}/><strong>No track visuals</strong><span>Attach visual references for {track.title}.</span></div> : null}
@@ -148,7 +148,7 @@ export function AssetWorkspace({ album, revealPrivateFilenames, picking, onAlbum
               {track.candidates.length ? <div className="candidate-asset-list">{track.candidates.map((candidate) => (
                 <article className="candidate-asset-record" key={candidate.id}>
                   <header><MusicCandidateLabel candidate={candidate} protectedAsset={trackProtected} /></header>
-                  <div className="lyric-slots">{lyricKinds.map(([kind, label, description]) => <LyricAttachment key={kind} kind={kind} label={label} description={description} attachment={candidate.lyricRefs?.[kind]} protectedAsset={trackProtected} picking={picking} onAttach={(nextKind) => attachLyrics(candidate.id, nextKind)} onRemove={(nextKind) => removeLyrics(candidate.id, nextKind)} />)}</div>
+                  <div className="lyric-slots">{lyricKinds.map(([kind, label, description]) => <LyricAttachment key={kind} kind={kind} label={label} description={description} attachment={candidate.lyricRefs?.[kind]} protectedAsset={trackProtected} picking={picking} sourcePickingAvailable={sourcePickingAvailable} onAttach={(nextKind) => attachLyrics(candidate.id, nextKind)} onRemove={(nextKind) => removeLyrics(candidate.id, nextKind)} />)}</div>
                 </article>
               ))}</div> : <div className="asset-empty"><DocumentIcon size={24}/><strong>No audio candidate record</strong><span>Add candidate audio before attaching its lyric files.</span></div>}
             </section>

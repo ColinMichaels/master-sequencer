@@ -283,6 +283,21 @@ test("mastering analysis, chapter cues, and delivery authority remain explicit",
   await page.getByLabel("Enable MASTER limiter").check();
   await page.getByRole("slider", { name: "Ceiling graphical control" }).fill("-1");
   await expect(page.getByRole("spinbutton", { name: "Ceiling" })).toHaveValue("-1");
+  await page.getByLabel("Reference audio track").selectOption("test-root::Alternate Mix.mp3");
+  await page.getByRole("button", { name: /B Clean reference/ }).click();
+  await expect(page.locator(".transport-copy")).toContainText("Reference · Alternate Mix.mp3");
+  await expect(page.locator(".transport-waveform-meta strong")).toHaveText("B · clean reference · MASTER bypassed");
+  await expect(page.locator(".reference-ab-status")).toContainText("mastering effects are bypassed");
+  await expect(page.getByRole("button", { name: /A Current master/ })).toHaveAttribute("aria-keyshortcuts", "ArrowLeft");
+  await expect(page.getByRole("button", { name: /B Clean reference/ })).toHaveAttribute("aria-keyshortcuts", "ArrowRight");
+  await page.keyboard.press("ArrowLeft");
+  await expect(page.locator(".transport-copy")).toContainText("Alpha Tone");
+  await expect(page.locator(".transport-waveform-meta strong")).toContainText("A · current master · MASTER live");
+  await page.keyboard.press("ArrowRight");
+  await expect(page.locator(".transport-waveform-meta strong")).toHaveText("B · clean reference · MASTER bypassed");
+  await page.getByRole("spinbutton", { name: /Track gain/ }).focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect(page.locator(".transport-waveform-meta strong")).toHaveText("B · clean reference · MASTER bypassed");
   await page.getByLabel("Print requirements").selectOption("archive-wav");
   await page.getByLabel("Ready to publish").check();
   await page.getByRole("button", { name: "Analyze Source" }).click();
@@ -305,6 +320,7 @@ test("mastering analysis, chapter cues, and delivery authority remain explicit",
   expect(bootstrap.state.albums[0].masterBus.compressor.ratio).toBe(2.5);
   expect(bootstrap.state.albums[0].masterBus.outputGainDb).toBe(-1);
   expect(bootstrap.state.albums[0].masterBus.limiter.ceilingDbfs).toBe(-1);
+  expect(bootstrap.state.albums[0].masteringReferenceSourceRef).toEqual({ rootId: "test-root", relativePath: "Alternate Mix.mp3" });
 
   const renderResponse = await request.post("/api/renders", {
     data: { album: bootstrap.state.albums[0], scope: "track", trackId: "alpha", format: "wav", deliveryProfileId: "archive-wav" },
