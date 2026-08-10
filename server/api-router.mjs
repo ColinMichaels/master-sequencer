@@ -49,6 +49,8 @@ export const createApiRouter = ({
   if (request.method === "GET" && url.pathname === "/api/bootstrap") {
     sendJson(response, 200, {
       state: await stateStore.read(),
+      projects: stateStore.listProjects(),
+      activeProjectId: stateStore.activeProjectId(),
       recovery: stateStore.recoveryStatus(),
       library: library.files.map(publicFile),
       roots: library.roots,
@@ -64,11 +66,28 @@ export const createApiRouter = ({
     return true;
   }
   if (["PUT", "POST"].includes(request.method) && url.pathname === "/api/state") {
-    sendJson(response, 200, { state: await stateStore.write(await readJsonBody(request)) });
+    sendJson(response, 200, {
+      state: await stateStore.write(await readJsonBody(request)),
+      projects: stateStore.listProjects(),
+      activeProjectId: stateStore.activeProjectId(),
+    });
     return true;
   }
   if (request.method === "POST" && url.pathname === "/api/state/recovery/restore") {
     sendJson(response, 200, await stateStore.restoreRecovery());
+    return true;
+  }
+  if (request.method === "GET" && url.pathname === "/api/projects") {
+    sendJson(response, 200, { projects: stateStore.listProjects(), activeProjectId: stateStore.activeProjectId() });
+    return true;
+  }
+  if (request.method === "POST" && url.pathname === "/api/projects") {
+    sendJson(response, 201, await stateStore.createProject(await readJsonBody(request)));
+    return true;
+  }
+  if (request.method === "POST" && url.pathname.startsWith("/api/projects/") && url.pathname.endsWith("/load")) {
+    const projectId = decodeURIComponent(url.pathname.slice("/api/projects/".length, -"/load".length));
+    sendJson(response, 200, await stateStore.loadProject(projectId));
     return true;
   }
   if (request.method === "POST" && url.pathname === "/api/rescan") {

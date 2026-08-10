@@ -15,7 +15,7 @@ test.beforeEach(async ({ request, page }) => {
 
 test("bootstrap renders the project and protected sources remain masked", async ({ page, request }) => {
   const bootstrap = await (await request.get("/api/bootstrap")).json();
-  expect(bootstrap.state.schemaVersion).toBe(3);
+  expect(bootstrap.state.schemaVersion).toBe(4);
   expect(bootstrap.library).toHaveLength(4);
   expect(bootstrap.library.some((file) => file.name === "Hidden Coda.wav")).toBeFalsy();
   expect(bootstrap.library.some((file) => file.name === "[Private source file]")).toBeTruthy();
@@ -94,6 +94,40 @@ test("project setup owns the artist used by layouts and new albums", async ({ pa
   const bootstrap = await (await request.get("/api/bootstrap")).json();
   expect(bootstrap.state.settings.project).toEqual({ artistName: "Open Orbit Ensemble", setupComplete: true });
   expect(bootstrap.state.albums.every((album) => album.artist === "Open Orbit Ensemble")).toBeTruthy();
+});
+
+test("an unconfigured installation explains the complete album workflow", async ({ page, request }) => {
+  const freshProject = structuredClone(e2eProjectState);
+  freshProject.settings.project.setupComplete = false;
+  await request.put("/api/state", { data: freshProject, headers: { Origin: origin } });
+  await page.route("**/api/bootstrap", async (route) => {
+    const response = await route.fetch();
+    const payload = await response.json();
+    await route.fulfill({ response, json: { ...payload, library: [], roots: [], supportedFormats: [] } });
+  });
+  await page.reload();
+
+  const guide = page.getByRole("dialog", { name: "Welcome to Project Sequencer" });
+  await expect(guide).toBeVisible();
+  await expect(guide.getByRole("heading", { name: "Audition every version. Build one final album." })).toBeVisible();
+  await expect(guide.getByText("24-bit / 48 kHz WAV", { exact: false })).toBeVisible();
+  await expect(guide.getByText(/EQ, compression, limiting, and effects are planned/)).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(guide).toBeVisible();
+
+  await guide.getByLabel("Artist name").fill("Open Orbit Ensemble");
+  await guide.getByRole("button", { name: "Start Project" }).click();
+  await expect(guide.getByRole("button", { name: "Choose Audio Files" })).toBeEnabled();
+  await guide.getByRole("button", { name: "Create a New Album" }).click();
+  await expect(guide).toBeHidden();
+  await expect(page.getByRole("dialog", { name: "Add Album" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Close dialog" }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+  await expect(page.getByRole("dialog", { name: "Welcome to Project Sequencer" })).toBeVisible();
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
 });
 
 test("library filters are functional and primary workspaces do not overflow a phone viewport", async ({ page }) => {

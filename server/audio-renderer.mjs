@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { calculateProgramTimeline, normalizeMastering } from "../src/lib/mastering.js";
+import { calculateProgramTimeline, normalizeMasterBus, normalizeMastering } from "../src/lib/mastering.js";
 import { sourceKey } from "./audio-library.mjs";
 
 const AUDIO_FORMATS = new Set(["wav", "mp3"]);
@@ -15,6 +15,10 @@ const slugify = (value) => value
   .replace(/^-|-$/g, "") || "audio";
 
 const seconds = (value) => Number(value.toFixed(6)).toString();
+
+const decibelsToAmplitude = (value) => seconds(10 ** (value / 20));
+
+const formatDb = (value) => `${value > 0 ? "+" : ""}${Number(value.toFixed(2))} dB`;
 
 export class RenderCancelledError extends Error {
   constructor(message = "Audio rendering was cancelled.") {
@@ -114,10 +118,53 @@ const segmentFilter = (entry, index, hasNext, forceFadeForCrossfade = false) => 
     const fadeDuration = Math.min(settings.endDuration, settings.duration - 0.05);
     filters.push(`afade=t=out:st=${seconds(settings.duration - fadeDuration)}:d=${seconds(fadeDuration)}`);
   }
+  if (settings.gainDb !== 0) filters.push(`volume=${seconds(settings.gainDb)}dB`);
   return { filter: `[${index}:a]${filters.join(",")}[t${index}]`, settings };
 };
 
-export const buildRenderGraph = (entries, { singleTrack = false } = {}) => {
+export const buildMasterBusFilters = (masterBus = {}) => {
+  const settings = normalizeMasterBus(masterBus);
+  const filters = [];
+  if (settings.bypass) return { settings, filters };
+
+  if (settings.eq.enabled) {
+    if (settings.eq.lowShelf.gainDb !== 0) {
+      filters.push(`lowshelf=f=${seconds(settings.eq.lowShelf.frequencyHz)}:g=${seconds(settings.eq.lowShelf.gainDb)}:p=2`);
+    }
+    if (settings.eq.midBand.gainDb !== 0) {
+      filters.push(`equalizer=f=${seconds(settings.eq.midBand.frequencyHz)}:t=q:w=${seconds(settings.eq.midBand.q)}:g=${seconds(settings.eq.midBand.gainDb)}`);
+    }
+    if (settings.eq.highShelf.gainDb !== 0) {
+      filters.push(`highshelf=f=${seconds(settings.eq.highShelf.frequencyHz)}:g=${seconds(settings.eq.highShelf.gainDb)}:p=2`);
+    }
+  }
+  if (settings.compressor.enabled) {
+    filters.push([
+      `acompressor=threshold=${decibelsToAmplitude(settings.compressor.thresholdDb)}`,
+      `ratio=${seconds(settings.compressor.ratio)}`,
+      `attack=${seconds(settings.compressor.attackMs)}`,
+      `release=${seconds(settings.compressor.releaseMs)}`,
+      `knee=${seconds(settings.compressor.knee)}`,
+      `makeup=${decibelsToAmplitude(settings.compressor.makeupGainDb)}`,
+      `mix=${seconds(settings.compressor.mix)}`,
+      `link=${settings.compressor.link}`,
+      `detection=${settings.compressor.detection}`,
+    ].join(":"));
+  }
+  if (settings.outputGainDb !== 0) filters.push(`volume=${seconds(settings.outputGainDb)}dB`);
+  if (settings.limiter.enabled) {
+    filters.push([
+      `alimiter=limit=${decibelsToAmplitude(settings.limiter.ceilingDbfs)}`,
+      `attack=${seconds(settings.limiter.attackMs)}`,
+      `release=${seconds(settings.limiter.releaseMs)}`,
+      "level=false",
+      "latency=true",
+    ].join(":"));
+  }
+  return { settings, filters };
+};
+
+export const buildRenderGraph = (entries, { singleTrack = false, masterBus = {} } = {}) => {
   if (!entries.length) throw new Error("No playable audio is available to render.");
   const filters = [];
   const normalized = entries.map((entry, index) => {
@@ -142,7 +189,12 @@ export const buildRenderGraph = (entries, { singleTrack = false } = {}) => {
     }
     current = output;
   }
-  return { filterComplex: filters.join(";"), outputLabel: current, normalized };
+  const master = buildMasterBusFilters(masterBus);
+  if (master.filters.length) {
+    filters.push(`[${current}]${master.filters.join(",")}[mastered]`);
+    current = "mastered";
+  }
+  return { filterComplex: filters.join(";"), outputLabel: current, normalized, masterBus: master.settings };
 };
 
 const formatCueTime = (time) => {
@@ -151,18 +203,19 @@ const formatCueTime = (time) => {
   return `${minutes.toString().padStart(2, "0")}:${remainder.toFixed(3).padStart(6, "0")}`;
 };
 
-const createCueSheet = ({ album, timeline, audioName, format, createdAt, warnings }) => {
+const createCueSheet = ({ album, timeline, masterBus, audioName, format, createdAt, warnings }) => {
   const lines = [
     `${album.artist} — ${album.title}`,
     `Rendered: ${createdAt}`,
     `Audio: ${audioName}`,
     `Format: ${format === "wav" ? "WAV · 24-bit PCM · 48 kHz" : "MP3 · 320 kbps · 48 kHz"}`,
+    `MASTER bus: ${masterBus.bypass ? "bypassed" : `EQ ${masterBus.eq.enabled ? "on" : "off"} · compressor ${masterBus.compressor.enabled ? "on" : "off"} · output ${formatDb(masterBus.outputGainDb)} · limiter ${masterBus.limiter.enabled ? `${masterBus.limiter.ceilingDbfs} dBFS` : "off"}`}`,
     "",
     "PROGRAM CUES",
   ];
   timeline.forEach((entry, index) => {
     lines.push(`${index + 1}. ${formatCueTime(entry.outputStart)}  ${entry.track.title}`);
-    lines.push(`   Source ${formatCueTime(entry.settings.trimStart)} → ${formatCueTime(entry.settings.trimEnd)} · ${entry.settings.endMode}${entry.overlap ? ` ${entry.overlap.toFixed(3)}s` : ""}${entry.settings.gapAfter ? ` · gap ${entry.settings.gapAfter.toFixed(3)}s` : ""}`);
+    lines.push(`   Source ${formatCueTime(entry.settings.trimStart)} → ${formatCueTime(entry.settings.trimEnd)} · gain ${formatDb(entry.settings.gainDb)} · ${entry.settings.endMode}${entry.overlap ? ` ${entry.overlap.toFixed(3)}s` : ""}${entry.settings.gapAfter ? ` · gap ${entry.settings.gapAfter.toFixed(3)}s` : ""}`);
   });
   if (warnings.length) lines.push("", "WARNINGS", ...warnings.map((warning) => `- ${warning}`));
   return `${lines.join("\n")}\n`;
@@ -226,7 +279,7 @@ export const renderAudio = async ({ album, scope, trackId, format, previewPart =
 
   const renderFormat = scope === "preview" ? "mp3" : format;
   const singleTrack = entries.length === 1;
-  const graph = buildRenderGraph(entries, { singleTrack });
+  const graph = buildRenderGraph(entries, { singleTrack, masterBus: album.masterBus });
   const timeline = calculateProgramTimeline(entries);
   const expectedDuration = timeline.at(-1)?.outputEnd || 0;
   const createdAt = new Date().toISOString();
@@ -263,9 +316,9 @@ export const renderAudio = async ({ album, scope, trackId, format, previewPart =
     if (scope !== "preview") {
       cuePath = path.join(directory, `${path.basename(audioName, `.${renderFormat}`)}-cue-sheet.txt`);
       manifestPath = path.join(directory, `${path.basename(audioName, `.${renderFormat}`)}-render-manifest.json`);
-      await writeFile(cuePath, createCueSheet({ album, timeline, audioName, format: renderFormat, createdAt, warnings }));
+      await writeFile(cuePath, createCueSheet({ album, timeline, masterBus: graph.masterBus, audioName, format: renderFormat, createdAt, warnings }));
       await writeFile(manifestPath, `${JSON.stringify({
-        schemaVersion: 1,
+        schemaVersion: 2,
         renderId: id,
         createdAt,
         album: { id: album.id, artist: album.artist, title: album.title },
@@ -273,6 +326,7 @@ export const renderAudio = async ({ album, scope, trackId, format, previewPart =
         format: renderFormat,
         audioFile: audioName,
         warnings,
+        masterBus: graph.masterBus,
         tracks: timeline.map((entry) => ({
           id: entry.track.id,
           title: entry.track.title,
@@ -281,6 +335,7 @@ export const renderAudio = async ({ album, scope, trackId, format, previewPart =
           trimStart: entry.settings.trimStart,
           trimEnd: entry.settings.trimEnd,
           fadeIn: entry.settings.fadeIn,
+          gainDb: entry.settings.gainDb,
           endMode: entry.settings.endMode,
           endDuration: entry.settings.endDuration,
           gapAfter: entry.settings.gapAfter,

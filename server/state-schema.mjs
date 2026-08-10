@@ -1,4 +1,6 @@
-export const CURRENT_SCHEMA_VERSION = 3;
+import { MASTERING_LIMITS, normalizeMasterBus } from "../src/lib/mastering.js";
+
+export const CURRENT_SCHEMA_VERSION = 4;
 
 const DEFAULT_PROJECT_ARTIST = "Untitled Artist";
 
@@ -23,6 +25,56 @@ const validateVisualAssets = (assets, label) => {
   if (assets === undefined) return;
   if (!Array.isArray(assets)) throw new Error(`${label} visual assets must be an array.`);
   for (const asset of assets) validateAssetReference(asset, `${label} visual asset`);
+};
+
+const validateObject = (value, label) => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${label} must be an object.`);
+};
+
+const validateBoolean = (value, label) => {
+  if (typeof value !== "boolean") throw new Error(`${label} must be a boolean.`);
+};
+
+const validateNumberRange = (value, limits, label) => {
+  if (!Number.isFinite(value) || value < limits.minimum || value > limits.maximum) {
+    throw new Error(`${label} must be between ${limits.minimum} and ${limits.maximum}.`);
+  }
+};
+
+const validateEqBand = (band, frequencyLimits, label, { includeQ = false } = {}) => {
+  validateObject(band, label);
+  validateNumberRange(band.frequencyHz, frequencyLimits, `${label} frequencyHz`);
+  validateNumberRange(band.gainDb, MASTERING_LIMITS.eqGainDb, `${label} gainDb`);
+  if (includeQ) validateNumberRange(band.q, MASTERING_LIMITS.midBandQ, `${label} q`);
+};
+
+const validateMasterBus = (masterBus, label) => {
+  validateObject(masterBus, label);
+  validateBoolean(masterBus.bypass, `${label} bypass`);
+  validateObject(masterBus.eq, `${label} EQ`);
+  validateBoolean(masterBus.eq.enabled, `${label} EQ enabled`);
+  validateEqBand(masterBus.eq.lowShelf, MASTERING_LIMITS.lowShelfFrequencyHz, `${label} low shelf`);
+  validateEqBand(masterBus.eq.midBand, MASTERING_LIMITS.midBandFrequencyHz, `${label} mid band`, { includeQ: true });
+  validateEqBand(masterBus.eq.highShelf, MASTERING_LIMITS.highShelfFrequencyHz, `${label} high shelf`);
+
+  validateObject(masterBus.compressor, `${label} compressor`);
+  validateBoolean(masterBus.compressor.enabled, `${label} compressor enabled`);
+  validateNumberRange(masterBus.compressor.thresholdDb, MASTERING_LIMITS.compressorThresholdDb, `${label} compressor thresholdDb`);
+  validateNumberRange(masterBus.compressor.ratio, MASTERING_LIMITS.compressorRatio, `${label} compressor ratio`);
+  validateNumberRange(masterBus.compressor.attackMs, MASTERING_LIMITS.compressorAttackMs, `${label} compressor attackMs`);
+  validateNumberRange(masterBus.compressor.releaseMs, MASTERING_LIMITS.compressorReleaseMs, `${label} compressor releaseMs`);
+  validateNumberRange(masterBus.compressor.knee, MASTERING_LIMITS.compressorKnee, `${label} compressor knee`);
+  validateNumberRange(masterBus.compressor.makeupGainDb, MASTERING_LIMITS.compressorMakeupGainDb, `${label} compressor makeupGainDb`);
+  validateNumberRange(masterBus.compressor.mix, MASTERING_LIMITS.compressorMix, `${label} compressor mix`);
+  if (!["average", "maximum"].includes(masterBus.compressor.link)) throw new Error(`${label} compressor link must be average or maximum.`);
+  if (!["peak", "rms"].includes(masterBus.compressor.detection)) throw new Error(`${label} compressor detection must be peak or rms.`);
+
+  validateNumberRange(masterBus.outputGainDb, MASTERING_LIMITS.outputGainDb, `${label} outputGainDb`);
+  validateObject(masterBus.limiter, `${label} limiter`);
+  validateBoolean(masterBus.limiter.enabled, `${label} limiter enabled`);
+  validateNumberRange(masterBus.limiter.ceilingDbfs, MASTERING_LIMITS.limiterCeilingDbfs, `${label} limiter ceilingDbfs`);
+  validateNumberRange(masterBus.limiter.attackMs, MASTERING_LIMITS.limiterAttackMs, `${label} limiter attackMs`);
+  validateNumberRange(masterBus.limiter.releaseMs, MASTERING_LIMITS.limiterReleaseMs, `${label} limiter releaseMs`);
 };
 
 const appearanceOptions = {
@@ -57,6 +109,7 @@ export const validateState = (state) => {
     if (albumIds.has(album.id)) throw new Error(`Duplicate album id: ${album.id}`);
     albumIds.add(album.id);
     if (album.orderApproved !== undefined && typeof album.orderApproved !== "boolean") throw new Error(`${album.title} orderApproved must be a boolean.`);
+    validateMasterBus(album.masterBus, `${album.title} MASTER bus`);
     if (album.coverRef) validateAssetReference(album.coverRef, `${album.title} cover`);
     validateVisualAssets(album.visualAssets, album.title);
     const trackIds = new Set();
@@ -69,6 +122,7 @@ export const validateState = (state) => {
         for (const field of ["trimStart", "trimEnd", "fadeIn", "endDuration", "gapAfter"]) {
           if (track.mastering[field] !== undefined && track.mastering[field] !== null && (!Number.isFinite(track.mastering[field]) || track.mastering[field] < 0)) throw new Error(`${track.title} ${field} must be a non-negative number.`);
         }
+        if (track.mastering.gainDb !== undefined) validateNumberRange(track.mastering.gainDb, MASTERING_LIMITS.trackGainDb, `${track.title} gainDb`);
         if (track.mastering.endMode !== undefined && !["natural", "cut", "fade", "crossfade"].includes(track.mastering.endMode)) throw new Error(`${track.title} has an unsupported ending mode.`);
       }
       trackIds.add(track.id);
@@ -123,6 +177,14 @@ const migrations = new Map([
       },
     };
   }],
+  [3, (state) => ({
+    ...state,
+    schemaVersion: 4,
+    albums: Array.isArray(state.albums) ? state.albums.map((album) => ({
+      ...album,
+      masterBus: normalizeMasterBus(album?.masterBus),
+    })) : state.albums,
+  })],
 ]);
 
 export const migrateState = (input) => {

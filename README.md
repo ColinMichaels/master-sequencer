@@ -36,6 +36,12 @@ npm run dev
 Open [http://127.0.0.1:4177](http://127.0.0.1:4177). The first scan may take a
 few seconds; later starts use the metadata cache.
 
+On a new installation with no configured audio paths or indexed files, the app
+opens a first-run guide. It explains the complete file-to-album workflow and
+links directly to the native audio picker, album creation, and the main editing
+workspace. The guide also distinguishes the current non-destructive timing and
+transition tools from planned EQ, compression, limiting, and effects features.
+
 For the built production app:
 
 ```bash

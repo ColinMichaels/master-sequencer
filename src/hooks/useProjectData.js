@@ -10,6 +10,9 @@ export const useProjectData = () => {
   const [scanning, setScanning] = useState(false);
   const [pickingAssets, setPickingAssets] = useState(false);
   const [recovery, setRecovery] = useState({ required: false });
+  const [projects, setProjects] = useState([]);
+  const [activeProjectId, setActiveProjectId] = useState("");
+  const [projectOperation, setProjectOperation] = useState(false);
   const [saveStatus, setSaveStatus] = useState("Loading project…");
   const [error, setError] = useState("");
   const hydrated = useRef(false);
@@ -26,6 +29,8 @@ export const useProjectData = () => {
     saveChain.current = operation;
     return operation.then((payload) => {
       lastSavedJson.current = serialized;
+      if (payload.projects) setProjects(payload.projects);
+      if (payload.activeProjectId) setActiveProjectId(payload.activeProjectId);
       if (JSON.stringify(latestState.current) === serialized) setSaveStatus("Saved locally.");
       return payload;
     }).catch((reason) => {
@@ -48,6 +53,8 @@ export const useProjectData = () => {
       setRoots(payload.roots);
       setFormats(payload.supportedFormats);
       setRecovery(payload.recovery || { required: false });
+      setProjects(payload.projects || []);
+      setActiveProjectId(payload.activeProjectId || "");
       setSaveStatus("All changes save automatically.");
       setLoading(false);
     }).catch((reason) => {
@@ -188,6 +195,58 @@ export const useProjectData = () => {
     }
   }, [persistState]);
 
+  const flushPendingState = useCallback(async () => {
+    window.clearTimeout(saveTimer.current);
+    await saveChain.current.catch(() => {});
+    const snapshot = latestState.current;
+    if (snapshot && JSON.stringify(snapshot) !== lastSavedJson.current) await persistState(snapshot);
+  }, [persistState]);
+
+  const applyProjectPayload = useCallback((payload, status) => {
+    const serialized = JSON.stringify(payload.state);
+    latestState.current = payload.state;
+    lastSavedJson.current = serialized;
+    setState(payload.state);
+    setProjects(payload.projects || []);
+    setActiveProjectId(payload.activeProjectId || "");
+    setSaveStatus(status);
+  }, []);
+
+  const createProject = useCallback(async (details) => {
+    setProjectOperation(true);
+    setError("");
+    setSaveStatus("Saving this project before starting a new one…");
+    try {
+      await flushPendingState();
+      applyProjectPayload(await api.createProject(details), "New project created and saved locally.");
+      return true;
+    } catch (reason) {
+      setSaveStatus("New project could not be created — current project preserved.");
+      setError(reason.message);
+      return false;
+    } finally {
+      setProjectOperation(false);
+    }
+  }, [applyProjectPayload, flushPendingState]);
+
+  const loadProject = useCallback(async (projectId) => {
+    if (!projectId || projectId === activeProjectId) return true;
+    setProjectOperation(true);
+    setError("");
+    setSaveStatus("Saving this project before opening the selected project…");
+    try {
+      await flushPendingState();
+      applyProjectPayload(await api.loadProject(projectId), "Saved project loaded.");
+      return true;
+    } catch (reason) {
+      setSaveStatus("Project switch failed — current project preserved.");
+      setError(reason.message);
+      return false;
+    } finally {
+      setProjectOperation(false);
+    }
+  }, [activeProjectId, applyProjectPayload, flushPendingState]);
+
   const restoreRecovery = useCallback(async () => {
     setSaveStatus("Restoring the recovery snapshot…");
     setError("");
@@ -198,6 +257,8 @@ export const useProjectData = () => {
       lastSavedJson.current = serialized;
       setState(payload.state);
       setRecovery(payload.recovery || { required: false });
+      if (payload.projects) setProjects(payload.projects);
+      if (payload.activeProjectId) setActiveProjectId(payload.activeProjectId);
       setSaveStatus("Recovery snapshot restored locally.");
       return true;
     } catch (reason) {
@@ -219,11 +280,16 @@ export const useProjectData = () => {
     scanning,
     pickingAssets,
     recovery,
+    projects,
+    activeProjectId,
+    projectOperation,
     saveStatus,
     error,
     setError,
     setState,
     replaceState,
+    createProject,
+    loadProject,
     restoreRecovery,
     updateState,
     rescan,

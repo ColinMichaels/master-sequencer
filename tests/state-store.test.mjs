@@ -4,12 +4,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { createStateStore, migrateState, validateState } from "../server/state-store.mjs";
+import { normalizeMasterBus } from "../src/lib/mastering.js";
 
 const seed = {
-  schemaVersion: 3,
+  schemaVersion: 4,
   activeAlbumId: "album",
   settings: { project: { artistName: "Test Artist", setupComplete: true }, revealPrivateFilenames: false },
-  albums: [{ id: "album", title: "Album", tracks: [{ id: "track", title: "Track", candidates: [] }] }],
+  albums: [{ id: "album", title: "Album", masterBus: normalizeMasterBus(), tracks: [{ id: "track", title: "Track", candidates: [] }] }],
 };
 
 test("state validation rejects duplicate track ids", () => {
@@ -37,9 +38,10 @@ test("version 1 project state migrates to the current schema without changing al
   legacy.schemaVersion = 1;
   delete legacy.settings.project;
   const migrated = migrateState(legacy);
-  assert.equal(migrated.schemaVersion, 3);
+  assert.equal(migrated.schemaVersion, 4);
   assert.equal(migrated.activeAlbumId, legacy.activeAlbumId);
-  assert.deepEqual(migrated.albums, legacy.albums);
+  assert.deepEqual(migrated.albums[0].tracks, legacy.albums[0].tracks);
+  assert.deepEqual(migrated.albums[0].masterBus, normalizeMasterBus());
   assert.deepEqual(migrated.settings.project, { artistName: "Untitled Artist", setupComplete: true });
 });
 
@@ -49,9 +51,23 @@ test("version 2 project state inherits its artist without interrupting an existi
   legacy.albums[0].artist = "Legacy Ensemble";
   delete legacy.settings.project;
   const migrated = migrateState(legacy);
-  assert.equal(migrated.schemaVersion, 3);
+  assert.equal(migrated.schemaVersion, 4);
   assert.deepEqual(migrated.settings.project, { artistName: "Legacy Ensemble", setupComplete: true });
-  assert.deepEqual(migrated.albums, legacy.albums);
+  assert.deepEqual(migrated.albums[0].tracks, legacy.albums[0].tracks);
+  assert.deepEqual(migrated.albums[0].masterBus, normalizeMasterBus());
+});
+
+test("version 3 project state gains a neutral MASTER bus without changing track authority", () => {
+  const legacy = structuredClone(seed);
+  legacy.schemaVersion = 3;
+  delete legacy.albums[0].masterBus;
+  legacy.albums[0].tracks[0].masterCandidateId = "";
+  legacy.albums[0].tracks[0].auditionCandidateId = "";
+  const migrated = migrateState(legacy);
+  assert.equal(migrated.schemaVersion, 4);
+  assert.deepEqual(migrated.albums[0].masterBus, normalizeMasterBus());
+  assert.equal(migrated.albums[0].tracks[0].masterCandidateId, "");
+  assert.equal(migrated.albums[0].tracks[0].auditionCandidateId, "");
 });
 
 test("future project-state versions are rejected without guessing", () => {
@@ -177,12 +193,41 @@ test("state validation accepts a removed-from-sequence track and rejects invalid
 
 test("state validation accepts mastering settings and rejects invalid endings", () => {
   const valid = structuredClone(seed);
-  valid.albums[0].tracks[0].mastering = { trimStart: 1.25, trimEnd: 20, fadeIn: 0.5, endMode: "crossfade", endDuration: 3, gapAfter: 0 };
+  valid.albums[0].tracks[0].mastering = { trimStart: 1.25, trimEnd: 20, fadeIn: 0.5, endMode: "crossfade", endDuration: 3, gapAfter: 0, gainDb: -4.5 };
   assert.equal(validateState(valid), valid);
 
   const invalid = structuredClone(seed);
   invalid.albums[0].tracks[0].mastering = { endMode: "vanish" };
   assert.throws(() => validateState(invalid), /unsupported ending mode/);
+
+  const excessiveGain = structuredClone(seed);
+  excessiveGain.albums[0].tracks[0].mastering = { gainDb: 12.1 };
+  assert.throws(() => validateState(excessiveGain), /gainDb must be between -24 and 12/);
+});
+
+test("state validation accepts a complete MASTER bus and rejects unsafe DSP values", () => {
+  const valid = structuredClone(seed);
+  valid.albums[0].masterBus.eq.enabled = true;
+  valid.albums[0].masterBus.eq.midBand = { frequencyHz: 2400, gainDb: -1.5, q: 0.8 };
+  valid.albums[0].masterBus.compressor = {
+    ...valid.albums[0].masterBus.compressor,
+    enabled: true,
+    thresholdDb: -16,
+    ratio: 1.8,
+  };
+  assert.equal(validateState(valid), valid);
+
+  const invalidRatio = structuredClone(seed);
+  invalidRatio.albums[0].masterBus.compressor.ratio = 21;
+  assert.throws(() => validateState(invalidRatio), /compressor ratio must be between 1 and 20/);
+
+  const invalidLink = structuredClone(seed);
+  invalidLink.albums[0].masterBus.compressor.link = "independent";
+  assert.throws(() => validateState(invalidLink), /compressor link must be average or maximum/);
+
+  const missingBus = structuredClone(seed);
+  delete missingBus.albums[0].masterBus;
+  assert.throws(() => validateState(missingBus), /MASTER bus must be an object/);
 });
 
 test("state validation accepts appearance preferences and rejects unsupported choices", () => {

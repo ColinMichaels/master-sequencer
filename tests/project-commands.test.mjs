@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { addAlbum, addBlankTrack, addTracksFromFiles, projectArtistName, restoreBaselineOrder, selectAlbum, setTrackInSequence, updateAlbum, updateProjectIdentity } from "../src/lib/project-commands.js";
+import { normalizeMasterBus } from "../src/lib/mastering.js";
 
 const project = () => ({
   activeAlbumId: "one",
@@ -23,6 +24,7 @@ test("album and blank-track commands create unique stable ids", () => {
   const first = addAlbum(state, { title: "One", era: "future" });
   assert.equal(first, "one-2");
   assert.equal(state.albums.at(-1).artist, "Project Artist");
+  assert.deepEqual(state.albums.at(-1).masterBus, normalizeMasterBus());
   const album = state.albums[0];
   assert.equal(addBlankTrack(album, "A"), "a-2");
   assert.equal(album.baselineTrackOrder.at(-1), "a-2");

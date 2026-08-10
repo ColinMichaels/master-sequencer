@@ -4,6 +4,7 @@ import { AppHeader } from "./components/AppHeader.jsx";
 import { AssetWorkspace } from "./components/AssetWorkspace.jsx";
 import { AudioExportForm } from "./components/AudioExportForm.jsx";
 import { AudioLibraryWorkspace } from "./components/AudioLibraryWorkspace.jsx";
+import { FirstRunGuide } from "./components/FirstRunGuide.jsx";
 import { Modal } from "./components/Modal.jsx";
 import { ProjectIdentityForm } from "./components/ProjectIdentityForm.jsx";
 import { RecoveryWorkspace } from "./components/RecoveryWorkspace.jsx";
@@ -19,6 +20,7 @@ import { formatDuration, slugify } from "./lib/format.js";
 import { buildImportedTracks } from "./lib/import-tracks.js";
 import { api, sourceKey } from "./lib/api.js";
 import { sequenceTracks } from "./lib/sequence-tracks.js";
+import { shouldShowFirstRunGuide } from "./lib/first-run.js";
 import {
   addAlbum as addAlbumCommand,
   addBlankTrack,
@@ -148,6 +150,7 @@ export default function App() {
   const [albumsCollapsed, setAlbumsCollapsed] = useState(false);
   const [layoutPreviewCollapsed, setLayoutPreviewCollapsed] = useState(false);
   const [masteringTrackId, setMasteringTrackId] = useState("");
+  const [firstRunDismissed, setFirstRunDismissed] = useState(false);
   const transport = useTransport({ libraryMap: project.libraryMap });
 
   const configuredArtistName = projectArtistNameCommand(project.state);
@@ -175,6 +178,8 @@ export default function App() {
     mastering: standaloneCurrentSource ? {} : transportTrack?.mastering || {},
     nextTrackTitle: standaloneCurrentSource ? "" : transport.current?.nextTrackTitle || nextTransportTrack?.title || "",
   };
+  const firstRunEnvironment = shouldShowFirstRunGuide({ roots: project.roots, library: project.library });
+  const showFirstRunGuide = firstRunEnvironment && !firstRunDismissed;
 
   const updateAppearance = (patch) => project.updateState((draft) => {
     updateAppearanceCommand(draft, patch);
@@ -413,7 +418,18 @@ export default function App() {
       </div>
       <TransportBar audioRef={transport.audioRef} audioHandlers={transport.audioHandlers} current={transport.current} status={transport.status} activeAlbum={sequenceAlbum} visual={transportVisual} playing={transport.playing} currentTime={transport.currentTime} mediaDuration={transport.mediaDuration} resetArmed={resetArmed} onTogglePlayback={transport.togglePlayback} onSeek={transport.seek} onPlaySequence={() => transport.playSequence(sequenceAlbum)} onResetOrder={resetOrder} onExport={exportSequence} />
       <div className="status-strip"><span role="status" aria-live="polite">{project.saveStatus}</span><span>{project.library.length} audio files indexed · {project.roots.length} configured path{project.roots.length === 1 ? "" : "s"}</span><strong>Local mode</strong></div>
-      {!project.state.settings.project.setupComplete && (
+      {showFirstRunGuide && (
+        <FirstRunGuide
+          artistName={configuredArtistName}
+          setupComplete={project.state.settings.project.setupComplete}
+          scanning={project.scanning}
+          onSaveIdentity={saveProjectIdentity}
+          onChooseSources={chooseTrackSources}
+          onCreateAlbum={() => { setFirstRunDismissed(true); setModal("album"); }}
+          onExplore={() => setFirstRunDismissed(true)}
+        />
+      )}
+      {!showFirstRunGuide && !project.state.settings.project.setupComplete && (
         <Modal title="Start a New Project" className="modal--project-setup" dismissible={false} onClose={() => {}}>
           <div className="project-setup-intro"><strong>Make this sequencing workspace yours.</strong><p>Set the artist once for the entire project. You can change it later under Settings → Project.</p></div>
           <ProjectIdentityForm artistName={configuredArtistName} setup onSubmit={saveProjectIdentity} />

@@ -1,5 +1,8 @@
-import { readFile, rename, stat, writeFile } from "node:fs/promises";
-import { migrateState, validateState } from "./state-schema.mjs";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { normalizeMasterBus } from "../src/lib/mastering.js";
+import { CURRENT_SCHEMA_VERSION, migrateState, validateState } from "./state-schema.mjs";
 
 const readJson = async (filePath) => JSON.parse(await readFile(filePath, "utf8"));
 
@@ -7,6 +10,68 @@ const writeJsonAtomic = async (filePath, value) => {
   const temporaryPath = `${filePath}.tmp`;
   await writeFile(temporaryPath, `${JSON.stringify(value, null, 2)}\n`);
   await rename(temporaryPath, filePath);
+};
+
+const PROJECT_INDEX_VERSION = 1;
+const PROJECT_ID_PATTERN = /^[a-f0-9-]+$/;
+const cleanText = (value, label) => {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (!normalized || normalized.length > 120) {
+    const error = new Error(`${label} must be between 1 and 120 characters.`);
+    error.statusCode = 422;
+    throw error;
+  }
+  return normalized;
+};
+
+const slugify = (value) => value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "untitled-album";
+
+const projectSummary = (state) => ({
+  artistName: state.settings.project.artistName,
+  albumCount: state.albums.length,
+  trackCount: state.albums.reduce((total, album) => total + album.tracks.length, 0),
+});
+
+const inferredProjectName = (state) => {
+  const artist = state.settings.project.artistName;
+  const album = state.albums[0]?.title;
+  return album ? `${artist} — ${album}`.slice(0, 120) : `${artist} Project`.slice(0, 120);
+};
+
+const freshProjectState = ({ artistName, firstAlbumTitle, era, appearance }) => {
+  const albumId = slugify(firstAlbumTitle);
+  return validateState({
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+    activeAlbumId: albumId,
+    settings: {
+      project: { artistName, setupComplete: true },
+      revealPrivateFilenames: false,
+      ...(appearance ? { appearance: structuredClone(appearance) } : {}),
+    },
+    albums: [{
+      id: albumId,
+      artist: artistName,
+      title: firstAlbumTitle,
+      era,
+      status: "empty",
+      orderApproved: false,
+      masterBus: normalizeMasterBus(),
+      baselineTrackOrder: [],
+      visualAssets: [],
+      tracks: [],
+    }],
+  });
+};
+
+const validateProjectIndex = (index) => {
+  if (!index || index.version !== PROJECT_INDEX_VERSION || !Array.isArray(index.projects)) throw new Error("The saved-project index is invalid.");
+  const ids = new Set();
+  for (const project of index.projects) {
+    if (!PROJECT_ID_PATTERN.test(project?.id || "") || typeof project.name !== "string" || !project.name.trim() || ids.has(project.id)) throw new Error("The saved-project index contains an invalid project record.");
+    ids.add(project.id);
+  }
+  if (!ids.has(index.activeProjectId)) throw new Error("The saved-project index has no valid active project.");
+  return index;
 };
 
 const snapshotDetails = async (snapshotPath, source) => {
@@ -17,10 +82,55 @@ const snapshotDetails = async (snapshotPath, source) => {
   };
 };
 
-export const createStateStore = ({ statePath, seedPath, recoveryPath = `${statePath}.last-known-good.json` }) => {
+export const createStateStore = ({
+  statePath,
+  seedPath,
+  recoveryPath = `${statePath}.last-known-good.json`,
+  projectsIndexPath = path.join(path.dirname(statePath), "sequencer-projects.json"),
+  projectsRoot = path.join(path.dirname(statePath), "projects"),
+}) => {
   let writeQueue = Promise.resolve();
   let recovery = null;
   let readableState = null;
+  let projectIndex = null;
+
+  const projectPath = (projectId) => path.join(projectsRoot, `${projectId}.json`);
+
+  const publicProjects = () => projectIndex.projects
+    .map((project) => ({ ...project, active: project.id === projectIndex.activeProjectId }))
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+
+  const writeProjectIndex = async () => writeJsonAtomic(projectsIndexPath, projectIndex);
+
+  const updateProjectRecord = (projectId, state, updatedAt = new Date().toISOString()) => {
+    const record = projectIndex.projects.find((project) => project.id === projectId);
+    if (!record) throw new Error("The active saved project is missing from the index.");
+    Object.assign(record, projectSummary(state), { updatedAt });
+    return record;
+  };
+
+  const writeProjectSnapshot = async (projectId, state, updatedAt = new Date().toISOString()) => {
+    await writeJsonAtomic(projectPath(projectId), state);
+    updateProjectRecord(projectId, state, updatedAt);
+    await writeProjectIndex();
+  };
+
+  const initializeProjectIndex = async () => {
+    await mkdir(projectsRoot, { recursive: true });
+    try {
+      projectIndex = validateProjectIndex(await readJson(projectsIndexPath));
+    } catch {
+      const now = new Date().toISOString();
+      const id = randomUUID();
+      projectIndex = {
+        version: PROJECT_INDEX_VERSION,
+        activeProjectId: id,
+        projects: [{ id, name: inferredProjectName(readableState), createdAt: now, updatedAt: now, ...projectSummary(readableState) }],
+      };
+    }
+    const activeId = projectIndex.activeProjectId;
+    await writeProjectSnapshot(activeId, readableState, projectIndex.projects.find((project) => project.id === activeId)?.updatedAt);
+  };
 
   const writeRecoverySnapshot = async (state) => {
     const validated = validateState(structuredClone(state));
@@ -59,6 +169,7 @@ export const createStateStore = ({ statePath, seedPath, recoveryPath = `${stateP
           await writeJsonAtomic(statePath, seed);
           await writeRecoverySnapshot(seed);
           readableState = seed;
+          await initializeProjectIndex();
           return;
         }
         const fallback = await loadRecoverySnapshot(seed);
@@ -68,6 +179,7 @@ export const createStateStore = ({ statePath, seedPath, recoveryPath = `${stateP
           reason: error.message || "The current project record could not be read safely.",
         };
       }
+      await initializeProjectIndex();
     },
     async read() {
       if (recovery) return readableState;
@@ -84,7 +196,8 @@ export const createStateStore = ({ statePath, seedPath, recoveryPath = `${stateP
       await writeRecoverySnapshot(restored);
       readableState = restored;
       recovery = null;
-      return { state: restored, recovery: publicRecovery() };
+      await writeProjectSnapshot(projectIndex.activeProjectId, restored);
+      return { state: restored, recovery: publicRecovery(), projects: publicProjects(), activeProjectId: projectIndex.activeProjectId };
     },
     async write(state) {
       if (recovery) {
@@ -103,11 +216,72 @@ export const createStateStore = ({ statePath, seedPath, recoveryPath = `${stateP
         const current = migrateState(await readJson(statePath));
         await writeRecoverySnapshot(current);
         await writeJsonAtomic(statePath, validated);
+        await writeProjectSnapshot(projectIndex.activeProjectId, validated);
         readableState = validated;
       });
       writeQueue = operation.catch(() => {});
       await operation;
       return validated;
+    },
+    listProjects() {
+      return publicProjects();
+    },
+    activeProjectId() {
+      return projectIndex.activeProjectId;
+    },
+    async createProject(details) {
+      if (recovery) {
+        const error = new Error("Restore the recovery snapshot before starting a new project.");
+        error.statusCode = 409;
+        throw error;
+      }
+      const name = cleanText(details?.name, "Project name");
+      const artistName = cleanText(details?.artistName, "Artist name");
+      const firstAlbumTitle = cleanText(details?.firstAlbumTitle, "First album title");
+      const era = ["past", "current", "future"].includes(details?.era) ? details.era : "future";
+      const nextState = freshProjectState({ artistName, firstAlbumTitle, era, appearance: readableState?.settings?.appearance });
+      const operation = writeQueue.then(async () => {
+        const current = migrateState(await readJson(statePath));
+        await writeProjectSnapshot(projectIndex.activeProjectId, current);
+        const now = new Date().toISOString();
+        const id = randomUUID();
+        projectIndex.projects.push({ id, name, createdAt: now, updatedAt: now, ...projectSummary(nextState) });
+        await writeJsonAtomic(projectPath(id), nextState);
+        await writeRecoverySnapshot(current);
+        await writeJsonAtomic(statePath, nextState);
+        projectIndex.activeProjectId = id;
+        await writeProjectIndex();
+        readableState = nextState;
+        return { state: nextState, projects: publicProjects(), activeProjectId: id };
+      });
+      writeQueue = operation.catch(() => {});
+      return operation;
+    },
+    async loadProject(projectId) {
+      if (recovery) {
+        const error = new Error("Restore the recovery snapshot before loading another project.");
+        error.statusCode = 409;
+        throw error;
+      }
+      if (!PROJECT_ID_PATTERN.test(projectId || "") || !projectIndex.projects.some((project) => project.id === projectId)) {
+        const error = new Error("That saved project does not exist.");
+        error.statusCode = 404;
+        throw error;
+      }
+      const nextState = migrateState(await readJson(projectPath(projectId)));
+      const operation = writeQueue.then(async () => {
+        const current = migrateState(await readJson(statePath));
+        await writeProjectSnapshot(projectIndex.activeProjectId, current);
+        await writeRecoverySnapshot(current);
+        await writeJsonAtomic(statePath, nextState);
+        projectIndex.activeProjectId = projectId;
+        updateProjectRecord(projectId, nextState, new Date().toISOString());
+        await writeProjectIndex();
+        readableState = nextState;
+        return { state: nextState, projects: publicProjects(), activeProjectId: projectId };
+      });
+      writeQueue = operation.catch(() => {});
+      return operation;
     },
   };
 };

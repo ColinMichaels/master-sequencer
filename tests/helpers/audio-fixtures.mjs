@@ -30,3 +30,17 @@ export const probeAudio = async (filePath) => {
   ]);
   return JSON.parse(stdout);
 };
+
+export const measurePeakDb = async (filePath) => {
+  const { stderr } = await run("ffmpeg", [
+    "-hide_banner",
+    "-nostats",
+    "-i", filePath,
+    "-af", "volumedetect",
+    "-f", "null",
+    "-",
+  ]);
+  const match = stderr.match(/max_volume:\s*(-?\d+(?:\.\d+)?) dB/);
+  if (!match) throw new Error(`Could not measure peak volume for ${path.basename(filePath)}.`);
+  return Number(match[1]);
+};

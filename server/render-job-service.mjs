@@ -39,7 +39,7 @@ export const discoverRenderResults = async (outputRoot) => {
   for (const manifestPath of files.filter((filePath) => filePath.endsWith("-render-manifest.json"))) {
     try {
       const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-      if (manifest.schemaVersion !== 1 || typeof manifest.audioFile !== "string" || path.basename(manifest.audioFile) !== manifest.audioFile) continue;
+      if (![1, 2].includes(manifest.schemaVersion) || typeof manifest.audioFile !== "string" || path.basename(manifest.audioFile) !== manifest.audioFile) continue;
       const outputDirectory = path.dirname(manifestPath);
       const audioPath = path.resolve(outputDirectory, manifest.audioFile);
       if (!isWithin(outputRoot, audioPath)) continue;

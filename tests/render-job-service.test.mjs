@@ -84,7 +84,7 @@ test("completed documented renders are rediscovered after restart and partial fi
   await mkdir(malformedMetadataDirectory, { recursive: true });
   await writeFile(path.join(malformedMetadataDirectory, "fallback.mp3"), Buffer.alloc(8));
   await writeFile(path.join(malformedMetadataDirectory, "fallback-render-manifest.json"), JSON.stringify({
-    schemaVersion: 1,
+    schemaVersion: 2,
     renderId: "render-fallback",
     createdAt: 17,
     scope: "track",

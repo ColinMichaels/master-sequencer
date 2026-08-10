@@ -2,6 +2,7 @@ import { renameAlbumRecord } from "./albums.js";
 import { mergeAppearance } from "./appearance.js";
 import { slugify } from "./format.js";
 import { buildImportedTracks } from "./import-tracks.js";
+import { normalizeMasterBus } from "./mastering.js";
 import { setTrackSequenced } from "./sequence-tracks.js";
 
 export const DEFAULT_PROJECT_ARTIST = "Untitled Artist";
@@ -38,6 +39,7 @@ export const addAlbum = (state, { title, era }) => {
     era,
     status: era === "past" ? "archive" : era === "current" ? "working" : "empty",
     orderApproved: false,
+    masterBus: normalizeMasterBus(),
     baselineTrackOrder: [],
     visualAssets: [],
     tracks: [],
@@ -47,6 +49,16 @@ export const addAlbum = (state, { title, era }) => {
 };
 
 export const renameAlbum = (state, albumId, title) => renameAlbumRecord(state.albums, albumId, title);
+
+export const deleteAlbum = (state, albumId) => {
+  const albumIndex = state.albums.findIndex((album) => album.id === albumId);
+  if (albumIndex < 0 || state.albums.length <= 1) return false;
+  state.albums.splice(albumIndex, 1);
+  if (state.activeAlbumId === albumId) {
+    state.activeAlbumId = state.albums[Math.min(albumIndex, state.albums.length - 1)].id;
+  }
+  return true;
+};
 
 export const addBlankTrack = (album, title) => {
   const baseId = slugify(title);
