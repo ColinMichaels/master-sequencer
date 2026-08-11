@@ -1,5 +1,7 @@
 const INDEX_PATH = "/index.html";
-const DREADNAUTS_ORIGIN = "https://dreadnauts.uk";
+// Use the Dreadnauts Sites origin for worker-to-worker streaming; the public
+// custom domain remains the listener-facing canonical URL.
+const DREADNAUTS_ORIGIN = "https://dreadnauts-cosmic-reggae.captaincolin.chatgpt.site";
 const DREADNAUTS_DEMO_TRACKS = new Set([
   "funky-space-reggae-vibes",
   "intergalactic-mind-traveler",
