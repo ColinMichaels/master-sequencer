@@ -246,7 +246,10 @@ suffix HTTP byte ranges.
 
 See [Architecture](docs/ARCHITECTURE.md) for data flow and extension rules, and
 [Quality Review and Roadmap](docs/QUALITY-REVIEW-AND-ROADMAP.md) for the current
-assessment and prioritized future plan.
+assessment and prioritized future plan. The dedicated
+[Advanced Mastering and Audio Pipeline Plan](docs/ADVANCED-MASTERING-AUDIO-PIPELINE-PLAN.md)
+defines the Basic/Premium equipment boundary, processor routing graph, shared
+DSP direction, and native VST3-hosting phases.
 
 ## Verify
 

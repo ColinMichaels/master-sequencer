@@ -199,6 +199,9 @@ commands, state migrations, and style layers. `src/App.jsx` remains the primary
 client composition hub; future feature families should keep moving domain
 rules into focused modules instead of growing it indefinitely. The prioritized
 plan is maintained in [QUALITY-REVIEW-AND-ROADMAP.md](./QUALITY-REVIEW-AND-ROADMAP.md).
+The proposed Basic/Premium mastering split, processor graph, shared DSP core,
+and isolated native plug-in companion are specified separately in
+[ADVANCED-MASTERING-AUDIO-PIPELINE-PLAN.md](./ADVANCED-MASTERING-AUDIO-PIPELINE-PLAN.md).
 
 ## Verification layers
 
