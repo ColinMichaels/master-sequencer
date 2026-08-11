@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { api } from "../lib/api.js";
 import { CheckIcon, DocumentIcon, EditIcon, FolderIcon, MoreIcon, PanelLeftIcon, PlusIcon, TrashIcon } from "./Icons.jsx";
 
@@ -9,10 +9,39 @@ function AlbumArt({ album }) {
   return <span className="album-art-placeholder" aria-hidden="true">{album.title.slice(0, 1).toUpperCase()}</span>;
 }
 
-export function AlbumRail({ albums, activeAlbumId, currentProject, collapsed, projectBusy, onToggle, onSelectAlbum, onAddAlbum, onRenameAlbum, onDeleteAlbum, onOpenProjects, onNewProject }) {
+export function AlbumRail({ albums, activeAlbumId, currentProject, collapsed, projectBusy, draggedAudioKey = "", onToggle, onSelectAlbum, onDropAudio, onAddAlbum, onRenameAlbum, onDeleteAlbum, onOpenProjects, onNewProject }) {
+  const [dropTargetAlbumId, setDropTargetAlbumId] = useState("");
   const toggleLabel = collapsed ? "Show albums panel" : "Hide albums panel";
+  const audioDragActive = Boolean(draggedAudioKey && onDropAudio);
+
+  useEffect(() => {
+    if (!audioDragActive) setDropTargetAlbumId("");
+  }, [audioDragActive]);
+
+  const dropHandlers = (album) => audioDragActive ? {
+    onDragEnter: (event) => {
+      event.preventDefault();
+      setDropTargetAlbumId(album.id);
+    },
+    onDragOver: (event) => {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+      setDropTargetAlbumId(album.id);
+    },
+    onDragLeave: (event) => {
+      if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
+      setDropTargetAlbumId((current) => current === album.id ? "" : current);
+    },
+    onDrop: (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setDropTargetAlbumId("");
+      onDropAudio(album.id, draggedAudioKey);
+    },
+  } : {};
+
   return (
-    <aside className={`album-rail ${collapsed ? "is-collapsed" : ""}`} aria-label="Albums">
+    <aside className={`album-rail ${collapsed ? "is-collapsed" : ""} ${audioDragActive ? "is-audio-drag-active" : ""}`} aria-label="Albums">
       <header className="album-rail-heading">
         {!collapsed && <h2>Albums</h2>}
         <button type="button" className="panel-toggle panel-toggle--left" onClick={onToggle} aria-expanded={!collapsed} aria-controls="album-panel-content" aria-label={toggleLabel} data-tooltip={toggleLabel}><PanelLeftIcon collapsed={collapsed} /></button>
@@ -21,7 +50,7 @@ export function AlbumRail({ albums, activeAlbumId, currentProject, collapsed, pr
         <button type="button" className="compact-rail-button" disabled={projectBusy} onClick={onOpenProjects} aria-label={`Open saved projects for ${currentProject?.name || "Local Project"}`} data-tooltip={`Projects · ${currentProject?.name || "Local Project"}`}><FolderIcon /></button>
         <div className="compact-album-list" aria-label="Albums in this project">
           {albums.map((album) => (
-            <button key={album.id} type="button" className={`compact-album-button ${activeAlbumId === album.id ? "is-active" : ""}`} onClick={() => onSelectAlbum(album.id)} aria-label={`Open album ${album.title}`} aria-current={activeAlbumId === album.id ? "true" : undefined} data-tooltip={`${album.title} · ${album.status}`} title={`${album.title} · ${album.status}`}>
+            <button key={album.id} type="button" className={`compact-album-button ${activeAlbumId === album.id ? "is-active" : ""} ${dropTargetAlbumId === album.id ? "is-drop-target" : ""}`} onClick={() => onSelectAlbum(album.id)} aria-label={`Open album ${album.title}`} aria-current={activeAlbumId === album.id ? "true" : undefined} data-drop-album-id={album.id} data-tooltip={dropTargetAlbumId === album.id ? `Drop to add to ${album.title}` : `${album.title} · ${album.status}`} title={dropTargetAlbumId === album.id ? `Drop to add to ${album.title}` : `${album.title} · ${album.status}`} {...dropHandlers(album)}>
               <span className="album-art"><AlbumArt album={album} /></span>
             </button>
           ))}
@@ -42,12 +71,12 @@ export function AlbumRail({ albums, activeAlbumId, currentProject, collapsed, pr
             <section className="album-group" key={era}>
               <h3>{eraLabels[era]}</h3>
               {grouped.map((album) => (
-                <div key={album.id} className={`album-item-row ${activeAlbumId === album.id ? "is-active" : ""}`}>
+                <div key={album.id} className={`album-item-row ${activeAlbumId === album.id ? "is-active" : ""} ${dropTargetAlbumId === album.id ? "is-drop-target" : ""}`} data-drop-album-id={album.id} {...dropHandlers(album)}>
                   <button type="button" className="album-item" onClick={() => onSelectAlbum(album.id)} aria-current={activeAlbumId === album.id ? "true" : undefined}>
                     <span className="album-art"><AlbumArt album={album} /></span>
                     <span className="album-copy">
                       <strong>{album.title}</strong>
-                      <small>{album.status}</small>
+                      <small>{dropTargetAlbumId === album.id ? "Drop to add track / candidate" : album.status}</small>
                     </span>
                     <span className="album-state" aria-hidden="true">{album.status === "released" ? <CheckIcon /> : <MoreIcon />}</span>
                   </button>

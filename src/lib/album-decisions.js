@@ -162,6 +162,7 @@ export const createAlbumFromTemplate = (state, templateId, title) => {
     artist: template.artist,
     title: albumTitle,
     era: template.era,
+    releaseDate: "",
     status: "empty",
     orderApproved: false,
     masterBus: normalizeMasterBus(),

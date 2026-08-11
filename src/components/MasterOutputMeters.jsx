@@ -99,8 +99,57 @@ function VuChannel({ channel, rmsDb, peakDb, peakHoldDb }) {
   );
 }
 
-export const MasterOutputMeters = memo(function MasterOutputMeters({ meteringRef, available, playing, monitorLabel }) {
+function CompactVuChannel({ channel, rmsDb, peakDb, peakHoldDb }) {
+  const levelPercent = meterPosition(rmsDb, VU_MINIMUM_DB, 0) * 100;
+  const peakPercent = meterPosition(peakHoldDb, VU_MINIMUM_DB, 0) * 100;
+  return (
+    <div className={`header-vu-channel ${peakDb >= -0.1 ? "is-clipping" : ""}`} data-meter-channel={channel.toLowerCase()} data-meter-rms={rmsDb.toFixed(2)}>
+      <strong aria-hidden="true">{channel.slice(0, 1)}</strong>
+      <div className="header-vu-track" role="meter" aria-label={`${channel} header master RMS level`} aria-valuemin={VU_MINIMUM_DB} aria-valuemax="0" aria-valuenow={Math.max(VU_MINIMUM_DB, rmsDb).toFixed(1)} aria-valuetext={`${displayDb(rmsDb)} dBFS RMS; ${displayDb(peakHoldDb)} dBFS peak hold`}>
+        <i className="header-vu-fill" style={{ "--vu-level": `${levelPercent}%` }} />
+        <i className="header-vu-reference" style={{ "--vu-reference": `${meterPosition(VU_ZERO_DBFS, VU_MINIMUM_DB, 0) * 100}%` }} aria-hidden="true" />
+        <i className="header-vu-peak" style={{ "--vu-peak": `${peakPercent}%` }} aria-hidden="true" />
+      </div>
+    </div>
+  );
+}
+
+const ROUTING_STATE = {
+  mastering: { className: "is-mastering-route", label: "MASTER", description: "Mastering enabled" },
+  reference: { className: "is-reference-route", label: "REF", description: "Clean reference; mastering bypassed" },
+  raw: { className: "is-raw-route", label: "", description: "Raw direct audio; mastering bypassed" },
+};
+
+function CompactMasterMonitor({ frame, clipping, mode, onModeChange, spectrumLine, spectrumArea, dominantBand, stateLabel, routing }) {
+  const normalizedRouting = ROUTING_STATE[routing] ? routing : "raw";
+  const routingState = ROUTING_STATE[normalizedRouting];
+  return (
+    <section className={`header-master-meter ${routingState.className} ${frame.active ? "is-active" : ""} ${clipping ? "has-clip" : ""}`} aria-label={`Master output monitor. ${routingState.description}. ${clipping ? "Peak clip" : stateLabel}`} title={`${routingState.description}. ${stateLabel}`} data-testid="header-master-meter" data-meter-mode={mode} data-meter-active={frame.active ? "true" : "false"} data-meter-routing={normalizedRouting} data-routing-label={routingState.label}>
+      <div className="header-meter-display">
+        {mode === "vu" ? (
+          <div className="header-vu-channels">
+            <CompactVuChannel channel="Left" rmsDb={frame.leftRmsDb} peakDb={frame.leftPeakDb} peakHoldDb={frame.leftPeakHoldDb} />
+            <CompactVuChannel channel="Right" rmsDb={frame.rightRmsDb} peakDb={frame.rightPeakDb} peakHoldDb={frame.rightPeakHoldDb} />
+          </div>
+        ) : (
+          <svg className="header-spectrum" viewBox={`0 0 ${SPECTRUM_WIDTH} ${SPECTRUM_BOTTOM}`} role="img" aria-label={frame.active ? `Condensed frequency analyzer. Strongest displayed band ${formatFrequency(dominantBand.frequency)} hertz at ${displayDb(dominantBand.decibels)} decibels.` : "Condensed frequency analyzer awaiting master output."} preserveAspectRatio="none" data-spectrum-peak={dominantBand.decibels.toFixed(2)}>
+            <g aria-hidden="true">{[100, 1_000, 10_000].map((frequency) => <line key={frequency} x1={frequencyPosition(frequency)} x2={frequencyPosition(frequency)} y1={SPECTRUM_TOP} y2={SPECTRUM_BOTTOM} />)}</g>
+            <path className="header-spectrum-area" d={spectrumArea} />
+            <path className="header-spectrum-line" d={spectrumLine} />
+          </svg>
+        )}
+      </div>
+      <div className="header-meter-controls" role="group" aria-label="Header master monitor view">
+        <button type="button" className={mode === "vu" ? "is-active" : ""} aria-label="Show VU meter" aria-pressed={mode === "vu"} data-tooltip="VU meter" onClick={() => onModeChange("vu")}>VU</button>
+        <button type="button" className={mode === "spectrum" ? "is-active" : ""} aria-label="Show frequency analyzer" aria-pressed={mode === "spectrum"} data-tooltip="Frequency analyzer" onClick={() => onModeChange("spectrum")}>Hz</button>
+      </div>
+    </section>
+  );
+}
+
+export const MasterOutputMeters = memo(function MasterOutputMeters({ meteringRef, available, playing, monitorLabel, monitorRouting = "raw", compact = false }) {
   const [frame, setFrame] = useState(EMPTY_FRAME);
+  const [compactMode, setCompactMode] = useState("vu");
   const [peakResetVersion, setPeakResetVersion] = useState(0);
   const animationRef = useRef(0);
   const buffersRef = useRef({});
@@ -190,6 +239,8 @@ export const MasterOutputMeters = memo(function MasterOutputMeters({ meteringRef
   const spectrumLine = spectrumLinePath(frame.spectrum);
   const spectrumArea = spectrumAreaPath(frame.spectrum);
   const clipping = frame.leftPeakDb >= -0.1 || frame.rightPeakDb >= -0.1;
+
+  if (compact) return <CompactMasterMonitor frame={frame} clipping={clipping} mode={compactMode} onModeChange={setCompactMode} spectrumLine={spectrumLine} spectrumArea={spectrumArea} dominantBand={dominantBand} stateLabel={monitorLabel || stateLabel} routing={monitorRouting} />;
 
   return (
     <section className={`master-metering-console ${frame.active ? "is-active" : ""} ${clipping ? "has-clip" : ""}`} aria-labelledby="master-metering-title" data-testid="master-output-meter">

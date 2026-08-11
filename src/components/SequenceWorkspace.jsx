@@ -9,6 +9,9 @@ const sourceLabel = (track, candidate, file, revealPrivateFilenames) => {
   return `${candidate.label} · ${file?.name || "Source offline"}`;
 };
 
+const isIndependentRowControl = (target) => target instanceof Element
+  && Boolean(target.closest("button, select, input, textarea, a, [data-row-playback-ignore]"));
+
 export function SequenceWorkspace({ album, libraryMap, revealPrivateFilenames, transitioningTrackId, currentTrackId, playing, renderingAvailable = true, onAlbumChange, onAddTracks, onPlayFrom, onTogglePlayback, onTransition, onExport, onRemoveFromSequence, onRestoreToSequence }) {
   const [draggedTrackId, setDraggedTrackId] = useState("");
   const [removeArmedTrackId, setRemoveArmedTrackId] = useState("");
@@ -96,9 +99,34 @@ export function SequenceWorkspace({ album, libraryMap, revealPrivateFilenames, t
                 // Keep the current row selected while paused; reserve the active treatment for audible playback.
                 const current = currentTrackId === track.id;
                 const trackPlaying = current && playing;
+                const toggleRowPlayback = () => current ? onTogglePlayback() : onPlayFrom(index);
+                const rowPlaybackLabel = trackPlaying
+                  ? `${track.title}. Playing. Press Enter or Space to pause.`
+                  : current
+                    ? `${track.title}. Paused. Press Enter or Space to resume.`
+                    : `${track.title}. Press Enter or Space to play from this track.`;
                 return (
-                  <li key={track.id} className={`sequence-track ${missing ? "is-missing" : ""} ${legacy ? "is-legacy" : ""} ${trackPlaying ? "is-playing" : ""} ${removeArmed ? "is-removal-armed" : ""}`} draggable onDragStart={() => setDraggedTrackId(track.id)} onDragOver={(event) => event.preventDefault()} onDrop={() => dropTrack(track.id)} role="row">
-                    <div className="track-move">
+                  <li
+                    key={track.id}
+                    className={`sequence-track ${missing ? "is-missing" : "is-playable"} ${legacy ? "is-legacy" : ""} ${trackPlaying ? "is-playing" : ""} ${removeArmed ? "is-removal-armed" : ""}`}
+                    draggable
+                    onDragStart={() => setDraggedTrackId(track.id)}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={() => dropTrack(track.id)}
+                    onClick={(event) => {
+                      if (missing || removeArmed || isIndependentRowControl(event.target)) return;
+                      toggleRowPlayback();
+                    }}
+                    onKeyDown={(event) => {
+                      if (missing || removeArmed || event.target !== event.currentTarget || !["Enter", " "].includes(event.key)) return;
+                      event.preventDefault();
+                      toggleRowPlayback();
+                    }}
+                    role="row"
+                    tabIndex={missing ? undefined : 0}
+                    aria-label={missing ? undefined : rowPlaybackLabel}
+                  >
+                    <div className="track-move" data-row-playback-ignore>
                       <DragIcon />
                       <button type="button" onClick={() => moveTrack(track.id, -1)} disabled={index === 0} aria-label={`Move ${track.title} up`}><ChevronIcon direction="up" /></button>
                       <button type="button" onClick={() => moveTrack(track.id, 1)} disabled={index === tracks.length - 1} aria-label={`Move ${track.title} down`}><ChevronIcon direction="down" /></button>

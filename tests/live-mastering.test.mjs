@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { activeMasteringProcessors, applyLiveMasteringSettings, comparisonPlaybackStart, createLiveMasteringGraph, decibelsToGain, playbackBypassesMastering } from "../src/lib/live-mastering.js";
+import { activeMasteringProcessors, applyLiveMasteringSettings, comparisonPlaybackStart, createLiveMasteringGraph, decibelsToGain, masterMonitorRouting, playbackBypassesMastering } from "../src/lib/live-mastering.js";
 
 const parameter = () => ({ value: 0 });
 const filter = () => ({ type: "", frequency: parameter(), gain: parameter(), Q: parameter() });
@@ -80,6 +80,15 @@ test("raw library and rendered previews bypass live processing to prevent altere
 test("reference playback is explicitly classified for the clean direct output", () => {
   assert.equal(playbackBypassesMastering({ track: { id: "current" }, referenceTrack: true }), true);
   assert.equal(playbackBypassesMastering({ track: { id: "current" } }), false);
+});
+
+test("header monitor routing distinguishes mastering, clean references, and raw audio", () => {
+  assert.equal(masterMonitorRouting({ entry: { track: { id: "current" } }, masterBus: enabledMaster, meteringAvailable: true }), "mastering");
+  assert.equal(masterMonitorRouting({ entry: { track: { id: "current" }, referenceTrack: true }, masterBus: enabledMaster, meteringAvailable: true }), "reference");
+  assert.equal(masterMonitorRouting({ entry: { renderedPreview: true }, masterBus: enabledMaster, meteringAvailable: false }), "mastering");
+  assert.equal(masterMonitorRouting({ entry: { file: { key: "library" } }, masterBus: enabledMaster, meteringAvailable: true }), "raw");
+  assert.equal(masterMonitorRouting({ entry: { track: { id: "current" } }, masterBus: { ...enabledMaster, bypass: true }, meteringAvailable: true }), "raw");
+  assert.equal(masterMonitorRouting({ entry: { track: { id: "current" } }, masterBus: enabledMaster, meteringAvailable: false }), "raw");
 });
 
 test("A/B switching keeps elapsed time when possible and restarts when the target is shorter", () => {

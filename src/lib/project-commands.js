@@ -37,6 +37,7 @@ export const addAlbum = (state, { title, era }) => {
     artist: projectArtistName(state),
     title: title.trim(),
     era,
+    releaseDate: "",
     status: era === "past" ? "archive" : era === "current" ? "working" : "empty",
     orderApproved: false,
     masterBus: normalizeMasterBus(),

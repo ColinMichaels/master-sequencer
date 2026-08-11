@@ -1,5 +1,6 @@
 import { MASTERING_LIMITS, normalizeMasterBus } from "../src/lib/mastering.js";
 import { MASTERING_PRESET_TYPES } from "../src/lib/mastering-presets.js";
+import { isValidAlbumReleaseDate } from "../src/lib/release-date.js";
 
 export const CURRENT_SCHEMA_VERSION = 5;
 
@@ -176,6 +177,8 @@ export const validateState = (state) => {
     if (!album.id || !album.title || !Array.isArray(album.tracks)) throw new Error("Every album needs an id, title, and tracks array.");
     if (albumIds.has(album.id)) throw new Error(`Duplicate album id: ${album.id}`);
     albumIds.add(album.id);
+    // Optional album metadata only: it never implies approval, delivery, or publication state.
+    if (album.releaseDate !== undefined && !isValidAlbumReleaseDate(album.releaseDate)) throw new Error(`${album.title} releaseDate must be a valid YYYY-MM-DD calendar date or blank.`);
     if (album.orderApproved !== undefined && typeof album.orderApproved !== "boolean") throw new Error(`${album.title} orderApproved must be a boolean.`);
     validateMasterBus(album.masterBus, `${album.title} MASTER bus`);
     if (album.masteringReferenceSourceRef !== undefined) validateSourceReference(album.masteringReferenceSourceRef, `${album.title} mastering reference`);

@@ -22,6 +22,7 @@ export const slugify = (value) => value
 export const titleFromFilename = (name) => name
   .replace(/\.[^.]+$/, "")
   .replace(/^\d+[\s._-]*/, "")
+  .replace(/\s+[—–-]\s+Apple Music Preview$/i, "")
   .replace(/\s*\([^)]*(mix|master|version|edit|old|demo)[^)]*\)\s*$/i, "")
   .replace(/[-_]+/g, " ")
   .replace(/\s+/g, " ")

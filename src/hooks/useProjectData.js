@@ -301,6 +301,27 @@ export const useProjectData = () => {
     }
   }, [activeProjectId, applyProjectPayload, flushPendingState]);
 
+  const deleteProject = useCallback(async (projectId) => {
+    if (!projectId) return false;
+    setProjectOperation(true);
+    setError("");
+    setSaveStatus("Saving the open project before removing the selected project…");
+    try {
+      await flushPendingState();
+      applyProjectPayload(await api.deleteProject(projectId), "Saved project removed. Source assets were not changed.");
+      undoStack.current = [];
+      redoStack.current = [];
+      setHistoryRevision((revision) => revision + 1);
+      return true;
+    } catch (reason) {
+      setSaveStatus("Project could not be removed — saved projects were preserved.");
+      setError(reason.message);
+      return false;
+    } finally {
+      setProjectOperation(false);
+    }
+  }, [applyProjectPayload, flushPendingState]);
+
   const restoreRecovery = useCallback(async () => {
     setSaveStatus("Restoring the recovery snapshot…");
     setError("");
@@ -349,6 +370,7 @@ export const useProjectData = () => {
     replaceState,
     createProject,
     loadProject,
+    deleteProject,
     restoreRecovery,
     updateState,
     commandHistory: {

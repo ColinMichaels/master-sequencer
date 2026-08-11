@@ -64,6 +64,24 @@ test("online app supports separate browser-local projects and rejects local serv
   await assert.rejects(api.startRenderJob({}), /browser-session access/);
 });
 
+test("online app removes only a saved project record and switches away from an active removal", async () => {
+  const storage = memoryStorage();
+  const api = createOnlineAppApi({ storage });
+  const initial = await api.bootstrap();
+  const originalId = initial.activeProjectId;
+  const created = await api.createProject({ name: "Temporary Project", artistName: "Artist", firstAlbumTitle: "Temporary Album", era: "future" });
+  const removed = await api.deleteProject(created.activeProjectId);
+  assert.equal(removed.activeProjectId, originalId);
+  assert.equal(removed.projects.length, 1);
+  assert.equal(removed.state.albums[0].title, "Cosmic Reggae Sessions");
+  await assert.rejects(api.deleteProject(originalId), /final saved project cannot be removed/i);
+
+  const keepOpen = await api.createProject({ name: "Keep Open", artistName: "Artist", firstAlbumTitle: "Open Album", era: "current" });
+  const removedInactive = await api.deleteProject(originalId);
+  assert.equal(removedInactive.activeProjectId, keepOpen.activeProjectId);
+  assert.equal(removedInactive.projects.length, 1);
+});
+
 test("online waveform and analysis remain compact and contain no source paths", async () => {
   const api = createOnlineAppApi({ storage: memoryStorage() });
   const key = onlineAppLibrary[0].key;
@@ -126,4 +144,30 @@ test("online app handles picker cancellation and selections without supported au
     sourcePicker: async () => ({ cancelled: false, label: "Documents", entries: [{ file: { name: "notes.txt" }, relativePath: "notes.txt" }] }),
   });
   await assert.rejects(unsupported.chooseSources("folder"), /No supported audio files/);
+});
+
+test("online app probes selected audio in parallel and keeps files whose metadata cannot be read", async () => {
+  let activeReaders = 0;
+  let maximumReaders = 0;
+  const files = ["One.wav", "Two.wav", "Unreadable.wav"].map((name) => ({ file: { name, size: 32_000, lastModified: 1 }, relativePath: name }));
+  const api = createOnlineAppApi({
+    storage: memoryStorage(),
+    sourcePicker: async () => ({ cancelled: false, label: "Parallel selection", entries: files }),
+    mediaUrlFactory: (file) => `blob:session/${file.name}`,
+    metadataReader: async ({ file }) => {
+      activeReaders += 1;
+      maximumReaders = Math.max(maximumReaders, activeReaders);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      activeReaders -= 1;
+      if (file.name === "Unreadable.wav") throw new Error("Metadata unavailable");
+      return { duration: 2, probeError: "" };
+    },
+  });
+
+  const result = await api.chooseSources("files");
+  assert.equal(maximumReaders, 3);
+  assert.equal(result.pickedKeys.length, 3);
+  assert.equal(result.library.length, onlineAppLibrary.length + 3);
+  assert.equal(result.library.find((file) => file.name === "Unreadable.wav").duration, 0);
+  assert.match(result.library.find((file) => file.name === "Unreadable.wav").probeError, /Metadata unavailable/);
 });

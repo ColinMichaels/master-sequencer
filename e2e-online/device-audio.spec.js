@@ -39,18 +39,17 @@ test.beforeEach(async ({ page }) => {
 test("selected device audio joins the session library and plays without upload", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Add Files" })).toBeEnabled();
   await expect(page.getByRole("button", { name: "Add Folder" })).toBeEnabled();
+  await page.getByPlaceholder("Search files").fill("does-not-match");
+  await expect(page.getByText("0 of 9 discovered files")).toBeVisible();
 
   const chooserPromise = page.waitForEvent("filechooser");
   await page.getByRole("button", { name: "Add Files" }).click();
   const chooser = await chooserPromise;
   await chooser.setFiles({ name: "Reference Tone.wav", mimeType: "audio/wav", buffer: createWaveFile() });
 
-  const review = page.getByRole("dialog", { name: "Review Tracks" });
-  await expect(review).toContainText("1 audio file found");
-  await expect(review).toContainText("Reference Tone.wav");
-  await expect(review).toContainText("WAV · 0:02.000");
-  await page.getByRole("button", { name: "Close dialog" }).click();
-
+  await expect(page.getByRole("dialog", { name: "Review Tracks" })).toHaveCount(0);
+  await expect(page.getByRole("status").filter({ hasText: "1 audio file added and shown below" })).toBeVisible();
+  await expect(page.getByPlaceholder("Search files")).toHaveValue("");
   await expect(page.getByRole("row", { name: /Reference Tone\.wav/ })).toBeVisible();
   await expect(page.getByText("1 device file in this session · never uploaded")).toBeVisible();
   await page.getByRole("button", { name: "Preview Reference Tone.wav" }).click();
@@ -71,8 +70,8 @@ test("folder selection indexes nested supported audio and ignores other files", 
   const chooser = await chooserPromise;
   await chooser.setFiles(folderPath);
 
-  const review = page.getByRole("dialog", { name: "Review Tracks" });
-  await expect(review).toContainText("1 audio file found");
-  await expect(review).toContainText("Nested Mix.wav");
-  await expect(review).not.toContainText("Session Notes.txt");
+  await expect(page.getByRole("dialog", { name: "Review Tracks" })).toHaveCount(0);
+  await expect(page.getByRole("status").filter({ hasText: "1 audio file added and shown below" })).toBeVisible();
+  await expect(page.getByRole("row", { name: /Nested Mix\.wav/ })).toBeVisible();
+  await expect(page.getByText("Session Notes.txt", { exact: true })).toHaveCount(0);
 });

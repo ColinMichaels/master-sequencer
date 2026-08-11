@@ -21,6 +21,22 @@ test("state validation rejects duplicate track ids", () => {
   assert.throws(() => validateState(invalid), /Duplicate track id/);
 });
 
+test("album release dates are optional ISO calendar dates and remain independent metadata", () => {
+  const planned = structuredClone(seed);
+  planned.albums[0].releaseDate = "2027-04-23";
+  planned.albums[0].orderApproved = false;
+  assert.equal(validateState(planned).albums[0].releaseDate, "2027-04-23");
+  assert.equal(planned.albums[0].orderApproved, false);
+
+  const unset = structuredClone(seed);
+  unset.albums[0].releaseDate = "";
+  assert.equal(validateState(unset).albums[0].releaseDate, "");
+
+  const impossible = structuredClone(seed);
+  impossible.albums[0].releaseDate = "2027-02-29";
+  assert.throws(() => validateState(impossible), /releaseDate must be a valid YYYY-MM-DD calendar date or blank/);
+});
+
 test("state store initializes from seed and writes atomically", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "project-sequencer-state-"));
   const seedPath = path.join(root, "seed.json");
@@ -61,6 +77,39 @@ test("saved projects preserve the old project when creating and loading a fresh 
   assert.equal(loaded.activeProjectId, originalId);
   assert.equal(loaded.state.albums[0].title, "Saved Old Album");
   assert.equal(JSON.parse(await readFile(path.join(projectsRoot, `${originalId}.json`), "utf8")).albums[0].title, "Saved Old Album");
+});
+
+test("saved projects can be removed without touching source assets and active removal opens a remaining project", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "project-sequencer-project-removal-"));
+  const seedPath = path.join(root, "seed.json");
+  const statePath = path.join(root, "state.json");
+  const projectsIndexPath = path.join(root, "project-index.json");
+  const projectsRoot = path.join(root, "projects");
+  const sourceAsset = path.join(root, "source-master.wav");
+  const renderedExport = path.join(root, "rendered-master.wav");
+  await writeFile(seedPath, JSON.stringify(seed));
+  await writeFile(sourceAsset, "source audio remains outside project records");
+  await writeFile(renderedExport, "rendered export remains outside project records");
+  const store = createStateStore({ seedPath, statePath, projectsIndexPath, projectsRoot });
+  await store.initialize();
+
+  const originalId = store.activeProjectId();
+  const created = await store.createProject({ name: "Temporary Project", artistName: "Test Artist", firstAlbumTitle: "Temporary Album", era: "future" });
+  const removedActive = await store.deleteProject(created.activeProjectId);
+  assert.equal(removedActive.activeProjectId, originalId);
+  assert.equal(removedActive.projects.length, 1);
+  assert.equal(removedActive.state.albums[0].title, "Album");
+  assert.equal(JSON.parse(await readFile(`${statePath}.last-known-good.json`, "utf8")).albums[0].title, "Album");
+  await assert.rejects(readFile(path.join(projectsRoot, `${created.activeProjectId}.json`), "utf8"), { code: "ENOENT" });
+  assert.equal(await readFile(sourceAsset, "utf8"), "source audio remains outside project records");
+  assert.equal(await readFile(renderedExport, "utf8"), "rendered export remains outside project records");
+  await assert.rejects(store.deleteProject(originalId), /final saved project cannot be removed/i);
+
+  const third = await store.createProject({ name: "Keep Open", artistName: "Test Artist", firstAlbumTitle: "Open Album", era: "current" });
+  const removedInactive = await store.deleteProject(originalId);
+  assert.equal(removedInactive.activeProjectId, third.activeProjectId);
+  assert.equal(removedInactive.state.albums[0].title, "Open Album");
+  assert.equal(removedInactive.projects.length, 1);
 });
 
 test("a malformed saved-project index is preserved instead of silently replaced", async () => {

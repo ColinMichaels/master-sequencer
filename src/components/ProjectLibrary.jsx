@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { FolderIcon, PlusIcon } from "./Icons.jsx";
+import { FolderIcon, PlusIcon, TrashIcon } from "./Icons.jsx";
 
 const formatUpdatedAt = (value) => {
   const date = new Date(value);
@@ -28,7 +28,7 @@ export function NewProjectForm({ defaultArtistName, busy, onSubmit, onCancel }) 
   );
 }
 
-export function SavedProjects({ projects, busy, onLoad, onNewProject, onCancel }) {
+export function SavedProjects({ projects, busy, onLoad, onRemove, onNewProject, onCancel }) {
   return (
     <div className="modal-form saved-projects">
       <p>Every project below is a separate local snapshot of its albums, tracks, notes, sources, mastering instructions, and approvals.</p>
@@ -36,13 +36,27 @@ export function SavedProjects({ projects, busy, onLoad, onNewProject, onCancel }
         {projects.map((project) => (
           <li key={project.id} className={project.active ? "is-active" : ""}>
             <span><strong>{project.name}</strong><small>{project.artistName} · {project.albumCount} album{project.albumCount === 1 ? "" : "s"} · {project.trackCount} track{project.trackCount === 1 ? "" : "s"}</small><small>{formatUpdatedAt(project.updatedAt)}</small></span>
-            {project.active
-              ? <em>Open now</em>
-              : <button type="button" className="text-button" disabled={busy} onClick={() => onLoad(project.id)}><FolderIcon /> Load Project</button>}
+            <span className="saved-project-actions">
+              {project.active
+                ? <em>Open now</em>
+                : <button type="button" className="text-button" disabled={busy} onClick={() => onLoad(project.id)}><FolderIcon /> Load Project</button>}
+              <button type="button" className="icon-button saved-project-remove" disabled={busy || projects.length <= 1} onClick={() => onRemove(project.id)} aria-label={`Remove project ${project.name}`} title={projects.length <= 1 ? "Start another project before removing the final saved project" : `Remove ${project.name}`}><TrashIcon /></button>
+            </span>
           </li>
         ))}
       </ul>
       <div className="modal-actions"><button type="button" className="text-button" disabled={busy} onClick={onCancel}>Close</button><button type="button" className="primary-button" disabled={busy} onClick={onNewProject}><PlusIcon /> New Project</button></div>
+    </div>
+  );
+}
+
+export function RemoveProjectForm({ project, busy, onSubmit, onCancel }) {
+  return (
+    <div className="modal-form remove-project-form">
+      <p><strong>{project.name}</strong> and its saved Project Sequencer decisions will be removed from this app.</p>
+      <dl className="rename-album-identity"><div><dt>Albums</dt><dd>{project.albumCount}</dd></div><div><dt>Track records</dt><dd>{project.trackCount}</dd></div><div><dt>Project status</dt><dd>{project.active ? "Open now — another saved project will open" : "Saved, not currently open"}</dd></div></dl>
+      <p className="deletion-safety-note"><strong>Your assets are safe.</strong> Indexed audio, source folders, artwork, lyric files, and rendered exports stay exactly where they are. Only this saved project record and its app decisions are removed.</p>
+      <div className="modal-actions"><button type="button" className="text-button" disabled={busy} onClick={onCancel}>Keep Project</button><button type="button" className="primary-button primary-button--danger" disabled={busy} onClick={onSubmit}><TrashIcon /> {busy ? "Removing…" : "Remove Project"}</button></div>
     </div>
   );
 }

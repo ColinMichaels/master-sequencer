@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { sourceKey } from "../lib/api.js";
-import { formatBytes, formatDuration, slugify, titleFromFilename } from "../lib/format.js";
+import { formatBytes, formatDuration } from "../lib/format.js";
+import { addFileAsNewTrack, addFileCandidate } from "../lib/import-tracks.js";
 import { createLibrarySearchIndex, saveLibraryFilter } from "../lib/library-search.js";
 import { FolderIcon, LockIcon, MusicIcon, PlayIcon, PlusIcon, RefreshIcon, SearchIcon, WaveIcon } from "./Icons.jsx";
 
-export function AudioLibraryWorkspace({ state, activeAlbum, library, roots, formats, scan, watching, onlineApp = false, revealPrivateFilenames, scanning, onRescan, onPreviewFile, onProjectChange, onAlbumChangeById, onImportFiles, onImportFolder }) {
+export function AudioLibraryWorkspace({ state, activeAlbum, library, roots, formats, scan, watching, onlineApp = false, revealPrivateFilenames, scanning, draggedAudioKey = "", onRescan, onPreviewFile, onProjectChange, onAlbumChangeById, onAudioDragStart, onAudioDragEnd, onImportFiles, onImportFolder }) {
   const [query, setQuery] = useState("");
   const [format, setFormat] = useState("all");
   const [rootId, setRootId] = useState("all");
@@ -14,6 +15,7 @@ export function AudioLibraryWorkspace({ state, activeAlbum, library, roots, form
   const [selectedKey, setSelectedKey] = useState(library[0]?.key || "");
   const [targetAlbumId, setTargetAlbumId] = useState(activeAlbum.id);
   const [targetTrackId, setTargetTrackId] = useState(activeAlbum.tracks[0]?.id || "");
+  const [importNotice, setImportNotice] = useState(null);
 
   useEffect(() => {
     setTargetAlbumId(activeAlbum.id);
@@ -76,56 +78,57 @@ export function AudioLibraryWorkspace({ state, activeAlbum, library, roots, form
     setSavedFilterId("");
   };
 
+  const importIntoLibrary = async (picker) => {
+    setImportNotice(null);
+    const result = await picker();
+    if (!result?.ok) {
+      setImportNotice({ kind: "error", message: "Audio could not be added. Check the error above and try again." });
+      return;
+    }
+    if (result.cancelled) {
+      setImportNotice({ kind: "muted", message: "Selection cancelled. The library was not changed." });
+      return;
+    }
+    if (!result.files.length) {
+      setImportNotice({ kind: "error", message: "No supported audio files were found in that selection." });
+      return;
+    }
+    setQuery("");
+    setFormat("all");
+    setRootId("all");
+    setUsageFilter("all");
+    setSavedFilterId("");
+    setSelectedKey(result.files[0].key);
+    setImportNotice({ kind: "success", message: `${result.files.length} audio file${result.files.length === 1 ? "" : "s"} added and shown below.` });
+  };
+
   const selectedFile = library.find((file) => file.key === selectedKey);
   const targetAlbum = state.albums.find((album) => album.id === targetAlbumId) || activeAlbum;
   const targetTrack = targetAlbum.tracks.find((track) => track.id === targetTrackId);
   const isProtected = selectedFile && protectedKeys.has(selectedFile.key) && !revealPrivateFilenames;
   const displayName = (file) => protectedKeys.has(file.key) && !revealPrivateFilenames ? "[Private source file]" : file.name;
-  const sourceRefFor = (file) => file.privateSourceId
-    ? { privateSourceId: file.privateSourceId }
-    : { rootId: file.rootId, relativePath: file.relativePath };
 
   const addCandidate = () => {
     if (!selectedFile || !targetTrack) return;
     onAlbumChangeById(targetAlbum.id, (draft) => {
       const draftTrack = draft.tracks.find((track) => track.id === targetTrack.id);
-      if (draftTrack.candidates.some((candidate) => sourceKey(candidate.sourceRef) === selectedFile.key)) return;
-      let candidateId = `candidate-${draftTrack.candidates.length + 1}`;
-      let suffix = 2;
-      while (draftTrack.candidates.some((candidate) => candidate.id === candidateId)) candidateId = `candidate-${draftTrack.candidates.length + 1}-${suffix++}`;
-      draftTrack.candidates.push({ id: candidateId, label: draftTrack.privacy === "protected" ? `Private candidate ${draftTrack.candidates.length + 1}` : `Candidate ${draftTrack.candidates.length + 1}`, sourceRef: sourceRefFor(selectedFile), flags: [], notes: "" });
-      if (!draftTrack.auditionCandidateId) draftTrack.auditionCandidateId = candidateId;
+      if (!draftTrack) return;
+      const result = addFileCandidate(draftTrack, selectedFile);
+      if (result.action === "candidate" && draft.status === "empty") draft.status = "working";
     });
   };
 
   const addNewTrack = () => {
     if (!selectedFile) return;
     onAlbumChangeById(targetAlbum.id, (draft) => {
-      const baseTitle = isProtected ? "Protected Track" : titleFromFilename(selectedFile.name);
-      const baseId = slugify(baseTitle);
-      let trackId = baseId;
-      let suffix = 2;
-      while (draft.tracks.some((track) => track.id === trackId)) trackId = `${baseId}-${suffix++}`;
-      const candidateId = `${trackId}-source-1`;
-      draft.tracks.push({
-        id: trackId,
-        title: baseTitle,
-        decisionStatus: "undecided",
-        masterCandidateId: "",
-        auditionCandidateId: candidateId,
-        notes: "",
-        ...(selectedFile.privateSourceId ? { privacy: "protected" } : {}),
-        candidates: [{ id: candidateId, label: "Candidate 1", sourceRef: sourceRefFor(selectedFile), flags: [], notes: "" }],
-      });
-      draft.baselineTrackOrder = [...(draft.baselineTrackOrder || []), trackId];
-      draft.orderApproved = false;
+      addFileAsNewTrack(draft, selectedFile);
     });
   };
 
   return (
     <main className="library-workspace">
       <section className="library-main">
-        <div className="library-heading"><h2>Audio Library</h2><p>{filtered.length} of {library.length} discovered files</p></div>
+        <div className="library-heading"><div><h2>Audio Library</h2><small id="audio-library-drag-help">Drag a file onto an album at left. Matching track titles become candidates.</small></div><p>{filtered.length} of {library.length} discovered files</p></div>
         <div className="library-filters">
           <label className="search-field"><SearchIcon /><span className="sr-only">Search files</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search files" /></label>
           <select aria-label="Filter by format" value={format} onChange={(event) => setFormat(event.target.value)}><option value="all">All formats</option>{formats.map((item) => <option key={item} value={item}>{item.toUpperCase()}</option>)}</select>
@@ -141,14 +144,14 @@ export function AudioLibraryWorkspace({ state, activeAlbum, library, roots, form
               const usages = usageMap.get(file.key) || [];
               const privateFile = protectedKeys.has(file.key) && !revealPrivateFilenames;
               return (
-                <div className={`audio-row ${selectedKey === file.key ? "is-selected" : ""}`} key={file.key} onClick={() => setSelectedKey(file.key)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedKey(file.key); } }} role="row" tabIndex="0">
+                <div className={`audio-row ${selectedKey === file.key ? "is-selected" : ""} ${draggedAudioKey === file.key ? "is-dragging" : ""}`} key={file.key} draggable onClick={() => setSelectedKey(file.key)} onDragStart={(event) => { event.dataTransfer.effectAllowed = "copy"; event.dataTransfer.setData("text/plain", file.key); setSelectedKey(file.key); onAudioDragStart?.(file.key); }} onDragEnd={() => onAudioDragEnd?.()} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedKey(file.key); } }} aria-describedby="audio-library-drag-help" role="row" tabIndex="0">
                   <span className="audio-name"><WaveIcon /> <strong>{privateFile ? <><LockIcon /> [Private source file]</> : file.name}</strong></span>
                   <span title={file.relativePath}>{rootMap.get(file.rootId)?.label || file.rootId}/{privateFile ? "[protected]" : file.relativePath.replace(`/${file.name}`, "")}</span>
                   <span>{file.extension.toUpperCase()}</span>
                   <span>{formatDuration(file.duration)}</span>
                   <span className={usages.length ? "" : "is-unassigned"}>{usages.length ? usages.map((usage) => usage.trackTitle).join(", ") : "Unassigned"}</span>
                   <span><button type="button" className="icon-button" aria-label={`Preview ${displayName(file)}`} onClick={(event) => { event.stopPropagation(); onPreviewFile(file, displayName(file)); }}><PlayIcon /></button></span>
-                  <span className="audio-action">Assign</span>
+                  <span className="audio-action">Drag / assign</span>
                 </div>
               );
             })}
@@ -160,7 +163,8 @@ export function AudioLibraryWorkspace({ state, activeAlbum, library, roots, form
         <section className="source-summary">
           <h2>Audio Sources</h2>
           <p className="watch-status"><strong>{onlineApp ? "Album previews + device audio" : watching?.enabled ? "Watching connected folders" : watching?.configured ? "Watching unavailable" : "Manual incremental rescans"}</strong><span>{onlineApp ? `${sessionFileCount} device file${sessionFileCount === 1 ? "" : "s"} in this session · never uploaded` : scan ? `${scan.reusedMetadata} cached · ${scan.probedMetadata} updated` : "Scan status unavailable"}</span></p>
-          <div className="source-summary-actions"><button type="button" className="text-button" disabled={scanning} title={onlineApp ? "Choose audio files from this device for the current browser session" : "Add audio files"} onClick={onImportFiles}><MusicIcon /> Add Files</button><button type="button" className="text-button" disabled={scanning} title={onlineApp ? "Choose an audio folder from this device for the current browser session" : "Add an audio folder"} onClick={onImportFolder}><FolderIcon /> Add Folder</button></div>
+          <div className="source-summary-actions"><button type="button" className="text-button" disabled={scanning} title={onlineApp ? "Choose audio files from this device for the current browser session" : "Add audio files"} onClick={() => importIntoLibrary(onImportFiles)}><MusicIcon /> {scanning ? "Indexing…" : "Add Files"}</button><button type="button" className="text-button" disabled={scanning} title={onlineApp ? "Choose an audio folder from this device for the current browser session" : "Add an audio folder"} onClick={() => importIntoLibrary(onImportFolder)}><FolderIcon /> {scanning ? "Indexing…" : "Add Folder"}</button></div>
+          {importNotice && <p className={`library-import-status is-${importNotice.kind}`} role="status">{importNotice.message}</p>}
           <ul>{roots.map((root) => <li key={root.id}><span>{root.label}<small>{root.path}</small></span><strong className={root.connected ? "is-connected" : "is-offline"}>{root.connectionState === "reconnected" ? "Reconnected" : root.connected ? "Connected" : "Offline"}</strong></li>)}</ul>
           <p>{onlineApp ? "Selected audio plays directly from this device for the current session. Reloading disconnects it; no audio is uploaded or copied." : "Audio remains in its original location."}</p>
         </section>

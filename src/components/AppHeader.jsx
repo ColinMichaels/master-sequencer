@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { CheckIcon, ImageIcon, MusicIcon, ReviewIcon, ScissorsIcon, SequenceIcon, SettingsIcon, WarningIcon, WaveIcon } from "./Icons.jsx";
+import { MasterOutputMeters } from "./MasterOutputMeters.jsx";
 import { ScreenControls } from "./ScreenControls.jsx";
 
 const navItems = [
@@ -12,6 +13,15 @@ const navItems = [
   ["settings", "Settings", SettingsIcon],
 ];
 
+const numpadViewIndex = (event) => {
+  if (event.repeat || event.isComposing || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return -1;
+  if (!/^Numpad[1-7]$/.test(event.code)) return -1;
+  return Number(event.code.slice(-1)) - 1;
+};
+
+const isEditingTarget = (target) => target instanceof Element
+  && (target.matches("input, textarea, select") || target.isContentEditable || Boolean(target.closest("[contenteditable='true']")));
+
 const summaryDefinitions = [
   { id: "tracks", label: "Tracks", Icon: WaveIcon, view: "sequence", action: "Open Sequence", detail: "All tracks in the current album" },
   { id: "playable", label: "Playable", Icon: MusicIcon, view: "sequence", action: "Open Sequence", detail: "Tracks with an available audition source" },
@@ -19,7 +29,7 @@ const summaryDefinitions = [
   { id: "approvals", label: "Track approvals", Icon: CheckIcon, view: "review", action: "Open Track Review", detail: "Tracks with an approved master candidate" },
 ];
 
-export function AppHeader({ activeView, onViewChange, album, playableCount, approvalCount, appearance, resolvedMode, onAppearanceChange, onOpenAppearance, commandHistory }) {
+export function AppHeader({ activeView, onViewChange, album, playableCount, approvalCount, appearance, resolvedMode, onAppearanceChange, onOpenAppearance, commandHistory, meteringRef, meteringAvailable, playing, monitorLabel, monitorRouting }) {
   const [expandedStat, setExpandedStat] = useState("");
   const summaryRef = useRef(null);
   const trackCount = album?.tracks.length || 0;
@@ -49,6 +59,18 @@ export function AppHeader({ activeView, onViewChange, album, playableCount, appr
     };
   }, [expandedStat]);
 
+  useEffect(() => {
+    const switchViewFromNumpad = (event) => {
+      const index = numpadViewIndex(event);
+      if (index < 0 || isEditingTarget(event.target) || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      event.preventDefault();
+      setExpandedStat("");
+      onViewChange(navItems[index][0]);
+    };
+    window.addEventListener("keydown", switchViewFromNumpad);
+    return () => window.removeEventListener("keydown", switchViewFromNumpad);
+  }, [onViewChange]);
+
   const openView = (view) => {
     setExpandedStat("");
     onViewChange(view);
@@ -56,19 +78,18 @@ export function AppHeader({ activeView, onViewChange, album, playableCount, appr
 
   return (
     <header className="app-header">
-      <div className="brand-lockup">
-        <h1 className="sr-only">Project Sequencer</h1>
-        <ScreenControls appearance={appearance} resolvedMode={resolvedMode} onChange={onAppearanceChange} onOpenSettings={onOpenAppearance} />
-      </div>
+      <h1 className="sr-only">Project Sequencer</h1>
       <nav className="primary-nav" aria-label="Project views" style={{ "--nav-count": navItems.length }}>
-        {navItems.map(([id, label, NavIcon]) => (
-          <button key={id} type="button" className={activeView === id ? "is-active" : ""} onClick={() => onViewChange(id)} aria-current={activeView === id ? "page" : undefined} aria-label={label} data-tooltip={label}>
+        {navItems.map(([id, label, NavIcon], index) => (
+          <button key={id} type="button" className={activeView === id ? "is-active" : ""} onClick={() => onViewChange(id)} aria-current={activeView === id ? "page" : undefined} aria-label={label} aria-describedby={`nav-shortcut-${id}`} data-tooltip={`${label} · Numpad ${index + 1}`}>
             <NavIcon size={20} />
             <span className="sr-only">{label}</span>
+            <span id={`nav-shortcut-${id}`} className="sr-only">Keyboard shortcut: numeric keypad {index + 1}</span>
           </button>
         ))}
       </nav>
       <div className="command-history" role="group" aria-label="Project edit history"><button type="button" disabled={!commandHistory.canUndo} onClick={commandHistory.undo} aria-label={commandHistory.canUndo ? `Undo ${commandHistory.undoLabel}` : "Nothing to undo"}>↶</button><button type="button" disabled={!commandHistory.canRedo} onClick={commandHistory.redo} aria-label={commandHistory.canRedo ? `Redo ${commandHistory.redoLabel}` : "Nothing to redo"}>↷</button></div>
+      <MasterOutputMeters compact meteringRef={meteringRef} available={meteringAvailable} playing={playing} monitorLabel={monitorLabel} monitorRouting={monitorRouting} />
       <div className="header-summary-shell" ref={summaryRef}>
         <div className="header-summary" role="group" aria-label={`${album?.title || "Album"} statistics`}>
           {summaryStats.map(({ id, label, Icon, count }) => (
@@ -96,6 +117,7 @@ export function AppHeader({ activeView, onViewChange, album, playableCount, appr
           </div>
         </section>}
       </div>
+      <ScreenControls appearance={appearance} resolvedMode={resolvedMode} onChange={onAppearanceChange} onOpenSettings={onOpenAppearance} />
     </header>
   );
 }

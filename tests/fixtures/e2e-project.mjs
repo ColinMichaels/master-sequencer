@@ -16,6 +16,7 @@ export const e2eProjectState = {
     artist: "Fixture Artist",
     title: "Fixture Album",
     era: "current",
+    releaseDate: "",
     status: "working",
     orderApproved: false,
     masterBus: normalizeMasterBus(),

@@ -24,6 +24,7 @@ test("album and blank-track commands create unique stable ids", () => {
   const first = addAlbum(state, { title: "One", era: "future" });
   assert.equal(first, "one-2");
   assert.equal(state.albums.at(-1).artist, "Project Artist");
+  assert.equal(state.albums.at(-1).releaseDate, "");
   assert.deepEqual(state.albums.at(-1).masterBus, normalizeMasterBus());
   const album = state.albums[0];
   assert.equal(addBlankTrack(album, "A"), "a-2");

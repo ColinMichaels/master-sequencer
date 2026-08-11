@@ -53,6 +53,7 @@ const localApi = {
   saveState: (state) => jsonFetch("/api/state", { method: "PUT", body: JSON.stringify(state) }),
   createProject: (details) => jsonFetch("/api/projects", { method: "POST", body: JSON.stringify(details) }),
   loadProject: (projectId) => jsonFetch(`/api/projects/${encodeURIComponent(projectId)}/load`, { method: "POST" }),
+  deleteProject: (projectId) => jsonFetch(`/api/projects/${encodeURIComponent(projectId)}`, { method: "DELETE" }),
   restoreRecovery: () => jsonFetch("/api/state/recovery/restore", { method: "POST" }),
   beaconState: (state) => typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function"
     ? navigator.sendBeacon("/api/state", new Blob([JSON.stringify(state)], { type: "application/json" }))

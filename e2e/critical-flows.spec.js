@@ -30,6 +30,25 @@ test("bootstrap renders the project and protected sources remain masked", async 
 });
 
 test("collapsed albums keep compact actions while header stats use badge buttons", async ({ page }) => {
+  const headerMeter = page.getByTestId("header-master-meter");
+  await expect(headerMeter).toBeVisible();
+  await expect(headerMeter).toHaveAttribute("data-meter-routing", "raw");
+  await expect(headerMeter).toHaveAttribute("aria-label", /Raw direct audio/);
+  await expect.poll(() => headerMeter.evaluate((element) => getComputedStyle(element).borderColor)).toBe("rgba(0, 0, 0, 0)");
+  await expect(headerMeter).toHaveAttribute("data-meter-mode", "vu");
+  await expect(headerMeter.getByRole("button", { name: "Show VU meter" })).toHaveAttribute("aria-pressed", "true");
+  const meterBox = await headerMeter.boundingBox();
+  const meterDisplayBox = await headerMeter.locator(".header-meter-display").boundingBox();
+  const vuTrackBox = await headerMeter.locator(".header-vu-track").first().boundingBox();
+  const statisticsBox = await page.locator(".header-summary-shell").boundingBox();
+  expect(meterBox.width).toBeGreaterThanOrEqual(180);
+  expect(meterDisplayBox.width).toBeGreaterThanOrEqual(140);
+  expect(vuTrackBox.width).toBeGreaterThanOrEqual(110);
+  expect(meterBox.x + meterBox.width).toBeLessThanOrEqual(statisticsBox.x);
+  await headerMeter.getByRole("button", { name: "Show frequency analyzer" }).click();
+  await expect(headerMeter).toHaveAttribute("data-meter-mode", "spectrum");
+  await expect(headerMeter.locator(".header-spectrum")).toBeVisible();
+
   const headerStats = page.locator(".header-summary");
   await expect(headerStats.getByRole("button")).toHaveCount(4);
   await expect(headerStats.getByRole("button", { name: "Tracks: 2. Show album statistics" }).locator(".header-stat-badge")).toHaveText("2");
@@ -65,6 +84,74 @@ test("collapsed albums keep compact actions while header stats use badge buttons
   expect(overflow).toBeLessThanOrEqual(1);
   await page.getByRole("button", { name: "Show albums panel" }).click();
   await expect(compactRail).toBeHidden();
+});
+
+test("numeric keypad shortcuts switch primary views without hijacking editing or dialogs", async ({ page }) => {
+  const navigation = page.getByRole("navigation", { name: "Project views" });
+  const sequence = navigation.getByRole("button", { name: "Sequence", exact: true });
+  const review = navigation.getByRole("button", { name: "Track Review", exact: true });
+  const mastering = navigation.getByRole("button", { name: "Mastering", exact: true });
+  const settings = navigation.getByRole("button", { name: "Settings", exact: true });
+
+  await expect(sequence).toHaveAttribute("data-tooltip", "Sequence · Numpad 1");
+  await page.keyboard.press("Numpad2");
+  await expect(review).toHaveAttribute("aria-current", "page");
+  await page.keyboard.press("Numpad7");
+  await expect(settings).toHaveAttribute("aria-current", "page");
+
+  const artistName = page.getByLabel("Artist name");
+  await artistName.focus();
+  await page.keyboard.press("Numpad1");
+  await expect(artistName).toBeFocused();
+  await expect(settings).toHaveAttribute("aria-current", "page");
+
+  await page.getByRole("button", { name: "Add Album" }).click();
+  const dialog = page.getByRole("dialog", { name: "Add Album" });
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("Numpad4");
+  await expect(dialog).toBeVisible();
+  await expect(mastering).not.toHaveAttribute("aria-current", "page");
+});
+
+test("quick display settings stay behind one far-right gear menu", async ({ page }) => {
+  const header = page.locator(".app-header");
+  const navigation = header.getByRole("navigation", { name: "Project views" });
+  const settingsTrigger = header.getByRole("button", { name: "Open settings menu" });
+  await expect(settingsTrigger).toBeVisible();
+  await expect(header.getByRole("button", { name: "Decrease text size" })).toHaveCount(0);
+
+  const navigationBox = await navigation.boundingBox();
+  const statisticsBox = await header.locator(".header-summary-shell").boundingBox();
+  const triggerBox = await settingsTrigger.boundingBox();
+  expect(navigationBox.x).toBeLessThan(statisticsBox.x);
+  expect(triggerBox.x).toBeGreaterThan(statisticsBox.x);
+
+  await settingsTrigger.click();
+  const menu = page.getByRole("dialog", { name: "Quick Settings" });
+  await expect(menu).toBeVisible();
+  await expect(menu.getByLabel("Text size 100%")).toHaveText("100%");
+  await menu.getByRole("button", { name: "Increase text size" }).click();
+  await expect(menu.getByLabel("Text size 110%")).toHaveText("110%");
+  await expect.poll(() => page.evaluate(() => document.documentElement.style.getPropertyValue("--text-scale"))).toBe("1.1");
+  await menu.getByRole("button", { name: "Use light mode" }).click();
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.mode)).toBe("light");
+
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeHidden();
+  await expect(settingsTrigger).toBeFocused();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await settingsTrigger.click();
+  const mobileMenu = page.getByRole("dialog", { name: "Quick Settings" });
+  const mobileMenuBox = await mobileMenu.boundingBox();
+  expect(mobileMenuBox.x).toBeGreaterThanOrEqual(0);
+  expect(mobileMenuBox.x + mobileMenuBox.width).toBeLessThanOrEqual(390);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
+  await mobileMenu.getByRole("button", { name: "Dismiss quick settings" }).click();
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await settingsTrigger.click();
+  await page.getByRole("dialog", { name: "Quick Settings" }).getByRole("button", { name: /Colors & fonts/ }).click();
+  await expect(navigation.getByRole("button", { name: "Settings", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("heading", { name: "Screen Appearance" })).toBeVisible();
 });
 
 test("reordering persists and master selection stays separate from the audition source", async ({ page, request }) => {
@@ -133,7 +220,7 @@ test("project setup owns the artist used by new albums", async ({ page, request 
   expect(bootstrap.state.albums.every((album) => album.artist === "Open Orbit Ensemble")).toBeTruthy();
 });
 
-test("a fresh project saves the old project, can load it again, and albums can be deleted", async ({ page }) => {
+test("saved projects can be loaded and safely removed while album deletion remains non-destructive", async ({ page, request }) => {
   await page.getByRole("button", { name: "New Project", exact: true }).click();
   const fresh = page.getByRole("dialog", { name: "Start a Fresh Project" });
   await fresh.getByLabel("Project name").fill("Fresh Project QA");
@@ -153,6 +240,20 @@ test("a fresh project saves the old project, can load it again, and albums can b
   await oldProject.getByRole("button", { name: "Load Project" }).click();
   await expect(page.getByRole("heading", { name: /Fixture Album.*Working Sequence/ })).toBeVisible();
   await expect(page.getByText("Alpha Tone", { exact: true }).first()).toBeVisible();
+
+  await page.getByRole("button", { name: /Current project Fixture Artist.*Fixture Album/ }).click();
+  const reopenedSaved = page.getByRole("dialog", { name: "Saved Projects" });
+  const freshProject = reopenedSaved.locator(".saved-project-list li").filter({ hasText: "Fresh Project QA" });
+  await freshProject.getByRole("button", { name: "Remove project Fresh Project QA" }).click();
+  const removeProjectDialog = page.getByRole("dialog", { name: "Remove Project" });
+  await expect(removeProjectDialog).toContainText("Indexed audio, source folders, artwork, lyric files, and rendered exports stay exactly where they are");
+  await removeProjectDialog.getByRole("button", { name: "Remove Project" }).click();
+  await expect(page.getByRole("dialog", { name: "Saved Projects" })).toBeVisible();
+  await expect(page.getByText("Fresh Project QA", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Remove project Fixture Artist.*Fixture Album/ })).toBeDisabled();
+  expect((await (await request.get("/api/bootstrap")).json()).projects).toHaveLength(1);
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(page.locator(".status-strip [role='status']")).toContainText(/source assets were not changed/i);
 
   await page.getByRole("button", { name: "Add Album" }).click();
   await page.getByLabel("Album title").fill("Delete Me");
@@ -221,6 +322,43 @@ test("library filters are functional and primary workspaces do not overflow a ph
   }
 });
 
+test("audio rows drag onto albums as new tracks or matching-title candidates", async ({ page, request }) => {
+  await page.getByRole("button", { name: "Add Album" }).click();
+  const albumDialog = page.getByRole("dialog", { name: "Add Album" });
+  await albumDialog.getByLabel("Album title").fill("Drop Target");
+  await albumDialog.getByRole("button", { name: "Add Album" }).click();
+
+  await page.getByRole("button", { name: "Add First Tracks" }).click();
+  const tracksDialog = page.getByRole("dialog", { name: "Add Tracks" });
+  await tracksDialog.getByLabel("Blank track title").fill("Loose Sketch");
+  await tracksDialog.getByRole("button", { name: "Add Blank" }).click();
+
+  await page.getByRole("button", { name: "Audio Library" }).click();
+  const dropTarget = page.locator('[data-drop-album-id="drop-target"]');
+  const looseSketch = page.locator(".audio-row").filter({ hasText: "Loose Sketch.mp3" });
+  await looseSketch.dragTo(dropTarget);
+  await expect(page.locator(".status-strip [role='status']")).toContainText("Saved locally");
+
+  let bootstrap = await (await request.get("/api/bootstrap")).json();
+  let targetAlbum = bootstrap.state.albums.find((album) => album.id === "drop-target");
+  let matchingTrack = targetAlbum.tracks.find((track) => track.id === "loose-sketch");
+  expect(matchingTrack.candidates).toHaveLength(1);
+  expect(matchingTrack.decisionStatus).toBe("undecided");
+  expect(matchingTrack.candidates[0].sourceRef.relativePath).toBe("Loose Sketch.mp3");
+
+  await page.getByRole("button", { name: "Hide albums panel" }).click();
+  await expect(page.locator(".album-rail")).toHaveClass(/is-collapsed/);
+  const alphaTone = page.locator(".audio-row").filter({ hasText: "Alpha Tone.wav" });
+  await alphaTone.dragTo(dropTarget);
+  await expect(page.locator(".status-strip [role='status']")).toContainText("Saved locally");
+
+  bootstrap = await (await request.get("/api/bootstrap")).json();
+  targetAlbum = bootstrap.state.albums.find((album) => album.id === "drop-target");
+  matchingTrack = targetAlbum.tracks.find((track) => track.title === "Alpha Tone");
+  expect(matchingTrack).toBeTruthy();
+  expect(matchingTrack.candidates[0].sourceRef.relativePath).toBe("Alpha Tone.wav");
+});
+
 test("the transport waveform stays inside its desktop and phone footer", async ({ page }) => {
   const transportBounds = async () => page.evaluate(() => {
     const bar = document.querySelector(".transport-bar").getBoundingClientRect();
@@ -242,6 +380,12 @@ test("space always toggles transport playback without hijacking text entry", asy
   const transportToggle = page.locator(".transport-playback-toggle");
   await transportToggle.click();
   await expect(transportToggle).toHaveAttribute("aria-label", "Pause playback");
+  const headerMeter = page.getByTestId("header-master-meter");
+  await expect(headerMeter).toHaveAttribute("data-meter-active", "true");
+  await expect(headerMeter).toHaveAttribute("data-meter-routing", "mastering");
+  await expect(headerMeter).toHaveAttribute("aria-label", /Mastering enabled/);
+  await expect.poll(() => headerMeter.evaluate((element) => getComputedStyle(element).borderColor)).toBe("rgb(168, 201, 47)");
+  await expect.poll(async () => Number(await headerMeter.locator('[data-meter-channel="left"]').getAttribute("data-meter-rms")), { timeout: 2_000 }).toBeGreaterThan(-60);
 
   await page.keyboard.press("Space");
   await expect(transportToggle).toHaveAttribute("aria-label", "Resume playback");
@@ -262,25 +406,88 @@ test("space always toggles transport playback without hijacking text entry", asy
 
 test("the sequence row follows the main player track and playback state", async ({ page }) => {
   const alphaRow = page.locator(".sequence-track").filter({ hasText: "Alpha Tone" });
-  const rowPlayButton = alphaRow.getByRole("button", { name: "Play sequence from Alpha Tone" });
 
-  await rowPlayButton.click();
+  await alphaRow.locator(".track-title").click();
   await expect(alphaRow).toHaveClass(/is-playing/);
+  await expect(alphaRow).toHaveAttribute("aria-label", /Playing.*pause/);
   await expect(alphaRow.getByRole("button", { name: "Pause Alpha Tone" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator(".transport-playback-toggle")).toHaveAttribute("aria-label", "Pause playback");
 
-  await alphaRow.getByRole("button", { name: "Pause Alpha Tone" }).click();
+  await alphaRow.locator(".track-status").click();
   await expect(alphaRow).not.toHaveClass(/is-playing/);
+  await expect(alphaRow).toHaveAttribute("aria-label", /Paused.*resume/);
   await expect(alphaRow.getByRole("button", { name: "Resume Alpha Tone" })).toHaveAttribute("aria-pressed", "false");
   await expect(page.locator(".transport-playback-toggle")).toHaveAttribute("aria-label", "Resume playback");
 
-  await alphaRow.getByRole("button", { name: "Resume Alpha Tone" }).click();
+  await alphaRow.focus();
+  await page.keyboard.press("Enter");
   await expect(alphaRow).toHaveClass(/is-playing/);
   await expect(alphaRow.getByRole("button", { name: "Pause Alpha Tone" })).toHaveAttribute("aria-pressed", "true");
+
+  await alphaRow.focus();
+  await page.keyboard.press("Space");
+  await expect(alphaRow).not.toHaveClass(/is-playing/);
+  await expect(page.locator(".transport-playback-toggle")).toHaveAttribute("aria-label", "Resume playback");
+
+  await alphaRow.getByLabel("Audition source for Alpha Tone").selectOption("alpha-b");
+  await expect(page.locator(".transport-playback-toggle")).toHaveAttribute("aria-label", "Resume playback");
+  await alphaRow.getByRole("button", { name: "Remove Alpha Tone from sequence" }).click();
+  await expect(alphaRow).toHaveClass(/is-removal-armed/);
+  await expect(page.locator(".transport-playback-toggle")).toHaveAttribute("aria-label", "Resume playback");
+
+  await alphaRow.locator(".sequence-play-button").click();
+  await expect(alphaRow).toHaveClass(/is-playing/);
 });
 
 test("album decisions persist versions, transition notes, explicit approval, and safe templates", async ({ page, request }) => {
   await page.getByRole("button", { name: "Album Decisions" }).click();
+  const primaryDecisionGrid = page.locator(".decision-primary-grid");
+  await expect.poll(async () => page.evaluate(() => getComputedStyle(document.querySelector(".decision-primary-grid")).gridTemplateColumns.split(" ").length)).toBe(2);
+  const wideSequenceBox = await page.locator(".sequence-versions").boundingBox();
+  const wideTransitionBox = await page.locator(".transition-notebook").boundingBox();
+  expect(Math.abs(wideSequenceBox.y - wideTransitionBox.y)).toBeLessThan(2);
+  expect(wideTransitionBox.x).toBeGreaterThan(wideSequenceBox.x + wideSequenceBox.width);
+  const readinessRows = page.locator(".readiness-row");
+  const firstWideReadinessBox = await readinessRows.nth(0).boundingBox();
+  const secondWideReadinessBox = await readinessRows.nth(1).boundingBox();
+  expect(Math.abs(firstWideReadinessBox.y - secondWideReadinessBox.y)).toBeLessThan(2);
+  expect(secondWideReadinessBox.x).toBeGreaterThan(firstWideReadinessBox.x + firstWideReadinessBox.width);
+  const wideComparisonBox = await page.locator(".comparison-queue").boundingBox();
+  const wideTemplatesBox = await page.locator(".album-templates").boundingBox();
+  expect(Math.abs(wideComparisonBox.y - wideTemplatesBox.y)).toBeLessThan(2);
+  expect(wideTemplatesBox.x).toBeGreaterThan(wideComparisonBox.x + wideComparisonBox.width);
+
+  await page.setViewportSize({ width: 900, height: 800 });
+  await expect.poll(async () => primaryDecisionGrid.evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(" ").length)).toBe(1);
+  await page.waitForTimeout(200);
+  const stackedSequenceBox = await page.locator(".sequence-versions").boundingBox();
+  const stackedTransitionBox = await page.locator(".transition-notebook").boundingBox();
+  expect(Math.abs(stackedSequenceBox.x - stackedTransitionBox.x)).toBeLessThan(2);
+  expect(stackedTransitionBox.y).toBeGreaterThan(stackedSequenceBox.y + stackedSequenceBox.height);
+  await expect(page.locator(".readiness-head")).toBeVisible();
+  const firstStackedReadinessBox = await readinessRows.nth(0).boundingBox();
+  const secondStackedReadinessBox = await readinessRows.nth(1).boundingBox();
+  expect(secondStackedReadinessBox.y).toBeGreaterThanOrEqual(firstStackedReadinessBox.y + firstStackedReadinessBox.height);
+  await page.setViewportSize({ width: 1280, height: 720 });
+
+  const releaseDate = page.getByLabel("Release date (optional)");
+  await expect(releaseDate).toHaveValue("");
+  await expect(page.locator("#album-release-date-status")).toContainText("No release date set");
+  await releaseDate.fill("2027-04-23");
+  await expect(page.locator("#album-release-date-status")).toContainText("Planned for Apr 23, 2027");
+  await page.getByRole("button", { name: "Clear release date" }).click();
+  await expect(releaseDate).toHaveValue("");
+  await releaseDate.fill("2027-04-23");
+  await expect(page.locator(".status-strip [role='status']")).toContainText("Saved locally");
+  let bootstrap = await (await request.get("/api/bootstrap")).json();
+  let datedAlbum = bootstrap.state.albums.find((album) => album.id === "fixture-album");
+  expect(datedAlbum.releaseDate).toBe("2027-04-23");
+  expect(datedAlbum.orderApproved).toBe(false);
+  expect(datedAlbum.tracks.some((track) => track.humanApproved)).toBe(false);
+  await page.reload();
+  await page.getByRole("button", { name: "Album Decisions" }).click();
+  await expect(page.getByLabel("Release date (optional)")).toHaveValue("2027-04-23");
+
   await page.getByLabel("Sequence version name").fill("Opening order");
   await page.getByRole("button", { name: "Save Current" }).click();
   await expect(page.locator(".version-list")).toContainText("Opening order");
@@ -304,7 +511,7 @@ test("album decisions persist versions, transition notes, explicit approval, and
   await expect(page.getByRole("heading", { name: /Next Fixture.*Album Decisions/ })).toBeVisible();
   await expect(page.locator(".status-strip [role='status']")).toContainText("Saved locally");
 
-  const bootstrap = await (await request.get("/api/bootstrap")).json();
+  bootstrap = await (await request.get("/api/bootstrap")).json();
   const original = bootstrap.state.albums.find((album) => album.id === "fixture-album");
   const copy = bootstrap.state.albums.find((album) => album.title === "Next Fixture");
   expect(original.sequenceVersions).toHaveLength(2);
@@ -341,12 +548,20 @@ test("mastering analysis, chapter cues, and delivery authority remain explicit",
   await expect(page.getByRole("spinbutton", { name: "Ceiling" })).toHaveValue("-1");
   await page.getByLabel("Reference audio track").selectOption("test-root::Alternate Mix.mp3");
   await page.getByRole("button", { name: /B Clean reference/ }).click();
+  const headerMeter = page.getByTestId("header-master-meter");
+  await expect(headerMeter).toHaveAttribute("data-meter-routing", "reference");
+  await expect(headerMeter).toHaveAttribute("data-routing-label", "REF");
+  await expect(headerMeter).toHaveAttribute("aria-label", /Clean reference; mastering bypassed/);
+  await expect.poll(() => headerMeter.evaluate((element) => getComputedStyle(element).borderColor)).toBe("rgb(224, 173, 34)");
   await expect(page.locator(".transport-copy")).toContainText("Reference · Alternate Mix.mp3");
   await expect(page.locator(".transport-waveform-meta strong")).toHaveText("B · clean reference · MASTER bypassed");
   await expect(page.locator(".reference-ab-status")).toContainText("mastering effects are bypassed");
   await expect(page.getByRole("button", { name: /A Current master/ })).toHaveAttribute("aria-keyshortcuts", "ArrowLeft");
   await expect(page.getByRole("button", { name: /B Clean reference/ })).toHaveAttribute("aria-keyshortcuts", "ArrowRight");
   await page.keyboard.press("ArrowLeft");
+  await expect(headerMeter).toHaveAttribute("data-meter-routing", "mastering");
+  await expect(headerMeter).toHaveAttribute("data-routing-label", "MASTER");
+  await expect.poll(() => headerMeter.evaluate((element) => getComputedStyle(element).borderColor)).toBe("rgb(168, 201, 47)");
   await expect(page.locator(".transport-copy")).toContainText("Alpha Tone");
   await expect(page.locator(".transport-waveform-meta strong")).toContainText("A · current master · MASTER live");
   await page.keyboard.press("ArrowRight");

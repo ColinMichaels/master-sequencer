@@ -28,6 +28,13 @@ export const activeMasteringProcessors = (masterBus = {}) => {
 
 export const playbackBypassesMastering = (entry) => !entry?.track || Boolean(entry.renderedPreview) || Boolean(entry.referenceTrack);
 
+export const masterMonitorRouting = ({ entry, masterBus, meteringAvailable } = {}) => {
+  if (entry?.referenceTrack) return "reference";
+  if (entry?.renderedPreview) return "mastering";
+  if (!entry?.track || meteringAvailable === false || normalizeMasterBus(masterBus).bypass) return "raw";
+  return "mastering";
+};
+
 export const comparisonPlaybackStart = ({ baseStart = 0, elapsed = 0, duration = 0 }) => {
   const safeBaseStart = Math.max(0, Number(baseStart) || 0);
   const requestedStart = safeBaseStart + Math.max(0, Number(elapsed) || 0);

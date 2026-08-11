@@ -113,6 +113,11 @@ export const createApiRouter = ({
     sendJson(response, 200, await stateStore.loadProject(projectId));
     return true;
   }
+  if (request.method === "DELETE" && url.pathname.startsWith("/api/projects/")) {
+    const projectId = decodeURIComponent(url.pathname.slice("/api/projects/".length));
+    sendJson(response, 200, await stateStore.deleteProject(projectId));
+    return true;
+  }
   if (request.method === "POST" && url.pathname === "/api/rescan") {
     const scanned = await refreshLibrary();
     sendJson(response, 200, { library: scanned.files.map(publicFile), roots: scanned.roots, scan: scanned.scan, watching: getWatchStatus() });

@@ -101,6 +101,7 @@ export const createOnlineAppState = () => ({
     artist: "The Dreadnauts",
     title: "Cosmic Reggae Sessions",
     era: "past",
+    releaseDate: "",
     status: "working",
     orderApproved: false,
     masterBus: normalizeMasterBus(),
@@ -180,6 +181,7 @@ const freshProjectState = ({ artistName, firstAlbumTitle, era, appearance }) => 
       artist: artistName,
       title: firstAlbumTitle,
       era: ["past", "current", "future"].includes(era) ? era : "future",
+      releaseDate: "",
       status: "empty",
       orderApproved: false,
       masterBus: normalizeMasterBus(),
@@ -388,39 +390,60 @@ export const createOnlineAppApi = ({ storage, sourcePicker = pickBrowserAudioSou
       connectionState: "connected",
     });
 
-    const pickedKeys = [];
-    for (const { file, relativePath } of entries) {
+    const reservedPaths = new Set();
+    const preparedEntries = entries.map(({ file, relativePath }) => {
       const initialPath = safeRelativePath(relativePath, file.name);
       const dotIndex = initialPath.lastIndexOf(".");
       const stem = dotIndex > 0 ? initialPath.slice(0, dotIndex) : initialPath;
       const suffix = dotIndex > 0 ? initialPath.slice(dotIndex) : "";
       let safePath = initialPath;
       let duplicate = 2;
-      while (browserLibrary.some((item) => item.rootId === rootId && item.relativePath === safePath)) safePath = `${stem} (${duplicate++})${suffix}`;
+      while (reservedPaths.has(safePath)) safePath = `${stem} (${duplicate++})${suffix}`;
+      reservedPaths.add(safePath);
       const key = `${rootId}::${safePath}`;
       const mediaUrl = mediaUrlFactory(file);
-      const metadata = await metadataReader({ file, mediaUrl });
+      return { file, safePath, key, mediaUrl };
+    });
+
+    // Device files are independent. Probe them together so one slow file does not
+    // hold an entire folder behind a sequential metadata waterfall.
+    const indexedEntries = await Promise.all(preparedEntries.map(async ({ file, safePath, key, mediaUrl }) => {
+      let metadata;
+      try {
+        metadata = await metadataReader({ file, mediaUrl });
+      } catch (error) {
+        metadata = { duration: 0, probeError: error?.message || "Audio metadata could not be read by this browser." };
+      }
       const duration = Number(metadata?.duration) || 0;
       const extension = fileExtension(file.name);
-      browserLibrary.push({
-        key,
-        rootId,
-        relativePath: safePath,
-        name: file.name,
-        extension,
-        size: Number(file.size) || 0,
-        mtimeMs: Number(file.lastModified) || Date.now(),
-        duration,
-        bitrate: duration > 0 ? Math.round((Number(file.size) || 0) * 8 / duration) : null,
-        codec: extension,
-        sampleRate: null,
-        channels: null,
-        bitDepth: null,
-        probeError: metadata?.probeError || "",
-      });
-      browserFiles.set(key, file);
-      browserMediaUrls.set(key, mediaUrl);
-      pickedKeys.push(key);
+      return {
+        file,
+        mediaUrl,
+        libraryFile: {
+          key,
+          rootId,
+          relativePath: safePath,
+          name: file.name,
+          extension,
+          size: Number(file.size) || 0,
+          mtimeMs: Number(file.lastModified) || Date.now(),
+          duration,
+          bitrate: duration > 0 ? Math.round((Number(file.size) || 0) * 8 / duration) : null,
+          codec: extension,
+          sampleRate: null,
+          channels: null,
+          bitDepth: null,
+          probeError: metadata?.probeError || "",
+        },
+      };
+    }));
+
+    const pickedKeys = [];
+    for (const { file, mediaUrl, libraryFile } of indexedEntries) {
+      browserLibrary.push(libraryFile);
+      browserFiles.set(libraryFile.key, file);
+      browserMediaUrls.set(libraryFile.key, mediaUrl);
+      pickedKeys.push(libraryFile.key);
     }
     return libraryPayload({ cancelled: false, pickedKeys });
   };
@@ -502,6 +525,22 @@ export const createOnlineAppApi = ({ storage, sourcePicker = pickBrowserAudioSou
     project.updatedAt = new Date().toISOString();
     writeWorkspace(storage, workspace);
     return { state: clone(project.state), projects: publicProjects(workspace), activeProjectId: projectId };
+  },
+  deleteProject: async (projectId) => {
+    const workspace = readWorkspace(storage);
+    const projectIndex = workspace.projects.findIndex((item) => item.id === projectId);
+    if (projectIndex < 0) throw new Error("That browser-saved project does not exist.");
+    if (workspace.projects.length <= 1) throw new Error("The final saved project cannot be removed. Start another project first.");
+    const removingActiveProject = workspace.activeProjectId === projectId;
+    workspace.projects.splice(projectIndex, 1);
+    if (removingActiveProject) {
+      const nextProject = [...workspace.projects].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+      workspace.activeProjectId = nextProject.id;
+      nextProject.updatedAt = new Date().toISOString();
+    }
+    writeWorkspace(storage, workspace);
+    const activeProject = workspace.projects.find((item) => item.id === workspace.activeProjectId);
+    return { state: clone(activeProject.state), projects: publicProjects(workspace), activeProjectId: workspace.activeProjectId };
   },
   restoreRecovery: onlineCapabilityError,
   beaconState: (state) => {

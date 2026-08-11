@@ -73,6 +73,7 @@ test("comparison queues do not alter audition or master decisions", () => {
 
 test("album templates copy structure and mastering instructions without media or approvals", () => {
   const source = albumFixture();
+  source.releaseDate = "2026-08-11";
   source.tracks[0].mastering = { endMode: "fade", endDuration: 2 };
   const state = { albums: [source], activeAlbumId: source.id, albumTemplates: [] };
   const templateId = saveAlbumTemplate(state, source, "LP skeleton");
@@ -82,6 +83,7 @@ test("album templates copy structure and mastering instructions without media or
   assert.deepEqual(copy.tracks[0].candidates, []);
   assert.equal(copy.tracks[0].humanApproved, false);
   assert.equal(copy.orderApproved, false);
+  assert.equal(copy.releaseDate, "");
   assert.equal(copy.masterBus.bypass, false);
   assert.equal(copy.masterBus.eq.enabled, false);
   assert.equal(copy.masterBus.compressor.enabled, false);

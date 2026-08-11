@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { normalizeMasterBus } from "../src/lib/mastering.js";
 import { createMasteringPresetLibrary } from "../src/lib/mastering-presets.js";
@@ -55,6 +55,7 @@ const freshProjectState = ({ artistName, firstAlbumTitle, era, appearance }) => 
       artist: artistName,
       title: firstAlbumTitle,
       era,
+      releaseDate: "",
       status: "empty",
       orderApproved: false,
       masterBus: normalizeMasterBus(),
@@ -282,6 +283,47 @@ export const createStateStore = ({
         await writeProjectIndex();
         readableState = nextState;
         return { state: nextState, projects: publicProjects(), activeProjectId: projectId };
+      });
+      writeQueue = operation.catch(() => {});
+      return operation;
+    },
+    async deleteProject(projectId) {
+      if (recovery) {
+        const error = new Error("Restore the recovery snapshot before removing a saved project.");
+        error.statusCode = 409;
+        throw error;
+      }
+      if (!PROJECT_ID_PATTERN.test(projectId || "") || !projectIndex.projects.some((project) => project.id === projectId)) {
+        const error = new Error("That saved project does not exist.");
+        error.statusCode = 404;
+        throw error;
+      }
+      if (projectIndex.projects.length <= 1) {
+        const error = new Error("The final saved project cannot be removed. Start another project first.");
+        error.statusCode = 409;
+        throw error;
+      }
+      const operation = writeQueue.then(async () => {
+        const removingActiveProject = projectId === projectIndex.activeProjectId;
+        const current = migrateState(await readJson(statePath));
+        if (!removingActiveProject) await writeProjectSnapshot(projectIndex.activeProjectId, current);
+
+        projectIndex.projects = projectIndex.projects.filter((project) => project.id !== projectId);
+        let nextState = current;
+        if (removingActiveProject) {
+          const nextProject = [...projectIndex.projects].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+          nextState = migrateState(await readJson(projectPath(nextProject.id)));
+          await writeJsonAtomic(statePath, nextState);
+          await writeRecoverySnapshot(nextState);
+          projectIndex.activeProjectId = nextProject.id;
+          updateProjectRecord(nextProject.id, nextState, new Date().toISOString());
+        }
+        await writeProjectIndex();
+        await unlink(projectPath(projectId)).catch((error) => {
+          if (error.code !== "ENOENT") throw error;
+        });
+        readableState = nextState;
+        return { state: nextState, projects: publicProjects(), activeProjectId: projectIndex.activeProjectId };
       });
       writeQueue = operation.catch(() => {});
       return operation;
