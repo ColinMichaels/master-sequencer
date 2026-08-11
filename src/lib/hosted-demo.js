@@ -1,16 +1,23 @@
 import { normalizeMasterBus } from "./mastering.js";
 
-const STORAGE_KEY = "project-sequencer-hosted-tester-v1";
-const STORAGE_VERSION = 1;
-const ROOT_ID = "hosted-demo";
-const DEMO_DURATION = 18;
-const SAMPLE_RATE = 44_100;
+const STORAGE_KEY = "project-sequencer-hosted-tester-v2";
+const STORAGE_VERSION = 2;
+const ROOT_ID = "dreadnauts-album-one";
 
 const DEMO_SOURCES = Object.freeze([
-  { id: "night-drive", title: "Night Drive", fileName: "Night Drive Demo.wav", frequency: 82.41, accent: 164.81 },
-  { id: "signal-bloom", title: "Signal Bloom", fileName: "Signal Bloom Demo.wav", frequency: 110, accent: 277.18 },
-  { id: "last-light", title: "Last Light", fileName: "Last Light Demo.wav", frequency: 138.59, accent: 207.65 },
-]);
+  { id: "funky-space-reggae-vibes", title: "Funky Space Reggae Vibes", duration: 372.481 },
+  { id: "intergalactic-mind-traveler", title: "Intergalactic Mind Traveler", duration: 309.241 },
+  { id: "captain-of-the-cosmic-tide", title: "Captain of the Cosmic Tide", duration: 291.84 },
+  { id: "nebula-meditation", title: "Nebula Meditation", duration: 300.8 },
+  { id: "solar-wind-surfer", title: "Solar Wind Surfer", duration: 348.961 },
+  { id: "spacerock", title: "SpaceRock", duration: 277.801 },
+  { id: "black-hole-dub", title: "Black Hole Dub", duration: 374.84 },
+  { id: "one-love-across-the-universe", title: "One Love Across the Universe", duration: 277.2 },
+  { id: "return-to-earth", title: "Return to Earth", duration: 321.88 },
+].map((source, index) => ({
+  ...source,
+  fileName: `${String(index + 1).padStart(2, "0")} ${source.title}.mp3`,
+})));
 
 const sourceKeyFor = (source) => `${ROOT_ID}::${source.fileName}`;
 
@@ -19,22 +26,22 @@ export const hostedDemoLibrary = DEMO_SOURCES.map((source, index) => ({
   rootId: ROOT_ID,
   relativePath: source.fileName,
   name: source.fileName,
-  extension: "wav",
-  size: SAMPLE_RATE * DEMO_DURATION * 4 + 44,
+  extension: "mp3",
+  size: Math.round(source.duration * 40_000),
   mtimeMs: 1_786_329_600_000 + index,
-  duration: DEMO_DURATION,
-  bitrate: SAMPLE_RATE * 32,
-  codec: "pcm_s16le",
-  sampleRate: SAMPLE_RATE,
+  duration: source.duration,
+  bitrate: 320_000,
+  codec: "mp3",
+  sampleRate: 44_100,
   channels: 2,
-  bitDepth: 16,
+  bitDepth: null,
   probeError: "",
 }));
 
 export const hostedDemoRoots = [{
   id: ROOT_ID,
-  label: "Generated Demo Audio",
-  path: "Created in this browser session",
+  label: "The Dreadnauts — Cosmic Reggae Sessions",
+  path: "Protected public streams from dreadnauts.uk",
   kind: "folder",
   connected: true,
   connectionState: "connected",
@@ -79,17 +86,17 @@ export const createHostedDemoState = () => ({
   schemaVersion: 5,
   albumTemplates: [],
   masteringPresets: componentPresets(),
-  activeAlbumId: "mastering-lab",
+  activeAlbumId: "cosmic-reggae-sessions",
   settings: {
-    project: { artistName: "Demo Artist", setupComplete: true },
+    project: { artistName: "The Dreadnauts", setupComplete: true },
     revealPrivateFilenames: false,
     appearance: { mode: "dark", colorTheme: "signal", fontTheme: "condensed", textScale: 1 },
   },
   albums: [{
-    id: "mastering-lab",
-    artist: "Demo Artist",
-    title: "Mastering Lab",
-    era: "current",
+    id: "cosmic-reggae-sessions",
+    artist: "The Dreadnauts",
+    title: "Cosmic Reggae Sessions",
+    era: "past",
     status: "working",
     orderApproved: false,
     masterBus: normalizeMasterBus(),
@@ -101,13 +108,13 @@ export const createHostedDemoState = () => ({
       decisionStatus: "undecided",
       masterCandidateId: "",
       auditionCandidateId: `${source.id}-demo`,
-      notes: index === 0 ? "Use the MASTER controls to hear and see changes in real time." : "",
+      notes: index === 0 ? "Use the MASTER controls to hear and see changes against the released Album 1 stream in real time." : "",
       visualAssets: [],
       candidates: [{
         id: `${source.id}-demo`,
-        label: "Generated demo mix",
+        label: "Protected public album stream",
         sourceRef: { rootId: ROOT_ID, relativePath: source.fileName },
-        flags: ["Browser-generated tester source"],
+        flags: ["Released Album 1 stream", "Hosted playback only"],
         notes: "",
       }],
     })),
@@ -131,7 +138,7 @@ const initialWorkspace = () => {
   return {
     version: STORAGE_VERSION,
     activeProjectId: "hosted-tester-project",
-    projects: [{ id: "hosted-tester-project", name: "Hosted Mastering Test", createdAt: now, updatedAt: now, state: createHostedDemoState() }],
+    projects: [{ id: "hosted-tester-project", name: "The Dreadnauts — Album 1 Demo", createdAt: now, updatedAt: now, state: createHostedDemoState() }],
   };
 };
 
@@ -206,49 +213,9 @@ const libraryPayload = () => ({
 
 const hostedCapabilityError = () => Promise.reject(new Error("This action needs the local Project Sequencer server. The hosted tester never receives device paths or source files."));
 
-const setAscii = (view, offset, value) => {
-  for (let index = 0; index < value.length; index += 1) view.setUint8(offset + index, value.charCodeAt(index));
-};
-
-const createWaveFile = (source) => {
-  const frameCount = SAMPLE_RATE * DEMO_DURATION;
-  const buffer = new ArrayBuffer(44 + frameCount * 4);
-  const view = new DataView(buffer);
-  setAscii(view, 0, "RIFF");
-  view.setUint32(4, 36 + frameCount * 4, true);
-  setAscii(view, 8, "WAVEfmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 2, true);
-  view.setUint32(24, SAMPLE_RATE, true);
-  view.setUint32(28, SAMPLE_RATE * 4, true);
-  view.setUint16(32, 4, true);
-  view.setUint16(34, 16, true);
-  setAscii(view, 36, "data");
-  view.setUint32(40, frameCount * 4, true);
-  for (let index = 0; index < frameCount; index += 1) {
-    const time = index / SAMPLE_RATE;
-    const beat = Math.pow(Math.max(0, Math.sin(Math.PI * ((time * 1.7) % 1))), 5);
-    const swell = 0.72 + 0.28 * Math.sin((Math.PI * 2 * time) / 6);
-    const base = Math.sin(Math.PI * 2 * source.frequency * time);
-    const accent = Math.sin(Math.PI * 2 * source.accent * time + 0.3);
-    const shimmer = Math.sin(Math.PI * 2 * source.frequency * 3.01 * time) * 0.15;
-    const left = Math.tanh((base * 0.44 + accent * 0.22 + shimmer + beat * 0.18) * swell);
-    const right = Math.tanh((base * 0.4 + Math.sin(Math.PI * 2 * source.accent * time + 0.52) * 0.24 + shimmer * 0.8 + beat * 0.14) * swell);
-    view.setInt16(44 + index * 4, Math.round(left * 24_000), true);
-    view.setInt16(46 + index * 4, Math.round(right * 24_000), true);
-  }
-  return new Blob([buffer], { type: "audio/wav" });
-};
-
-const mediaUrls = new Map();
 const mediaUrl = (key) => {
-  if (mediaUrls.has(key)) return mediaUrls.get(key);
   const source = DEMO_SOURCES.find((item) => sourceKeyFor(item) === key);
-  if (!source) return "";
-  const url = URL.createObjectURL(createWaveFile(source));
-  mediaUrls.set(key, url);
-  return url;
+  return source ? `/demo-audio/${encodeURIComponent(source.id)}` : "";
 };
 
 const waveform = (key, requestedPoints = 900) => {
@@ -260,7 +227,8 @@ const waveform = (key, requestedPoints = 900) => {
     const edge = Math.min(1, phase * 14, (1 - phase) * 14);
     return Number(Math.min(1, shape * edge).toFixed(4));
   });
-  return Promise.resolve({ key, duration: DEMO_DURATION, pointCount, sampleCount: SAMPLE_RATE * DEMO_DURATION, points });
+  const file = hostedDemoLibrary[sourceIndex];
+  return Promise.resolve({ key, duration: file.duration, pointCount, sampleCount: Math.round(file.duration * file.sampleRate), points });
 };
 
 export const createHostedDemoApi = ({ storage } = {}) => ({
@@ -273,7 +241,7 @@ export const createHostedDemoApi = ({ storage } = {}) => ({
       projects: publicProjects(workspace),
       activeProjectId: workspace.activeProjectId,
       recovery: { required: false },
-      supportedFormats: ["wav"],
+      supportedFormats: ["mp3"],
       ...libraryPayload(),
     };
   },

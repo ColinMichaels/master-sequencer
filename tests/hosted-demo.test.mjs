@@ -10,12 +10,16 @@ const memoryStorage = () => {
   };
 };
 
-test("hosted tester starts with generated audio and persists project changes in browser storage", async () => {
+test("hosted tester starts with the released Dreadnauts Album 1 and persists project changes in browser storage", async () => {
   const storage = memoryStorage();
   const first = createHostedDemoApi({ storage });
   const boot = await first.bootstrap();
   assert.equal(first.hostedDemo, true);
-  assert.equal(boot.library.length, 3);
+  assert.equal(boot.library.length, 9);
+  assert.equal(boot.state.settings.project.artistName, "The Dreadnauts");
+  assert.equal(boot.state.albums[0].title, "Cosmic Reggae Sessions");
+  assert.equal(boot.state.albums[0].tracks.at(-1).title, "Return to Earth");
+  assert.equal(first.mediaUrl(boot.library[0].key), "/demo-audio/funky-space-reggae-vibes");
   assert.equal(boot.state.settings.project.setupComplete, true);
   assert.equal(JSON.stringify(boot).includes("/Users/"), false);
 
@@ -41,6 +45,7 @@ test("hosted waveform and analysis remain compact and contain no source paths", 
   const waveform = await api.waveform(key, 620);
   const analysis = await api.technicalAnalysis(key);
   assert.equal(waveform.points.length, 620);
+  assert.equal(waveform.duration, hostedDemoLibrary[0].duration);
   assert.equal(typeof analysis.measurements.integratedLoudness, "number");
   assert.equal(JSON.stringify({ waveform, analysis }).includes("absolutePath"), false);
 });
