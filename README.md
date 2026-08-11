@@ -112,6 +112,12 @@ header output meter opens Mastering directly without taking over its VU/Hz
 controls. Long sequence and library lists render and scroll within their own
 workspace instead of pushing essential transport controls out of reach.
 
+On phone widths, the shell removes duplicate count panels and hover-only
+tooltips, keeps the active album and primary actions above the fold, and
+separates Sequence status from its touch controls. Library filter recall remains
+available while desktop-only filter management and scan counters stay out of
+the narrow layout.
+
 Mastering keeps delivery/profile controls beside Print / Export, collapses the
 A/B reference controls while preserving the live A/B state in its summary, and
 uses the header meter border and tint to distinguish active MASTER processing

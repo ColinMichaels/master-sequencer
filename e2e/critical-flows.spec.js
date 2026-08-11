@@ -484,6 +484,45 @@ test("library filters are functional and primary workspaces do not overflow a ph
   }
 });
 
+test("phone layout removes redundant counters and keeps sequence controls separated", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  const header = page.locator(".app-header");
+  const albumRail = page.locator(".album-rail.is-collapsed");
+  await expect(page.locator(".header-summary-shell")).toBeHidden();
+  expect((await header.boundingBox()).height).toBeLessThanOrEqual(104);
+  expect((await albumRail.boundingBox()).height).toBeLessThanOrEqual(52);
+  await expect(albumRail.locator(".compact-album-button:visible")).toHaveCount(1);
+  await expect(albumRail.locator(".compact-rail-actions")).toBeHidden();
+
+  const activeNav = page.getByRole("navigation", { name: "Project views" }).getByRole("button", { name: "Sequence", exact: true });
+  expect(await activeNav.evaluate((element) => getComputedStyle(element, "::after").display)).toBe("none");
+
+  const firstTrack = page.locator(".sequence-track").first();
+  const statusBox = await firstTrack.locator(".track-status").boundingBox();
+  const playBox = await firstTrack.locator(".sequence-play-button").boundingBox();
+  expect(statusBox.x + statusBox.width).toBeLessThanOrEqual(playBox.x);
+  for (const moveButton of await firstTrack.locator(".track-move button").all()) {
+    const box = await moveButton.boundingBox();
+    expect(box.width).toBeGreaterThanOrEqual(36);
+    expect(box.height).toBeGreaterThanOrEqual(36);
+  }
+
+  await page.getByRole("button", { name: "Mastering", exact: true }).click();
+  await expect(page.locator(".mastering-heading dl")).toBeHidden();
+  await expect(page.locator(".master-signal-flow")).toBeHidden();
+  await expect(page.locator(".mastering-track-list > header small")).toBeHidden();
+
+  await page.getByRole("button", { name: "Assets", exact: true }).click();
+  await expect(page.locator(".assets-heading dl")).toBeHidden();
+
+  await page.getByRole("button", { name: "Audio Library", exact: true }).click();
+  await expect(page.locator(".library-heading p")).toBeHidden();
+  await expect(page.locator(".saved-filter-bar form")).toBeHidden();
+  await expect(page.locator(".scan-summary")).toBeHidden();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
+});
+
 test("audio rows drag onto albums as new tracks or matching-title candidates", async ({ page, request }) => {
   await page.getByRole("button", { name: "Add Album" }).click();
   const albumDialog = page.getByRole("dialog", { name: "Add Album" });

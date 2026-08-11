@@ -27,6 +27,20 @@ risk reduction and user value rather than feature count.
 
 ## Changes completed in this pass
 
+### 2026-08-11 mobile layout pass
+
+- Phone chrome now omits duplicate album counters and redundant workspace
+  statistics, keeps only the active album in the compact rail, and disables
+  hover-only tooltips while preserving accessible labels and expanded controls.
+- Sequence cards reserve separate columns for status and transport actions;
+  reorder and Library preview controls meet larger touch targets.
+- Mobile Mastering removes the duplicate summary/signal-flow rows, while the
+  Audio Library prioritizes search, filters, saved-filter recall, and the file
+  list over desktop-only filter management and scan counters.
+- Rendered QA passed at 390×844 and 360×800 with no document overflow, no
+  framework overlay, and a clean browser console. The regression gate passed
+  128 unit/integration tests, 26 browser workflows, and the production build.
+
 ### 2026-08-11 interface and performance release
 
 - Number-row and numeric-keypad shortcuts now open all seven primary views,
