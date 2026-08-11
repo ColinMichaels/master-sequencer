@@ -53,11 +53,12 @@ npm start
 
 - **Sequence:** add individual audio files or a whole folder, review the files
   before they become tracks, drag tracks or use arrow buttons, choose temporary
-  audition sources, play the available album order, render an edited track
-  ending into its adjacent track and continue through that next track, remove
-  a track from the working sequence without deleting its
-  record, restore unsequenced tracks, review the live back-cover layout, reset
-  to the baseline order, and export a Markdown sequence.
+  audition sources, play the available album order, and use the active row's
+  play control to pause or resume the shared main transport. Render an edited
+  track ending into its adjacent track and continue through that next track,
+  remove a track from the working sequence without deleting its record, restore
+  unsequenced tracks, reset to the baseline order, and export a Markdown
+  sequence.
 - **Track Review:** compare every candidate, play sources, record notes, choose
   a master candidate, set a separate disposition, and explicitly queue sources
   for loudness-matched derivative previews without changing either choice.
@@ -96,8 +97,9 @@ npm start
   source checksums only; it never copies media.
 
 The application shell uses compact icon tabs and transport actions with
-accessible hover/focus labels. The Albums rail and Sequence layout preview can
-be collapsed independently when more editing space is needed.
+accessible hover/focus labels. The Albums rail can be collapsed when more
+editing space is needed, while the Sequence workspace uses the full content
+area.
 Project edits also have a bounded 100-step undo/redo history. Undo changes only
 the local project record; it never reverses a filesystem operation.
 

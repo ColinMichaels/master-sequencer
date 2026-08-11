@@ -94,7 +94,7 @@ baseline order references before disk state changes.
 | --- | --- |
 | `src/App.jsx` | Compose workspaces and coordinate cross-workspace actions |
 | `src/hooks/useProjectData.js` | Bootstrap state/library data, serialize autosaves, rescan sources, and manage imports |
-| `src/hooks/useTransport.js` | Preview individual sources, queue album playback, and recover from media errors |
+| `src/hooks/useTransport.js` | Preview individual sources, queue album playback, expose current/playing state to row controls, and recover from media errors |
 | `src/hooks/useAppearance.js` | Resolve and apply persisted display preferences |
 | `src/components/*Workspace.jsx` | Own one user workflow and its local interaction state |
 | `src/lib/project-commands.js` | Immutable commands for albums, tracks, candidates, assets, and sequence edits |

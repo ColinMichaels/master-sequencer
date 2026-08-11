@@ -19,6 +19,8 @@
 .sequence-track:hover { background: rgb(var(--bone-rgb) / 2.5%); }
 .sequence-track.is-missing { box-shadow: inset 3px 0 0 var(--orange); }
 .sequence-track.is-legacy { box-shadow: inset 3px 0 0 var(--yellow); }
+.sequence-track.is-playing { outline: 1px solid var(--lime); outline-offset: -1px; background: rgb(var(--lime-rgb) / 7%); }
+.sequence-track.is-playing:hover { background: rgb(var(--lime-rgb) / 10%); }
 .sequence-track.is-removal-armed { outline: 1px solid var(--orange); outline-offset: -1px; background: rgb(var(--orange-rgb) / 5%); }
 .sequence-track > * { min-width: 0; padding: 0 0.45rem; }
 .track-move { display: flex; align-items: center; gap: 0.3rem; color: var(--bone-muted); }
@@ -37,6 +39,7 @@
 .icon-button { display: inline-grid; width: 38px; height: 38px; padding: 0; place-items: center; border: 1px solid var(--line); background: transparent; color: var(--bone); cursor: pointer; }
 .icon-button:hover:not(:disabled) { border-color: var(--lime); color: var(--lime); }
 .sequence-track > .icon-button { justify-self: center; }
+.sequence-play-button.is-playing { border-color: var(--lime); background: rgb(var(--lime-rgb) / 12%); color: var(--lime); }
 .sequence-transition-button.is-busy { border-color: var(--yellow); color: var(--yellow); }
 .sequence-transition-button.is-busy svg { animation: pulse 0.8s steps(3) infinite; }
 .sequence-remove-button { color: var(--bone-muted); }

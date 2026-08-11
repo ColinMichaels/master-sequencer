@@ -222,6 +222,25 @@ test("space always toggles transport playback without hijacking text entry", asy
   await expect(transportToggle).toHaveAttribute("aria-label", "Resume playback");
 });
 
+test("the sequence row follows the main player track and playback state", async ({ page }) => {
+  const alphaRow = page.locator(".sequence-track").filter({ hasText: "Alpha Tone" });
+  const rowPlayButton = alphaRow.getByRole("button", { name: "Play sequence from Alpha Tone" });
+
+  await rowPlayButton.click();
+  await expect(alphaRow).toHaveClass(/is-playing/);
+  await expect(alphaRow.getByRole("button", { name: "Pause Alpha Tone" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".transport-playback-toggle")).toHaveAttribute("aria-label", "Pause playback");
+
+  await alphaRow.getByRole("button", { name: "Pause Alpha Tone" }).click();
+  await expect(alphaRow).not.toHaveClass(/is-playing/);
+  await expect(alphaRow.getByRole("button", { name: "Resume Alpha Tone" })).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator(".transport-playback-toggle")).toHaveAttribute("aria-label", "Resume playback");
+
+  await alphaRow.getByRole("button", { name: "Resume Alpha Tone" }).click();
+  await expect(alphaRow).toHaveClass(/is-playing/);
+  await expect(alphaRow.getByRole("button", { name: "Pause Alpha Tone" })).toHaveAttribute("aria-pressed", "true");
+});
+
 test("album decisions persist versions, transition notes, explicit approval, and safe templates", async ({ page, request }) => {
   await page.getByRole("button", { name: "Album Decisions" }).click();
   await page.getByLabel("Sequence version name").fill("Opening order");
