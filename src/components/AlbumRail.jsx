@@ -1,6 +1,6 @@
 import React from "react";
 import { api } from "../lib/api.js";
-import { CheckIcon, EditIcon, FolderIcon, MoreIcon, PanelLeftIcon, PlusIcon, TrashIcon } from "./Icons.jsx";
+import { CheckIcon, DocumentIcon, EditIcon, FolderIcon, MoreIcon, PanelLeftIcon, PlusIcon, TrashIcon } from "./Icons.jsx";
 
 const eraLabels = { past: "Past", current: "Current", future: "Future" };
 
@@ -17,7 +17,20 @@ export function AlbumRail({ albums, activeAlbumId, currentProject, collapsed, pr
         {!collapsed && <h2>Albums</h2>}
         <button type="button" className="panel-toggle panel-toggle--left" onClick={onToggle} aria-expanded={!collapsed} aria-controls="album-panel-content" aria-label={toggleLabel} data-tooltip={toggleLabel}><PanelLeftIcon collapsed={collapsed} /></button>
       </header>
-      {!collapsed && <div id="album-panel-content" className="album-panel-content">
+      {collapsed ? <div id="album-panel-content" className="album-rail-compact">
+        <button type="button" className="compact-rail-button" disabled={projectBusy} onClick={onOpenProjects} aria-label={`Open saved projects for ${currentProject?.name || "Local Project"}`} data-tooltip={`Projects · ${currentProject?.name || "Local Project"}`}><FolderIcon /></button>
+        <div className="compact-album-list" aria-label="Albums in this project">
+          {albums.map((album) => (
+            <button key={album.id} type="button" className={`compact-album-button ${activeAlbumId === album.id ? "is-active" : ""}`} onClick={() => onSelectAlbum(album.id)} aria-label={`Open album ${album.title}`} aria-current={activeAlbumId === album.id ? "true" : undefined} data-tooltip={`${album.title} · ${album.status}`} title={`${album.title} · ${album.status}`}>
+              <span className="album-art"><AlbumArt album={album} /></span>
+            </button>
+          ))}
+        </div>
+        <div className="compact-rail-actions">
+          <button type="button" className="compact-rail-button compact-add-album" onClick={onAddAlbum} aria-label="Add Album" data-tooltip="Add Album"><PlusIcon /></button>
+          <button type="button" className="compact-rail-button compact-new-project" disabled={projectBusy} onClick={onNewProject} aria-label="New Project" data-tooltip="New Project"><DocumentIcon /></button>
+        </div>
+      </div> : <div id="album-panel-content" className="album-panel-content">
       <button type="button" className="current-project-card" disabled={projectBusy} onClick={onOpenProjects}>
         <span><small>Current project</small><strong>{currentProject?.name || "Local Project"}</strong></span><FolderIcon />
       </button>

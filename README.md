@@ -98,8 +98,9 @@ npm start
 
 The application shell uses compact icon tabs and transport actions with
 accessible hover/focus labels. The Albums rail can be collapsed when more
-editing space is needed, while the Sequence workspace uses the full content
-area.
+editing space is needed; its compact state keeps project actions and album-art
+navigation available as labeled icons. The Sequence workspace uses the full
+content area.
 Project edits also have a bounded 100-step undo/redo history. Undo changes only
 the local project record; it never reverses a filesystem operation.
 

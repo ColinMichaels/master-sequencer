@@ -1,5 +1,5 @@
 import React from "react";
-import { CheckIcon, ImageIcon, MusicIcon, ReviewIcon, ScissorsIcon, SequenceIcon, SettingsIcon, WarningIcon, WaveIcon } from "./Icons.jsx";
+import { CheckIcon, ImageIcon, MusicIcon, ReviewIcon, ScissorsIcon, SequenceIcon, SettingsIcon } from "./Icons.jsx";
 import { ScreenControls } from "./ScreenControls.jsx";
 
 const navItems = [
@@ -31,10 +31,10 @@ export function AppHeader({ activeView, onViewChange, album, playableCount, appr
       </nav>
       <div className="command-history" role="group" aria-label="Project edit history"><button type="button" disabled={!commandHistory.canUndo} onClick={commandHistory.undo} aria-label={commandHistory.canUndo ? `Undo ${commandHistory.undoLabel}` : "Nothing to undo"}>↶</button><button type="button" disabled={!commandHistory.canRedo} onClick={commandHistory.redo} aria-label={commandHistory.canRedo ? `Redo ${commandHistory.redoLabel}` : "Nothing to redo"}>↷</button></div>
       <dl className="header-summary" aria-label={`${album?.title || "Album"} summary`}>
-        <div><WaveIcon /><dt>{trackCount}</dt><dd>Tracks</dd></div>
-        <div><MusicIcon /><dt>{playableCount}</dt><dd>Playable</dd></div>
-        <div className={missingCount ? "is-warning" : ""}><WarningIcon /><dt>{missingCount}</dt><dd>Missing source</dd></div>
-        <div><CheckIcon /><dt>{approvalCount}</dt><dd>Track approvals</dd></div>
+        <div><dt>{trackCount}</dt><dd>Tracks</dd></div>
+        <div><dt>{playableCount}</dt><dd>Playable</dd></div>
+        <div className={missingCount ? "is-warning" : ""}><dt>{missingCount}</dt><dd>Missing source</dd></div>
+        <div><dt>{approvalCount}</dt><dd>Track approvals</dd></div>
       </dl>
     </header>
   );

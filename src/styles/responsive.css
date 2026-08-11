@@ -23,7 +23,7 @@
   .app-shell { grid-template-columns: 240px minmax(0, 1fr); }
   .app-shell.albums-collapsed { grid-template-columns: 50px minmax(0, 1fr); }
   .app-header { grid-template-columns: auto auto auto minmax(0, 1fr); }
-  .header-summary { width: min(100%, 360px); }
+  .header-summary { width: min(100%, 315px); }
   .album-rail { padding-inline: 0.8rem; }
   .album-item { grid-template-columns: 58px minmax(0, 1fr) 22px; }
   .album-art { width: 58px; }
@@ -63,7 +63,12 @@
   .header-summary { grid-column: 1 / -1; width: 100%; margin: 0; border-top: 1px solid var(--line-soft); }
   .header-summary div { min-height: 44px; }
   .album-rail { display: block; padding: 0.45rem 0.5rem; border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; }
-  .album-rail.is-collapsed { display: flex; min-height: 44px; align-items: flex-end; }
+  .album-rail.is-collapsed { display: flex; min-height: 44px; align-items: center; gap: 0.45rem; }
+  .album-rail.is-collapsed .album-rail-heading { width: auto; flex: 0 0 auto; }
+  .album-rail-compact { min-width: 0; flex-direction: row; gap: 0.4rem; padding: 0; overflow-x: auto; }
+  .compact-album-list { width: auto; min-width: 0; flex-direction: row; justify-content: flex-start; gap: 0.4rem; padding: 0; overflow-x: auto; overflow-y: hidden; }
+  .compact-rail-actions { display: flex; gap: 0.4rem; margin: 0 0 0 auto; padding: 0 0 0 0.45rem; border-top: 0; border-left: 1px solid var(--line-soft); }
+  .album-rail-compact button[data-tooltip]::after { top: calc(100% + 0.45rem); left: 50%; transform: translateX(-50%); }
   .album-rail-heading { min-height: 34px; justify-content: flex-end; padding: 0; border: 0; }
   .album-rail-heading h2 { display: none; }
   .album-panel-content { flex-direction: row; gap: 0.5rem; overflow-x: auto; }

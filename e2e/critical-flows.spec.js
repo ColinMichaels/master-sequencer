@@ -29,6 +29,27 @@ test("bootstrap renders the project and protected sources remain masked", async 
   await expect(page.getByText("[Private source file]", { exact: true }).first()).toBeVisible();
 });
 
+test("collapsed albums keep compact actions while header totals stay text-only", async ({ page }) => {
+  await expect(page.locator(".header-summary svg")).toHaveCount(0);
+  await page.getByRole("button", { name: "Hide albums panel" }).click();
+
+  const compactRail = page.locator(".album-rail-compact");
+  await expect(compactRail).toBeVisible();
+  await expect(compactRail.getByRole("button", { name: /Open saved projects for/ })).toBeVisible();
+  await expect(compactRail.getByRole("button", { name: "Open album Fixture Album" })).toHaveAttribute("aria-current", "true");
+  await expect(compactRail.getByRole("button", { name: "Add Album" })).toBeVisible();
+  await expect(compactRail.getByRole("button", { name: "New Project" })).toBeVisible();
+
+  await compactRail.getByRole("button", { name: "Add Album" }).click();
+  await expect(page.getByRole("dialog", { name: "Add Album" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.setViewportSize({ width: 390, height: 844 });
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+  await page.getByRole("button", { name: "Show albums panel" }).click();
+  await expect(compactRail).toBeHidden();
+});
+
 test("reordering persists and master selection stays separate from the audition source", async ({ page, request }) => {
   const titles = page.locator(".sequence-track .track-title strong");
   await expect(titles).toHaveText(["Alpha Tone", "[SIGNAL SOURCE WITHHELD]"]);
