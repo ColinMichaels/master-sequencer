@@ -326,7 +326,10 @@ export function MasterBusControls({ bus, presets = EMPTY_PRESET_LIBRARY, onChang
       <header className="master-bus-heading">
         <div className="master-bus-title">
           <span aria-hidden="true">MASTER</span>
-          <div><h3 id="master-bus-title">Album Master Bus</h3><p>Every preview and exported track passes through this shared chain.</p></div>
+          <div className="master-bus-title-copy">
+            <h3 id="master-bus-title">Album Master Bus</h3>
+            <button type="button" className="master-bus-help" aria-label="About Album Master Bus" aria-describedby="master-bus-help-text">i<span id="master-bus-help-text" role="tooltip">Every preview and exported track passes through this shared chain.</span></button>
+          </div>
         </div>
         <MasteringPresetControls type="master" label="MASTER chain" presets={presets.master} prominent inline onSave={onSavePreset} onLoad={onLoadPreset} onDelete={onDeletePreset} />
         <div className="master-bus-actions">

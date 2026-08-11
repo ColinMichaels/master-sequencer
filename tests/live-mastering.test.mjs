@@ -77,6 +77,22 @@ test("raw library and rendered previews bypass live processing to prevent altere
   assert.equal(graph.trackGain.gain.value, decibelsToGain(-12));
 });
 
+test("live MASTER controls schedule short ramps while audio is running to avoid zipper noise", () => {
+  const graph = settingsGraph();
+  const scheduled = [];
+  graph.context = { state: "running", currentTime: 4.25 };
+  graph.outputGain.gain = {
+    value: 1,
+    cancelScheduledValues: (time) => scheduled.push(["cancel", time]),
+    setTargetAtTime: (value, time, constant) => scheduled.push(["target", value, time, constant]),
+  };
+
+  applyLiveMasteringSettings(graph, enabledMaster);
+
+  assert.deepEqual(scheduled[0], ["cancel", 4.25]);
+  assert.deepEqual(scheduled[1], ["target", decibelsToGain(-1), 4.25, 0.012]);
+});
+
 test("reference playback is explicitly classified for the clean direct output", () => {
   assert.equal(playbackBypassesMastering({ track: { id: "current" }, referenceTrack: true }), true);
   assert.equal(playbackBypassesMastering({ track: { id: "current" } }), false);
@@ -165,4 +181,6 @@ test("the live graph connects one media source to direct, bypass, and processed 
   assert.equal(graph.frequencyAnalyser.smoothingTimeConstant, 0.76);
   assert.equal(graph.eqInputAnalyser.fftSize, 2_048);
   assert.equal(graph.eqInputAnalyser.smoothingTimeConstant, 0.76);
+  assert.equal(graph.leftAnalyser.fftSize, 1_024);
+  assert.equal(graph.rightAnalyser.fftSize, 1_024);
 });

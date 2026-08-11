@@ -105,6 +105,22 @@ to the relevant workspace. The Sequence workspace uses the full content area.
 Project edits also have a bounded 100-step undo/redo history. Undo changes only
 the local project record; it never reverses a filesystem operation.
 
+The seven primary views also use the number row or numeric keypad shortcuts
+1–7, with Mastering assigned to 2. The browser title follows
+`View | Album | Track | Project`, the Albums rail starts collapsed, and the
+header output meter opens Mastering directly without taking over its VU/Hz
+controls. Long sequence and library lists render and scroll within their own
+workspace instead of pushing essential transport controls out of reach.
+
+Mastering keeps delivery/profile controls beside Print / Export, collapses the
+A/B reference controls while preserving the live A/B state in its summary, and
+uses the header meter border and tint to distinguish active MASTER processing
+from clean reference or raw playback. EQ, compressor, limiter, master VU, and
+frequency displays update from the live Web Audio graph only while relevant.
+Pausing suspends that graph until playback resumes, and running parameter
+changes use short ramps to avoid zipper noise. FFmpeg prints remain the exact
+render authority; live browser processing is an audition path.
+
 Projects can be started fresh and reopened from the album rail or Settings.
 Before a switch, pending edits are flushed into the current project's ignored
 local snapshot; configured audio paths remain shared without copying media.
@@ -241,6 +257,11 @@ npm run check:full
 The browser suite generates tiny temporary audio fixtures outside the project
 catalog. It exercises real FFmpeg output and HTTP byte-range playback without
 reading or changing configured source audio.
+
+The Sites release build uses the browser-safe local persistence adapter and
+splits secondary workspaces into deferred chunks. `npm run build:sites`
+prepares the validated Cloudflare Worker/client package without publishing it;
+the configured Sites deployment remains a separate explicit release step.
 
 For a parallel local production QA process without editing local configuration,
 override only the listening port:

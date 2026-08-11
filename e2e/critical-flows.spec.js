@@ -129,6 +129,104 @@ test("primary workspaces keep repeated tab headings visually compact", async ({ 
   }
 });
 
+test("the header master meter opens Mastering without hijacking its view controls", async ({ page }) => {
+  const navigation = page.getByRole("navigation", { name: "Project views" });
+  const headerMeter = page.getByTestId("header-master-meter");
+  const openMastering = headerMeter.getByRole("button", { name: "Open Mastering" });
+  const spectrum = headerMeter.getByRole("button", { name: "Show frequency analyzer" });
+
+  await expect(openMastering).toBeVisible();
+  await spectrum.click();
+  await expect(headerMeter).toHaveAttribute("data-meter-mode", "spectrum");
+  await expect(navigation.getByRole("button", { name: "Sequence", exact: true })).toHaveAttribute("aria-current", "page");
+
+  await openMastering.click();
+  await expect(navigation.getByRole("button", { name: "Mastering", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(page.getByRole("heading", { name: "Mastering" })).toBeAttached();
+  await expect(page).toHaveTitle(/^Mastering \|/);
+
+  await navigation.getByRole("button", { name: "Sequence", exact: true }).click();
+  await openMastering.focus();
+  await page.keyboard.press("Enter");
+  await expect(navigation.getByRole("button", { name: "Mastering", exact: true })).toHaveAttribute("aria-current", "page");
+});
+
+test("Mastering keeps delivery compact and reveals secondary guidance on demand", async ({ page }) => {
+  await page.getByRole("button", { name: "Mastering", exact: true }).click();
+
+  const deliveryControls = page.getByRole("group", { name: "Delivery and publication controls" });
+  const deliverySelect = deliveryControls.getByLabel("Print requirements");
+  const approvedMaster = deliveryControls.getByLabel("Approved master");
+  const readyToPublish = deliveryControls.getByLabel("Ready to publish");
+  const printButton = deliveryControls.getByRole("button", { name: "Print / Export Audio" });
+  await expect(page.locator(".delivery-profile-panel")).toHaveCount(0);
+  await expect(deliverySelect).toBeVisible();
+  await expect(approvedMaster).toBeVisible();
+  await expect(readyToPublish).toBeVisible();
+  await expect(printButton).toBeVisible();
+  const deliveryBox = await deliverySelect.boundingBox();
+  const printBox = await printButton.boundingBox();
+  expect(deliveryBox.x).toBeLessThan(printBox.x);
+
+  const referencePanel = page.locator(".reference-ab-panel");
+  await expect(referencePanel).not.toHaveAttribute("open", "");
+  await expect(referencePanel.locator(".reference-ab-body")).toBeHidden();
+  await referencePanel.locator("summary").focus();
+  await page.keyboard.press("Enter");
+  await expect(referencePanel).toHaveAttribute("open", "");
+  await expect(referencePanel.getByLabel("Reference audio track")).toBeVisible();
+
+  const masterBusHelp = page.getByRole("button", { name: "About Album Master Bus" });
+  const masterBusTooltip = page.getByRole("tooltip");
+  await expect(masterBusTooltip).toBeHidden();
+  await masterBusHelp.focus();
+  await expect(masterBusTooltip).toBeVisible();
+  await expect(masterBusTooltip).toHaveText("Every preview and exported track passes through this shared chain.");
+});
+
+test("long sequence lists scroll inside the workspace while controls stay visible", async ({ page, request }) => {
+  const longProject = structuredClone(e2eProjectState);
+  const album = longProject.albums[0];
+  for (let index = 3; index <= 18; index += 1) {
+    album.tracks.push({
+      id: `scroll-track-${index}`,
+      title: `Scroll Track ${index}`,
+      decisionStatus: "undecided",
+      masterCandidateId: "",
+      auditionCandidateId: "",
+      notes: "",
+      visualAssets: [],
+      candidates: [],
+    });
+  }
+  album.baselineTrackOrder = album.tracks.map((track) => track.id);
+  const response = await request.put("/api/state", { data: longProject, headers: { Origin: origin } });
+  expect(response.ok()).toBeTruthy();
+  await page.reload();
+
+  const scrollRegion = page.locator(".sequence-scroll-region");
+  const heading = page.locator(".workspace-heading");
+  const tableHeading = page.locator(".sequence-table-head");
+  const lastTrack = page.locator(".sequence-track").filter({ has: page.getByText("Scroll Track 18", { exact: true }) });
+  const initialHeadingBox = await heading.boundingBox();
+  const initialTableHeadingBox = await tableHeading.boundingBox();
+  const scrollMetrics = await scrollRegion.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+    overflowY: getComputedStyle(element).overflowY,
+  }));
+
+  expect(scrollMetrics.overflowY).toBe("auto");
+  expect(scrollMetrics.scrollHeight).toBeGreaterThan(scrollMetrics.clientHeight);
+  await scrollRegion.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  await expect.poll(() => scrollRegion.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await expect(lastTrack).toBeVisible();
+  const scrolledHeadingBox = await heading.boundingBox();
+  const scrolledTableHeadingBox = await tableHeading.boundingBox();
+  expect(Math.abs(scrolledHeadingBox.y - initialHeadingBox.y)).toBeLessThan(1);
+  expect(Math.abs(scrolledTableHeadingBox.y - initialTableHeadingBox.y)).toBeLessThanOrEqual(1);
+});
+
 test("page title follows the active tab, album, track, and saved project", async ({ page }) => {
   await expect(page).toHaveTitle("Sequence | Fixture Album | Fixture Artist — Fixture Album");
 
@@ -505,11 +603,16 @@ test("the sequence row follows the main player track and playback state", async 
 test("album decisions persist versions, transition notes, explicit approval, and safe templates", async ({ page, request }) => {
   await page.getByRole("button", { name: "Album Decisions" }).click();
   const primaryDecisionGrid = page.locator(".decision-primary-grid");
+  await expect(primaryDecisionGrid).toBeVisible();
   await expect.poll(async () => page.evaluate(() => getComputedStyle(document.querySelector(".decision-primary-grid")).gridTemplateColumns.split(" ").length)).toBe(2);
   const wideSequenceBox = await page.locator(".sequence-versions").boundingBox();
   const wideTransitionBox = await page.locator(".transition-notebook").boundingBox();
+  const releaseDatePanel = page.locator(".sequence-versions > .album-release-date");
+  const releaseDatePanelBox = await releaseDatePanel.boundingBox();
   expect(Math.abs(wideSequenceBox.y - wideTransitionBox.y)).toBeLessThan(2);
   expect(wideTransitionBox.x).toBeGreaterThan(wideSequenceBox.x + wideSequenceBox.width);
+  expect(releaseDatePanelBox.y).toBeGreaterThan(wideSequenceBox.y);
+  expect(releaseDatePanelBox.y + releaseDatePanelBox.height).toBeLessThanOrEqual(wideSequenceBox.y + wideSequenceBox.height);
   const readinessRows = page.locator(".readiness-row");
   const firstWideReadinessBox = await readinessRows.nth(0).boundingBox();
   const secondWideReadinessBox = await readinessRows.nth(1).boundingBox();
@@ -586,7 +689,7 @@ test("album decisions persist versions, transition notes, explicit approval, and
 });
 
 test("mastering analysis, chapter cues, and delivery authority remain explicit", async ({ page, request }) => {
-  await page.getByRole("button", { name: "Mastering" }).click();
+  await page.getByRole("button", { name: "Mastering", exact: true }).click();
   const commitNumber = async (name, value) => {
     const input = page.getByRole("spinbutton", { name });
     await input.fill(String(value));
@@ -669,15 +772,18 @@ test("mastering analysis, chapter cues, and delivery authority remain explicit",
   await expect(limiterReduction).toHaveAttribute("data-reduction-db", "0.00");
   const headerMeter = page.getByTestId("header-master-meter");
   await expect(headerMeter).toHaveAttribute("data-meter-routing", "mastering");
+  await expect(headerMeter).toHaveAttribute("data-master-effects", "true");
   await expect(headerMeter).toHaveAttribute("data-routing-label", "MASTER");
   await expect(headerMeter).toHaveAttribute("aria-label", /Mastering enabled/);
   await expect.poll(() => headerMeter.evaluate((element) => getComputedStyle(element).borderColor)).toBe("rgb(168, 201, 47)");
   await page.getByLabel("Bypass MASTER").check();
   await expect(headerMeter).toHaveAttribute("data-meter-routing", "raw");
+  await expect(headerMeter).toHaveAttribute("data-master-effects", "false");
   await expect.poll(() => headerMeter.evaluate((element) => getComputedStyle(element).borderColor)).toBe("rgba(0, 0, 0, 0)");
   await page.getByLabel("Bypass MASTER").uncheck();
   await expect(headerMeter).toHaveAttribute("data-meter-routing", "mastering");
   await expect.poll(() => headerMeter.evaluate((element) => getComputedStyle(element).borderColor)).toBe("rgb(168, 201, 47)");
+  await page.locator(".reference-ab-panel > summary").click();
   await page.getByLabel("Reference audio track").selectOption("test-root::Alternate Mix.mp3");
   await page.getByRole("button", { name: /B Clean reference/ }).click();
   await expect(eqImpact).toHaveAttribute("data-live-active", "false");
@@ -687,6 +793,7 @@ test("mastering analysis, chapter cues, and delivery authority remain explicit",
   await expect(limiterReduction).toHaveAttribute("data-live-active", "false");
   await expect(limiterReduction).toHaveAttribute("data-reduction-db", "0.00");
   await expect(headerMeter).toHaveAttribute("data-meter-routing", "reference");
+  await expect(headerMeter).toHaveAttribute("data-master-effects", "false");
   await expect(headerMeter).toHaveAttribute("data-routing-label", "REF");
   await expect(headerMeter).toHaveAttribute("aria-label", /Clean reference; mastering bypassed/);
   await expect.poll(() => headerMeter.evaluate((element) => getComputedStyle(element).borderColor)).toBe("rgb(224, 173, 34)");
@@ -695,13 +802,17 @@ test("mastering analysis, chapter cues, and delivery authority remain explicit",
   await expect(page.locator(".reference-ab-status")).toContainText("mastering effects are bypassed");
   await expect(page.getByRole("button", { name: /A Current master/ })).toHaveAttribute("aria-keyshortcuts", "ArrowLeft");
   await expect(page.getByRole("button", { name: /B Clean reference/ })).toHaveAttribute("aria-keyshortcuts", "ArrowRight");
+  await page.locator(".reference-ab-panel > summary").click();
+  await expect(page.locator(".reference-ab-summary-state")).toHaveText("B · Reference live");
   await page.keyboard.press("ArrowLeft");
+  await expect(page.locator(".reference-ab-summary-state")).toHaveText("A · Master live");
   await expect(headerMeter).toHaveAttribute("data-meter-routing", "mastering");
   await expect(headerMeter).toHaveAttribute("data-routing-label", "MASTER");
   await expect.poll(() => headerMeter.evaluate((element) => getComputedStyle(element).borderColor)).toBe("rgb(168, 201, 47)");
   await expect(page.locator(".transport-copy")).toContainText("Alpha Tone");
   await expect(page.locator(".transport-waveform-meta strong")).toContainText("A · current master · MASTER live");
   await page.keyboard.press("ArrowRight");
+  await expect(page.locator(".reference-ab-summary-state")).toHaveText("B · Reference live");
   await expect(page.locator(".transport-waveform-meta strong")).toHaveText("B · clean reference · MASTER bypassed");
   await page.getByRole("spinbutton", { name: /Track gain/ }).focus();
   await page.keyboard.press("ArrowLeft");
@@ -898,6 +1009,6 @@ test("a real render job completes with documented range-readable output and appe
   expect(manifest.delivery.profileId).toBe("archive-wav");
   expect(manifest.tracks).toHaveLength(1);
 
-  await page.getByRole("button", { name: "Mastering" }).click();
+  await page.getByRole("button", { name: "Mastering", exact: true }).click();
   await expect(page.locator(".render-history")).toContainText(completedJob.result.audioName);
 });

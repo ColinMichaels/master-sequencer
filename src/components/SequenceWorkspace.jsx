@@ -78,8 +78,9 @@ export function SequenceWorkspace({ album, libraryMap, revealPrivateFilenames, t
           </div>
         </div>
 
-        {tracks.length ? (
-          <div className="sequence-table" role="table" aria-label={`${album.title} track order`}>
+        <div className="sequence-scroll-region">
+          {tracks.length ? (
+            <div className="sequence-table" role="table" aria-label={`${album.title} track order`}>
             <div className="sequence-table-head" role="row">
               <span>Move</span><span>#</span><span>Track title</span><span>Source</span><span>Duration / status</span><span>Play</span><span>Transition</span><span>Remove</span>
             </div>
@@ -151,17 +152,18 @@ export function SequenceWorkspace({ album, libraryMap, revealPrivateFilenames, t
                 );
               })}
             </ol>
-          </div>
-        ) : (
-          <div className="empty-state"><h3>This album is ready for its first track.</h3><p>Choose audio files, import a whole folder, enter a full path, or add a blank placeholder.</p><button type="button" className="primary-button" onClick={onAddTracks}><PlusIcon /> Add First Tracks</button></div>
-        )}
+            </div>
+          ) : (
+            <div className="empty-state"><h3>This album is ready for its first track.</h3><p>Choose audio files, import a whole folder, enter a full path, or add a blank placeholder.</p><button type="button" className="primary-button" onClick={onAddTracks}><PlusIcon /> Add First Tracks</button></div>
+          )}
 
-        {unsequencedTracks.length > 0 && (
-          <section className="unsequenced-tracks" aria-labelledby="unsequenced-title">
-            <header><div><h3 id="unsequenced-title">Unsequenced Tracks</h3><p>These track records and all attached audio, notes, visuals, and lyrics are preserved.</p></div><strong>{unsequencedTracks.length}</strong></header>
-            <ol>{unsequencedTracks.map((track) => <li key={track.id}><div><strong>{track.title}</strong><small>{track.candidates.length} candidate{track.candidates.length === 1 ? "" : "s"} preserved</small></div><button type="button" className="text-button" onClick={() => onRestoreToSequence(track.id, track.title)}><RefreshIcon /> Restore to Sequence</button></li>)}</ol>
-          </section>
-        )}
+          {unsequencedTracks.length > 0 && (
+            <section className="unsequenced-tracks" aria-labelledby="unsequenced-title">
+              <header><div><h3 id="unsequenced-title">Unsequenced Tracks</h3><p>These track records and all attached audio, notes, visuals, and lyrics are preserved.</p></div><strong>{unsequencedTracks.length}</strong></header>
+              <ol>{unsequencedTracks.map((track) => <li key={track.id}><div><strong>{track.title}</strong><small>{track.candidates.length} candidate{track.candidates.length === 1 ? "" : "s"} preserved</small></div><button type="button" className="text-button" onClick={() => onRestoreToSequence(track.id, track.title)}><RefreshIcon /> Restore to Sequence</button></li>)}</ol>
+            </section>
+          )}
+        </div>
       </section>
 
     </main>

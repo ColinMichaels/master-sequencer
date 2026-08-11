@@ -64,6 +64,18 @@ export const useTransport = ({ libraryMap, masterBus, liveTracks = [] }) => {
     }
   }, [updateAudioGraph]);
 
+  const resumeAudioGraph = useCallback((graph = audioGraph.current) => {
+    const context = graph?.context;
+    if (context?.state === "suspended" && typeof context.resume === "function") context.resume().catch(() => {});
+  }, []);
+
+  const suspendAudioGraph = useCallback(() => {
+    const context = audioGraph.current?.context;
+    // Preserve the connected graph for an instant resume while releasing its
+    // real-time processing work whenever the shared transport is paused.
+    if (context?.state === "running" && typeof context.suspend === "function") context.suspend().catch(() => {});
+  }, []);
+
   useEffect(() => {
     updateAudioGraph();
   }, [masterBus, liveTracks, updateAudioGraph]);
@@ -74,7 +86,7 @@ export const useTransport = ({ libraryMap, masterBus, liveTracks = [] }) => {
     meteringRef.current = null;
     if (!graph) return;
     try { graph.source.disconnect(); } catch { /* Already disconnected. */ }
-    graph.context.close().catch(() => {});
+    Promise.resolve(graph.context.close?.()).catch(() => {});
   }, []);
 
   const fileForTrack = useCallback((track) => {
@@ -92,7 +104,7 @@ export const useTransport = ({ libraryMap, masterBus, liveTracks = [] }) => {
     setMediaDuration(0);
     const graph = ensureAudioGraph();
     updateAudioGraph(entry);
-    if (graph?.context.state === "suspended") graph.context.resume().catch(() => {});
+    resumeAudioGraph(graph);
     audio.src = entry.url || api.mediaUrl(entry.file.key);
     audio.load();
     const applyStartPosition = () => {
@@ -107,7 +119,7 @@ export const useTransport = ({ libraryMap, masterBus, liveTracks = [] }) => {
       if (error.name === "AbortError" && audio.paused) return;
       if (token === playToken.current) setStatus(`Playback needs a direct play gesture: ${error.message}`);
     });
-  }, [ensureAudioGraph, updateAudioGraph]);
+  }, [ensureAudioGraph, resumeAudioGraph, updateAudioGraph]);
 
   const previewFile = useCallback((file, label = file?.name) => {
     if (!file) return;
@@ -169,14 +181,19 @@ export const useTransport = ({ libraryMap, masterBus, liveTracks = [] }) => {
   }, [playEntry]);
 
   const playSequence = useCallback((album, startIndex = 0) => {
-    const entries = album.tracks
-      .map((track, index) => ({ file: fileForTrack(track), trackTitle: track.title, albumTitle: album.title, track, index }))
-      .filter((entry) => entry.index >= startIndex && entry.file);
+    const candidates = album.tracks.slice(startIndex).map((track, offset) => ({
+      file: fileForTrack(track),
+      trackTitle: track.title,
+      albumTitle: album.title,
+      track,
+      index: startIndex + offset,
+    }));
+    const entries = candidates.filter((entry) => entry.file);
     if (!entries.length) {
       setStatus("No playable source exists from this position.");
       return;
     }
-    const skipped = album.tracks.slice(startIndex).filter((track) => !fileForTrack(track)).length;
+    const skipped = candidates.length - entries.length;
     mode.current = "queue";
     queue.current = entries;
     queueCursor.current = 0;
@@ -256,7 +273,7 @@ export const useTransport = ({ libraryMap, masterBus, liveTracks = [] }) => {
     if (audio.paused) {
       const graph = ensureAudioGraph();
       updateAudioGraph();
-      if (graph?.context.state === "suspended") graph.context.resume().catch(() => {});
+      resumeAudioGraph(graph);
       audio.play()
         .then(() => setStatus("Playback resumed. Press Space to pause."))
         .catch((error) => {
@@ -267,7 +284,7 @@ export const useTransport = ({ libraryMap, masterBus, liveTracks = [] }) => {
       audio.pause();
       setStatus("Playback paused. Press Space to resume.");
     }
-  }, [ensureAudioGraph, updateAudioGraph]);
+  }, [ensureAudioGraph, resumeAudioGraph, updateAudioGraph]);
 
   const seek = useCallback((time) => {
     const audio = audioRef.current;
@@ -277,8 +294,14 @@ export const useTransport = ({ libraryMap, masterBus, liveTracks = [] }) => {
   }, []);
 
   const audioHandlers = useMemo(() => ({
-    onPlay: () => setPlaying(true),
-    onPause: () => setPlaying(false),
+    onPlay: () => {
+      resumeAudioGraph();
+      setPlaying(true);
+    },
+    onPause: () => {
+      setPlaying(false);
+      suspendAudioGraph();
+    },
     onTimeUpdate: (event) => {
       const time = event.currentTarget.currentTime || 0;
       setCurrentTime(time);
@@ -291,7 +314,7 @@ export const useTransport = ({ libraryMap, masterBus, liveTracks = [] }) => {
     onLoadedMetadata: (event) => setMediaDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0),
     onEnded: handleEnded,
     onError: handleError,
-  }), [handleEnded, handleError]);
+  }), [handleEnded, handleError, resumeAudioGraph, suspendAudioGraph]);
 
   return { audioRef, audioHandlers, meteringRef, current, status, setStatus, playing, currentTime, mediaDuration, liveMasteringAvailable, fileForTrack, previewFile, previewRendered, previewMasteringComparison, playSequence, previewChapter, stop, togglePlayback, seek };
 };

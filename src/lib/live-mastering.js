@@ -53,8 +53,15 @@ export const equalizerLiveImpact = ({ frequencyData, sampleRate, eq, pointCount 
 
 export const decibelsToGain = (decibels) => 10 ** (Number(decibels || 0) / 20);
 
-const setParam = (param, value) => {
-  if (param) param.value = value;
+const setParam = (param, value, context, timeConstant = 0.012) => {
+  if (!param) return;
+  const now = Number(context?.currentTime);
+  if (context?.state === "running" && Number.isFinite(now) && typeof param.cancelScheduledValues === "function" && typeof param.setTargetAtTime === "function") {
+    param.cancelScheduledValues(now);
+    param.setTargetAtTime(value, now, timeConstant);
+    return;
+  }
+  param.value = value;
 };
 
 const configureAnalyser = (analyser, { fftSize, smoothingTimeConstant = 0 }) => {
@@ -97,42 +104,43 @@ export const applyLiveMasteringSettings = (graph, masterBus = {}, options = {}) 
   const sourceBypassed = Boolean(options.sourceBypassed);
   const masterBypassed = sourceBypassed || settings.bypass;
   const trackGainDb = Number.isFinite(Number(options.trackGainDb)) ? Number(options.trackGainDb) : 0;
+  const updateParam = (param, value, timeConstant) => setParam(param, value, graph.context, timeConstant);
 
-  setParam(graph.directGain?.gain, sourceBypassed ? 1 : 0);
-  setParam(graph.trackGain?.gain, decibelsToGain(trackGainDb));
-  setParam(graph.bypassGain?.gain, !sourceBypassed && masterBypassed ? 1 : 0);
-  setParam(graph.processedGain?.gain, !sourceBypassed && !masterBypassed ? 1 : 0);
+  updateParam(graph.directGain?.gain, sourceBypassed ? 1 : 0, 0.006);
+  updateParam(graph.trackGain?.gain, decibelsToGain(trackGainDb));
+  updateParam(graph.bypassGain?.gain, !sourceBypassed && masterBypassed ? 1 : 0, 0.006);
+  updateParam(graph.processedGain?.gain, !sourceBypassed && !masterBypassed ? 1 : 0, 0.006);
 
   graph.lowShelf.type = "lowshelf";
-  setParam(graph.lowShelf.frequency, settings.eq.lowShelf.frequencyHz);
-  setParam(graph.lowShelf.gain, settings.eq.enabled ? settings.eq.lowShelf.gainDb : 0);
+  updateParam(graph.lowShelf.frequency, settings.eq.lowShelf.frequencyHz);
+  updateParam(graph.lowShelf.gain, settings.eq.enabled ? settings.eq.lowShelf.gainDb : 0);
 
   graph.midBand.type = "peaking";
-  setParam(graph.midBand.frequency, settings.eq.midBand.frequencyHz);
-  setParam(graph.midBand.Q, settings.eq.midBand.q);
-  setParam(graph.midBand.gain, settings.eq.enabled ? settings.eq.midBand.gainDb : 0);
+  updateParam(graph.midBand.frequency, settings.eq.midBand.frequencyHz);
+  updateParam(graph.midBand.Q, settings.eq.midBand.q);
+  updateParam(graph.midBand.gain, settings.eq.enabled ? settings.eq.midBand.gainDb : 0);
 
   graph.highShelf.type = "highshelf";
-  setParam(graph.highShelf.frequency, settings.eq.highShelf.frequencyHz);
-  setParam(graph.highShelf.gain, settings.eq.enabled ? settings.eq.highShelf.gainDb : 0);
+  updateParam(graph.highShelf.frequency, settings.eq.highShelf.frequencyHz);
+  updateParam(graph.highShelf.gain, settings.eq.enabled ? settings.eq.highShelf.gainDb : 0);
 
   const compressorMix = settings.compressor.enabled ? settings.compressor.mix : 0;
-  setParam(graph.compressorDry.gain, 1 - compressorMix);
-  setParam(graph.compressorWet.gain, compressorMix);
-  setParam(graph.compressor.threshold, settings.compressor.thresholdDb);
-  setParam(graph.compressor.ratio, settings.compressor.ratio);
-  setParam(graph.compressor.knee, settings.compressor.knee);
-  setParam(graph.compressor.attack, clamp(settings.compressor.attackMs / 1_000, 0, 1));
-  setParam(graph.compressor.release, clamp(settings.compressor.releaseMs / 1_000, 0, 1));
-  setParam(graph.makeupGain.gain, decibelsToGain(settings.compressor.makeupGainDb));
+  updateParam(graph.compressorDry.gain, 1 - compressorMix, 0.006);
+  updateParam(graph.compressorWet.gain, compressorMix, 0.006);
+  updateParam(graph.compressor.threshold, settings.compressor.thresholdDb);
+  updateParam(graph.compressor.ratio, settings.compressor.ratio);
+  updateParam(graph.compressor.knee, settings.compressor.knee);
+  updateParam(graph.compressor.attack, clamp(settings.compressor.attackMs / 1_000, 0, 1));
+  updateParam(graph.compressor.release, clamp(settings.compressor.releaseMs / 1_000, 0, 1));
+  updateParam(graph.makeupGain.gain, decibelsToGain(settings.compressor.makeupGainDb));
 
-  setParam(graph.outputGain.gain, decibelsToGain(settings.outputGainDb));
+  updateParam(graph.outputGain.gain, decibelsToGain(settings.outputGainDb));
 
-  setParam(graph.limiter.threshold, settings.limiter.enabled ? settings.limiter.ceilingDbfs : 0);
-  setParam(graph.limiter.knee, 0);
-  setParam(graph.limiter.ratio, settings.limiter.enabled ? 20 : 1);
-  setParam(graph.limiter.attack, clamp(settings.limiter.attackMs / 1_000, 0, 1));
-  setParam(graph.limiter.release, clamp(settings.limiter.releaseMs / 1_000, 0, 1));
+  updateParam(graph.limiter.threshold, settings.limiter.enabled ? settings.limiter.ceilingDbfs : 0);
+  updateParam(graph.limiter.knee, 0);
+  updateParam(graph.limiter.ratio, settings.limiter.enabled ? 20 : 1);
+  updateParam(graph.limiter.attack, clamp(settings.limiter.attackMs / 1_000, 0, 1));
+  updateParam(graph.limiter.release, clamp(settings.limiter.releaseMs / 1_000, 0, 1));
 
   return { settings, sourceBypassed, masterBypassed, trackGainDb };
 };
@@ -165,8 +173,11 @@ export const createLiveMasteringGraph = (audio, AudioContextClass) => {
 
   configureAnalyser(frequencyAnalyser, { fftSize: 2_048, smoothingTimeConstant: 0.76 });
   configureAnalyser(eqInputAnalyser, { fftSize: 2_048, smoothingTimeConstant: 0.76 });
-  configureAnalyser(leftAnalyser, { fftSize: 2_048 });
-  configureAnalyser(rightAnalyser, { fftSize: 2_048 });
+  // Level meters need less temporal history than the frequency display. A
+  // smaller window keeps both the header and full meter responsive with half
+  // the per-frame sample work while the spectrum retains its 2,048-point FFT.
+  configureAnalyser(leftAnalyser, { fftSize: 1_024 });
+  configureAnalyser(rightAnalyser, { fftSize: 1_024 });
 
   source.connect(directGain).connect(masterOutput);
   source.connect(trackGain);

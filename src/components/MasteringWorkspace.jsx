@@ -101,15 +101,13 @@ export function MasteringWorkspace({ album, libraryMap, presets, renderingAvaila
       <header className="mastering-heading">
         <h2 className="sr-only">Mastering</h2>
         <dl><div><dt>{formatDuration(programDuration(entries))}</dt><dd>Estimated program</dd></div><div><dt>{editedCount}/{tracks.length}</dt><dd>Tracks edited</dd></div><div className={missingCount ? "is-warning" : ""}><dt>{missingCount}</dt><dd>Missing audio</dd></div></dl>
-        <button type="button" className="primary-button primary-button--yellow" onClick={() => onOpenExport(selectedFile ? selectedTrackId : "")} disabled={!renderingAvailable || !entries.length} title={renderingAvailable ? "Print a documented audio derivative" : "Documented audio printing is unavailable in the browser"}><ExportIcon /> {renderingAvailable ? "Print / Export Audio" : "Print Unavailable"}</button>
+        <div className="mastering-delivery-controls" role="group" aria-label="Delivery and publication controls">
+          <label className="mastering-delivery-select"><span>Delivery</span><select aria-label="Print requirements" value={delivery.profileId || ""} onChange={(event) => updateDelivery("profileId", event.target.value)}><option value="">No delivery profile</option>{DELIVERY_PROFILES.map((profile) => <option key={profile.id} value={profile.id}>{profile.name} — {profile.description}</option>)}</select></label>
+          <label className={`mastering-delivery-check ${delivery.masterApproved ? "is-checked" : ""}`} title="Master approval is recorded separately from the delivery profile"><input type="checkbox" aria-label="Approved master" checked={Boolean(delivery.masterApproved)} onChange={(event) => updateDelivery("masterApproved", event.target.checked)} /><span>Approved</span></label>
+          <label className={`mastering-delivery-check ${delivery.readyToPublish ? "is-checked" : ""}`} title="Publication readiness is recorded separately from master approval"><input type="checkbox" aria-label="Ready to publish" checked={Boolean(delivery.readyToPublish)} onChange={(event) => updateDelivery("readyToPublish", event.target.checked)} /><span>Ready</span></label>
+          <button type="button" className="primary-button primary-button--yellow" onClick={() => onOpenExport(selectedFile ? selectedTrackId : "")} disabled={!renderingAvailable || !entries.length} title={renderingAvailable ? "Print a documented audio derivative" : "Documented audio printing is unavailable in the browser"}><ExportIcon /> {renderingAvailable ? "Print / Export Audio" : "Print Unavailable"}</button>
+        </div>
       </header>
-
-      <section className="delivery-profile-panel" aria-labelledby="delivery-profile-title">
-        <div><h3 id="delivery-profile-title">Delivery Profile</h3><p>Profile validation, approved master, and publication readiness are three separate records.</p></div>
-        <label>Print requirements<select value={delivery.profileId || ""} onChange={(event) => updateDelivery("profileId", event.target.value)}><option value="">No delivery profile</option>{DELIVERY_PROFILES.map((profile) => <option key={profile.id} value={profile.id}>{profile.name} — {profile.description}</option>)}</select></label>
-        <label className={delivery.masterApproved ? "is-checked" : ""}><input type="checkbox" checked={Boolean(delivery.masterApproved)} onChange={(event) => updateDelivery("masterApproved", event.target.checked)} /> Approved master</label>
-        <label className={delivery.readyToPublish ? "is-checked" : ""}><input type="checkbox" checked={Boolean(delivery.readyToPublish)} onChange={(event) => updateDelivery("readyToPublish", event.target.checked)} /> Ready to publish</label>
-      </section>
 
       <MasteringReferenceAB
         track={selectedTrack}

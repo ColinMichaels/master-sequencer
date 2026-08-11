@@ -1,19 +1,13 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { AlbumRail } from "./components/AlbumRail.jsx";
-import { AlbumDecisionsWorkspace } from "./components/AlbumDecisionsWorkspace.jsx";
 import { AppHeader } from "./components/AppHeader.jsx";
-import { AssetWorkspace } from "./components/AssetWorkspace.jsx";
 import { AudioExportForm } from "./components/AudioExportForm.jsx";
-import { AudioLibraryWorkspace } from "./components/AudioLibraryWorkspace.jsx";
 import { FirstRunGuide } from "./components/FirstRunGuide.jsx";
 import { Modal } from "./components/Modal.jsx";
 import { ProjectIdentityForm } from "./components/ProjectIdentityForm.jsx";
 import { NewProjectForm, RemoveProjectForm, SavedProjects } from "./components/ProjectLibrary.jsx";
 import { RecoveryWorkspace } from "./components/RecoveryWorkspace.jsx";
-import { MasteringWorkspace } from "./components/MasteringWorkspace.jsx";
 import { SequenceWorkspace } from "./components/SequenceWorkspace.jsx";
-import { SettingsWorkspace } from "./components/SettingsWorkspace.jsx";
-import { TrackReviewWorkspace } from "./components/TrackReviewWorkspace.jsx";
 import { TransportBar } from "./components/TransportBar.jsx";
 import { useProjectData } from "./hooks/useProjectData.js";
 import { useAppearance } from "./hooks/useAppearance.js";
@@ -46,6 +40,36 @@ import {
   updateProjectIdentity as updateProjectIdentityCommand,
 } from "./lib/project-commands.js";
 import { EditIcon, FolderIcon, MusicIcon, PlusIcon, TrashIcon } from "./components/Icons.jsx";
+
+const lazyNamed = (loader, exportName) => lazy(async () => {
+  const module = await loader();
+  return { default: module[exportName] };
+});
+
+// Keep the always-visible Sequence workspace in the entry bundle. The heavier
+// review workspaces load on intent/idle so initial sequencing stays immediate.
+const workspaceLoaders = {
+  review: () => import("./components/TrackReviewWorkspace.jsx"),
+  decisions: () => import("./components/AlbumDecisionsWorkspace.jsx"),
+  mastering: () => import("./components/MasteringWorkspace.jsx"),
+  assets: () => import("./components/AssetWorkspace.jsx"),
+  library: () => import("./components/AudioLibraryWorkspace.jsx"),
+  settings: () => import("./components/SettingsWorkspace.jsx"),
+};
+
+const TrackReviewWorkspace = lazyNamed(workspaceLoaders.review, "TrackReviewWorkspace");
+const AlbumDecisionsWorkspace = lazyNamed(workspaceLoaders.decisions, "AlbumDecisionsWorkspace");
+const MasteringWorkspace = lazyNamed(workspaceLoaders.mastering, "MasteringWorkspace");
+const AssetWorkspace = lazyNamed(workspaceLoaders.assets, "AssetWorkspace");
+const AudioLibraryWorkspace = lazyNamed(workspaceLoaders.library, "AudioLibraryWorkspace");
+const SettingsWorkspace = lazyNamed(workspaceLoaders.settings, "SettingsWorkspace");
+const preloadWorkspace = (view) => workspaceLoaders[view]?.().catch(() => {});
+
+const EMPTY_TRACKS = [];
+
+function WorkspaceFallback() {
+  return <main className="workspace-loading" role="status" aria-live="polite"><span className="loading-wave" /><strong>Opening workspace…</strong></main>;
+}
 
 const viewTitleLabels = {
   sequence: "Sequence",
@@ -196,22 +220,23 @@ export default function App() {
   const [assetTrackId, setAssetTrackId] = useState("");
   const [firstRunSeen, setFirstRunSeen] = useState(() => hasSeenFirstRunGuide());
   const [firstRunDismissed, setFirstRunDismissed] = useState(false);
-  const configuredArtistName = projectArtistNameCommand(project.state);
-  const activeAlbumRecord = project.state?.albums.find((album) => album.id === project.state.activeAlbumId) || project.state?.albums[0];
-  const activeAlbum = activeAlbumRecord ? { ...activeAlbumRecord, artist: configuredArtistName } : activeAlbumRecord;
-  const transport = useTransport({ libraryMap: project.libraryMap, masterBus: activeAlbumRecord?.masterBus, liveTracks: activeAlbumRecord?.tracks || [] });
+  const configuredArtistName = useMemo(() => projectArtistNameCommand(project.state), [project.state]);
+  const activeAlbumRecord = useMemo(() => project.state?.albums.find((album) => album.id === project.state.activeAlbumId) || project.state?.albums[0], [project.state?.activeAlbumId, project.state?.albums]);
+  const activeAlbum = useMemo(() => activeAlbumRecord ? { ...activeAlbumRecord, artist: configuredArtistName } : activeAlbumRecord, [activeAlbumRecord, configuredArtistName]);
+  const transport = useTransport({ libraryMap: project.libraryMap, masterBus: activeAlbumRecord?.masterBus, liveTracks: activeAlbumRecord?.tracks || EMPTY_TRACKS });
   const albumToRename = project.state?.albums.find((album) => album.id === renameAlbumId);
   const albumToDelete = project.state?.albums.find((album) => album.id === deleteAlbumId);
   const projectToDelete = project.projects.find((item) => item.id === deleteProjectId);
   const currentProject = project.projects.find((item) => item.id === project.activeProjectId);
-  const activeSequenceTracks = sequenceTracks(activeAlbum);
-  const sequenceAlbum = activeAlbum ? { ...activeAlbum, tracks: activeSequenceTracks } : activeAlbum;
-  const playableCount = activeSequenceTracks.filter((track) => transport.fileForTrack(track)).length;
-  const approvalCount = activeSequenceTracks.filter((track) => ["approved", "released"].includes(track.decisionStatus) && track.masterCandidateId).length;
+  const activeSequenceTracks = useMemo(() => sequenceTracks(activeAlbum), [activeAlbum]);
+  const sequenceAlbum = useMemo(() => activeAlbum ? { ...activeAlbum, tracks: activeSequenceTracks } : activeAlbum, [activeAlbum, activeSequenceTracks]);
+  const sequenceFilesByTrackId = useMemo(() => new Map(activeSequenceTracks.map((track) => [track.id, transport.fileForTrack(track)])), [activeSequenceTracks, transport.fileForTrack]);
+  const playableCount = useMemo(() => activeSequenceTracks.reduce((count, track) => count + Number(Boolean(sequenceFilesByTrackId.get(track.id))), 0), [activeSequenceTracks, sequenceFilesByTrackId]);
+  const approvalCount = useMemo(() => activeSequenceTracks.filter((track) => ["approved", "released"].includes(track.decisionStatus) && track.masterCandidateId).length, [activeSequenceTracks]);
   const revealPrivateFilenames = Boolean(project.state?.settings?.revealPrivateFilenames);
   const protectedSourceKeys = useMemo(() => new Set(project.state?.albums.flatMap((album) => album.tracks.flatMap((track) => track.privacy === "protected" ? track.candidates.map((candidate) => sourceKey(candidate.sourceRef)) : [])) || []), [project.state?.albums]);
   const currentTransportTrack = transport.current?.track;
-  const defaultTransportIndex = activeSequenceTracks.findIndex((track) => transport.fileForTrack(track));
+  const defaultTransportIndex = activeSequenceTracks.findIndex((track) => sequenceFilesByTrackId.get(track.id));
   const defaultTransportTrack = defaultTransportIndex >= 0 ? activeSequenceTracks[defaultTransportIndex] : null;
   const focusedMasteringTrack = activeView === "mastering" ? activeSequenceTracks.find((track) => track.id === masteringTrackId) : null;
   const pageTitleTrackId = activeView === "review"
@@ -227,16 +252,16 @@ export default function App() {
   const transportTrack = currentTransportTrack || focusedMasteringTrack || defaultTransportTrack;
   const transportTrackIndex = transportTrack ? activeSequenceTracks.findIndex((track) => track.id === transportTrack.id) : -1;
   const nextTransportTrack = transportTrackIndex >= 0
-    ? activeSequenceTracks.slice(transportTrackIndex + 1).find((track) => transport.fileForTrack(track))
+    ? activeSequenceTracks.slice(transportTrackIndex + 1).find((track) => sequenceFilesByTrackId.get(track.id))
     : null;
   const standaloneCurrentSource = Boolean(transport.current && !currentTransportTrack);
   const transportVisual = {
-    file: transport.current?.file || (transportTrack ? transport.fileForTrack(transportTrack) : null),
+    file: transport.current?.file || (transportTrack ? sequenceFilesByTrackId.get(transportTrack.id) : null),
     trackTitle: transport.current?.trackTitle || transportTrack?.title || "No playable source",
     mastering: standaloneCurrentSource ? {} : transportTrack?.mastering || {},
     nextTrackTitle: standaloneCurrentSource ? "" : transport.current?.nextTrackTitle || nextTransportTrack?.title || "",
   };
-  const liveProcessors = activeMasteringProcessors(activeAlbum?.masterBus);
+  const liveProcessors = useMemo(() => activeMasteringProcessors(activeAlbum?.masterBus), [activeAlbum?.masterBus]);
   const liveMasteringLabel = transport.current?.referenceTrack
     ? "B · clean reference · MASTER bypassed"
     : transport.current?.renderedPreview
@@ -292,6 +317,17 @@ export default function App() {
   }, [activeAlbum?.title, activeView, currentProject?.name, pageTitleTrack?.title]);
 
   useEffect(() => {
+    if (typeof window === "undefined" || navigator.connection?.saveData) return undefined;
+    const warmWorkspaces = () => Object.keys(workspaceLoaders).forEach(preloadWorkspace);
+    if (typeof window.requestIdleCallback === "function") {
+      const idleId = window.requestIdleCallback(warmWorkspaces, { timeout: 2_000 });
+      return () => window.cancelIdleCallback(idleId);
+    }
+    const timeoutId = window.setTimeout(warmWorkspaces, 750);
+    return () => window.clearTimeout(timeoutId);
+  }, []);
+
+  useEffect(() => {
     const toggleTransportWithSpace = (event) => {
       if ((event.code !== "Space" && event.key !== " ") || event.repeat || event.isComposing) return;
       if (event.altKey || event.ctrlKey || event.metaKey || isTextEntryTarget(event.target)) return;
@@ -319,7 +355,7 @@ export default function App() {
   });
   const onAlbumChange = (recipe) => onAlbumChangeById(activeAlbum.id, recipe);
 
-  const masteringPresets = masteringPresetLibrary(project.state?.masteringPresets);
+  const masteringPresets = useMemo(() => masteringPresetLibrary(project.state?.masteringPresets), [project.state?.masteringPresets]);
   const saveMasteringPreset = (type, name) => project.updateState((draft) => {
     const album = draft.albums.find((item) => item.id === activeAlbum.id);
     if (album) saveMasteringPresetCommand(draft, type, name, album.masterBus);
@@ -704,17 +740,19 @@ export default function App() {
 
   return (
     <div className={`app-shell ${albumsCollapsed ? "albums-collapsed" : ""}`}>
-      <AppHeader activeView={activeView} onViewChange={setActiveView} album={sequenceAlbum} playableCount={playableCount} approvalCount={approvalCount} appearance={appearance} resolvedMode={resolvedMode} onAppearanceChange={updateAppearance} onOpenAppearance={() => setActiveView("settings")} onOpenHelp={() => setModal("help")} commandHistory={project.commandHistory} meteringRef={transport.meteringRef} meteringAvailable={transport.liveMasteringAvailable} playing={transport.playing} monitorLabel={masterMonitorLabel} monitorRouting={masterMonitorRoute} />
+      <AppHeader activeView={activeView} onViewChange={setActiveView} onViewIntent={preloadWorkspace} album={sequenceAlbum} playableCount={playableCount} approvalCount={approvalCount} appearance={appearance} resolvedMode={resolvedMode} onAppearanceChange={updateAppearance} onOpenAppearance={() => setActiveView("settings")} onOpenHelp={() => setModal("help")} commandHistory={project.commandHistory} meteringRef={transport.meteringRef} meteringAvailable={transport.liveMasteringAvailable} playing={transport.playing} monitorLabel={masterMonitorLabel} monitorRouting={masterMonitorRoute} masterEffectsActive={liveProcessors.length > 0} />
       <AlbumRail albums={project.state.albums} activeAlbumId={activeAlbum.id} currentProject={currentProject} collapsed={albumsCollapsed} projectBusy={project.projectOperation} draggedAudioKey={activeView === "library" ? draggedAudioKey : ""} onToggle={() => setAlbumsCollapsed((current) => !current)} onSelectAlbum={selectAlbum} onDropAudio={activeView === "library" ? dropAudioOnAlbum : undefined} onAddAlbum={() => setModal("album")} onRenameAlbum={openRenameAlbum} onDeleteAlbum={openDeleteAlbum} onOpenProjects={() => setModal("projects")} onNewProject={() => setModal("new-project")} />
       <div className="content-shell">
         {project.error && <div className="error-banner" role="alert"><strong>Project warning</strong><span>{project.error}</span><button type="button" onClick={() => project.setError("")}>Dismiss</button></div>}
-        {activeView === "sequence" && <SequenceWorkspace album={activeAlbum} libraryMap={project.libraryMap} revealPrivateFilenames={revealPrivateFilenames} transitioningTrackId={transitioningTrackId} currentTrackId={currentTransportTrack?.id} playing={transport.playing} renderingAvailable={!api.onlineApp} onAlbumChange={onAlbumChange} onAddTracks={() => setModal("tracks")} onPlayFrom={(index) => transport.playSequence(sequenceAlbum, index)} onTogglePlayback={transport.togglePlayback} onTransition={previewSequenceTransition} onExport={exportSequence} onRemoveFromSequence={removeTrackFromSequence} onRestoreToSequence={restoreTrackToSequence} />}
-        {activeView === "review" && <TrackReviewWorkspace album={activeAlbum} libraryMap={project.libraryMap} revealPrivateFilenames={revealPrivateFilenames} onAlbumChange={onAlbumChange} onPreviewFile={transport.previewFile} onOpenLibrary={() => setActiveView("library")} onTrackFocus={setReviewTrackId} />}
-        {activeView === "decisions" && <AlbumDecisionsWorkspace album={activeAlbum} templates={project.state.albumTemplates || []} libraryMap={project.libraryMap} renderingAvailable={!api.onlineApp} onAlbumChange={onAlbumChange} onSaveTemplate={saveTemplate} onCreateFromTemplate={createFromTemplate} onPreviewTransition={previewTransitionVariant} onPreviewComparison={previewComparisonCandidate} previewingDecision={previewingDecision} />}
-        {activeView === "mastering" && <MasteringWorkspace album={activeAlbum} libraryMap={project.libraryMap} presets={masteringPresets} renderingAvailable={!api.onlineApp} revealPrivateFilenames={revealPrivateFilenames} protectedSourceKeys={protectedSourceKeys} activeComparison={transport.current?.masteringComparison} onAlbumChange={onAlbumChange} onPreview={previewMasteringEdit} onReferenceCompare={transport.previewMasteringComparison} previewingTrackId={previewingTrackId} onOpenExport={openAudioExport} onTrackFocus={setMasteringTrackId} onPreviewChapter={(index) => transport.previewChapter(sequenceAlbum, index)} onSavePreset={saveMasteringPreset} onLoadPreset={loadMasteringPreset} onDeletePreset={deleteMasteringPreset} meteringRef={transport.meteringRef} meteringAvailable={transport.liveMasteringAvailable} playing={transport.playing} liveProcessing={Boolean(transport.current?.track && !transport.current.referenceTrack && !transport.current.renderedPreview)} monitorLabel={masterMonitorLabel} />}
-        {activeView === "assets" && <AssetWorkspace album={activeAlbum} revealPrivateFilenames={revealPrivateFilenames} picking={project.pickingAssets} sourcePickingAvailable={!api.onlineApp} onAlbumChange={onAlbumChange} onPickAssets={project.chooseProjectAssets} onTrackFocus={setAssetTrackId} />}
-        {activeView === "library" && <AudioLibraryWorkspace state={project.state} activeAlbum={activeAlbum} library={project.library} roots={project.roots} formats={project.formats} scan={project.scan} watching={project.watching} onlineApp={api.onlineApp} revealPrivateFilenames={revealPrivateFilenames} scanning={project.scanning} draggedAudioKey={draggedAudioKey} onRescan={project.rescan} onPreviewFile={transport.previewFile} onProjectChange={project.updateState} onAlbumChangeById={onAlbumChangeById} onAudioDragStart={setDraggedAudioKey} onAudioDragEnd={() => setDraggedAudioKey("")} onImportFiles={() => chooseLibrarySources("files")} onImportFolder={() => chooseLibrarySources("folder")} />}
-        {activeView === "settings" && <SettingsWorkspace state={project.state} roots={project.roots} scan={project.scan} watching={project.watching} scanning={project.scanning} onlineApp={api.onlineApp} projectArtistName={configuredArtistName} currentProject={currentProject} projects={project.projects} projectBusy={project.projectOperation} revealPrivateFilenames={revealPrivateFilenames} appearance={appearance} resolvedMode={resolvedMode} onProjectIdentityChange={saveProjectIdentity} onAppearanceChange={updateAppearance} onTogglePrivate={(checked) => project.updateState((draft) => { draft.settings ||= {}; draft.settings.revealPrivateFilenames = checked; })} onAddRoot={project.addRoot} onRemoveRoot={project.removeRoot} onChooseSources={project.chooseSources} onRescan={project.rescan} onImportState={importState} onOpenProjects={() => setModal("projects")} onNewProject={() => setModal("new-project")} onExportBundle={exportPortableBundle} />}
+        <Suspense fallback={<WorkspaceFallback />}>
+          {activeView === "sequence" && <SequenceWorkspace album={activeAlbum} libraryMap={project.libraryMap} revealPrivateFilenames={revealPrivateFilenames} transitioningTrackId={transitioningTrackId} currentTrackId={currentTransportTrack?.id} playing={transport.playing} renderingAvailable={!api.onlineApp} onAlbumChange={onAlbumChange} onAddTracks={() => setModal("tracks")} onPlayFrom={(index) => transport.playSequence(sequenceAlbum, index)} onTogglePlayback={transport.togglePlayback} onTransition={previewSequenceTransition} onExport={exportSequence} onRemoveFromSequence={removeTrackFromSequence} onRestoreToSequence={restoreTrackToSequence} />}
+          {activeView === "review" && <TrackReviewWorkspace album={activeAlbum} libraryMap={project.libraryMap} revealPrivateFilenames={revealPrivateFilenames} onAlbumChange={onAlbumChange} onPreviewFile={transport.previewFile} onOpenLibrary={() => setActiveView("library")} onTrackFocus={setReviewTrackId} />}
+          {activeView === "decisions" && <AlbumDecisionsWorkspace album={activeAlbum} templates={project.state.albumTemplates || []} libraryMap={project.libraryMap} renderingAvailable={!api.onlineApp} onAlbumChange={onAlbumChange} onSaveTemplate={saveTemplate} onCreateFromTemplate={createFromTemplate} onPreviewTransition={previewTransitionVariant} onPreviewComparison={previewComparisonCandidate} previewingDecision={previewingDecision} />}
+          {activeView === "mastering" && <MasteringWorkspace album={activeAlbum} libraryMap={project.libraryMap} presets={masteringPresets} renderingAvailable={!api.onlineApp} revealPrivateFilenames={revealPrivateFilenames} protectedSourceKeys={protectedSourceKeys} activeComparison={transport.current?.masteringComparison} onAlbumChange={onAlbumChange} onPreview={previewMasteringEdit} onReferenceCompare={transport.previewMasteringComparison} previewingTrackId={previewingTrackId} onOpenExport={openAudioExport} onTrackFocus={setMasteringTrackId} onPreviewChapter={(index) => transport.previewChapter(sequenceAlbum, index)} onSavePreset={saveMasteringPreset} onLoadPreset={loadMasteringPreset} onDeletePreset={deleteMasteringPreset} meteringRef={transport.meteringRef} meteringAvailable={transport.liveMasteringAvailable} playing={transport.playing} liveProcessing={Boolean(transport.current?.track && !transport.current.referenceTrack && !transport.current.renderedPreview)} monitorLabel={masterMonitorLabel} />}
+          {activeView === "assets" && <AssetWorkspace album={activeAlbum} revealPrivateFilenames={revealPrivateFilenames} picking={project.pickingAssets} sourcePickingAvailable={!api.onlineApp} onAlbumChange={onAlbumChange} onPickAssets={project.chooseProjectAssets} onTrackFocus={setAssetTrackId} />}
+          {activeView === "library" && <AudioLibraryWorkspace state={project.state} activeAlbum={activeAlbum} library={project.library} roots={project.roots} formats={project.formats} scan={project.scan} watching={project.watching} onlineApp={api.onlineApp} revealPrivateFilenames={revealPrivateFilenames} scanning={project.scanning} draggedAudioKey={draggedAudioKey} onRescan={project.rescan} onPreviewFile={transport.previewFile} onProjectChange={project.updateState} onAlbumChangeById={onAlbumChangeById} onAudioDragStart={setDraggedAudioKey} onAudioDragEnd={() => setDraggedAudioKey("")} onImportFiles={() => chooseLibrarySources("files")} onImportFolder={() => chooseLibrarySources("folder")} />}
+          {activeView === "settings" && <SettingsWorkspace state={project.state} roots={project.roots} scan={project.scan} watching={project.watching} scanning={project.scanning} onlineApp={api.onlineApp} projectArtistName={configuredArtistName} currentProject={currentProject} projects={project.projects} projectBusy={project.projectOperation} revealPrivateFilenames={revealPrivateFilenames} appearance={appearance} resolvedMode={resolvedMode} onProjectIdentityChange={saveProjectIdentity} onAppearanceChange={updateAppearance} onTogglePrivate={(checked) => project.updateState((draft) => { draft.settings ||= {}; draft.settings.revealPrivateFilenames = checked; })} onAddRoot={project.addRoot} onRemoveRoot={project.removeRoot} onChooseSources={project.chooseSources} onRescan={project.rescan} onImportState={importState} onOpenProjects={() => setModal("projects")} onNewProject={() => setModal("new-project")} onExportBundle={exportPortableBundle} />}
+        </Suspense>
       </div>
       <TransportBar audioRef={transport.audioRef} audioHandlers={transport.audioHandlers} current={transport.current} status={transport.status} activeAlbum={sequenceAlbum} visual={transportVisual} playing={transport.playing} currentTime={transport.currentTime} mediaDuration={transport.mediaDuration} liveMasteringLabel={liveMasteringLabel} resetArmed={resetArmed} onTogglePlayback={transport.togglePlayback} onSeek={transport.seek} onPlaySequence={() => transport.playSequence(sequenceAlbum)} onResetOrder={resetOrder} onExport={exportSequence} />
       <div className="status-strip"><span role="status" aria-live="polite">{project.saveStatus}</span><span>{api.onlineApp ? `${project.library.length} audio files available · changes stay in this browser` : `${project.library.length} audio files indexed · ${project.roots.length} configured path${project.roots.length === 1 ? "" : "s"}`}</span></div>

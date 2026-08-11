@@ -1,6 +1,6 @@
 # Quality Review and Roadmap
 
-Review date: 2026-08-10
+Review date: 2026-08-11
 
 ## Conclusion
 
@@ -26,6 +26,34 @@ risk reduction and user value rather than feature count.
 - Maintainability under likely future album-review features
 
 ## Changes completed in this pass
+
+### 2026-08-11 interface and performance release
+
+- Number-row and numeric-keypad shortcuts now open all seven primary views,
+  with Mastering in slot 2 and a dedicated mastering icon.
+- Page titles identify the current view, album, track, and saved project while
+  repeated in-workspace headings and the default-collapsed Albums rail preserve
+  vertical editing space.
+- Sequence lists scroll inside the workspace with sticky controls; large
+  sequence/library rows use offscreen rendering containment.
+- Delivery controls moved beside Print / Export, the A/B reference panel became
+  collapsible with its live A/B choice retained in the summary, and Master Bus
+  guidance moved behind an accessible help tooltip.
+- The header meter opens Mastering and uses a stronger border/tint only for an
+  active MASTER route. EQ, compressor, and limiter displays visualize live
+  signal impact only while their processing is active.
+- Audio-source references continue to persist through project and page reloads;
+  browser device handles are restored when the platform permits and otherwise
+  remain explicit reconnectable session sources.
+- Secondary workspaces are deferred and warmed on intent/idle, reducing the
+  initial production JavaScript from roughly 444 kB/129 kB gzip to
+  321 kB/97 kB gzip.
+- Live MASTER values use short click-safe ramps, the AudioContext suspends while
+  paused, compact VU mode skips unused FFT reads, and time-domain analyzers use
+  a smaller window without reducing the full spectrum resolution.
+- The cumulative gate passed 128 unit/integration tests, 25 local browser flows,
+  2 online device-audio flows, both production/Sites builds, real FFmpeg source
+  integrity checks, desktop QA, and 390×844 phone QA with a clean console.
 
 ### Reliability
 

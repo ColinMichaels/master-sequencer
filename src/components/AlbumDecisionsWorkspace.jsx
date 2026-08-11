@@ -97,14 +97,6 @@ export function AlbumDecisionsWorkspace({ album, templates, libraryMap, renderin
     <main className="decisions-workspace">
       <header className="decisions-heading">
         <h2 className="sr-only">Album Decisions</h2>
-        <div className={`album-release-date is-${releaseDateStatus.kind}`}>
-          <label htmlFor="album-release-date">Release date <span>(optional)</span></label>
-          <div className="album-release-date-input">
-            <input id="album-release-date" type="date" value={releaseDate} aria-describedby="album-release-date-status" onChange={(event) => onAlbumChange((draft) => { draft.releaseDate = event.target.value; })} />
-            {releaseDate && <button type="button" className="text-button" aria-label="Clear release date" onClick={() => onAlbumChange((draft) => { draft.releaseDate = ""; })}>Clear</button>}
-          </div>
-          <small id="album-release-date-status" role="status">{releaseDateStatus.message}</small>
-        </div>
       </header>
 
       <div className="decision-primary-grid">
@@ -115,6 +107,14 @@ export function AlbumDecisionsWorkspace({ album, templates, libraryMap, renderin
             <div className="version-compare-controls"><label>Left<select value={leftVersionId} onChange={(event) => setLeftVersionId(event.target.value)}>{album.sequenceVersions.map((version) => <option key={version.id} value={version.id}>{version.name}</option>)}</select></label><label>Right<select value={rightVersionId} onChange={(event) => setRightVersionId(event.target.value)}>{album.sequenceVersions.map((version) => <option key={version.id} value={version.id}>{version.name}</option>)}</select></label></div>
             <div className="version-comparison" role="table" aria-label="Sequence version comparison">{comparison.map((row) => <div key={row.trackId} role="row"><span>{row.leftPosition || "—"}</span><strong>{row.title}</strong><span>{row.rightPosition || "—"}</span></div>)}</div>
           </> : <p className="module-empty">Save the current order to begin comparing alternatives.</p>}
+          <div className={`album-release-date is-${releaseDateStatus.kind}`}>
+            <label htmlFor="album-release-date">Release date <span>(optional)</span></label>
+            <div className="album-release-date-input">
+              <input id="album-release-date" type="date" value={releaseDate} aria-describedby="album-release-date-status" onChange={(event) => onAlbumChange((draft) => { draft.releaseDate = event.target.value; })} />
+              {releaseDate && <button type="button" className="text-button" aria-label="Clear release date" onClick={() => onAlbumChange((draft) => { draft.releaseDate = ""; })}>Clear</button>}
+            </div>
+            <small id="album-release-date-status" role="status">{releaseDateStatus.message}</small>
+          </div>
         </section>
 
         <section className="decision-module transition-notebook" aria-labelledby="transition-notebook-title">

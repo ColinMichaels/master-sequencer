@@ -92,9 +92,9 @@ baseline order references before disk state changes.
 
 | Area | Responsibility |
 | --- | --- |
-| `src/App.jsx` | Compose workspaces and coordinate cross-workspace actions |
+| `src/App.jsx` | Compose workspaces, defer secondary workspace chunks, and coordinate cross-workspace actions |
 | `src/hooks/useProjectData.js` | Bootstrap state/library data, serialize autosaves, rescan sources, and manage imports |
-| `src/hooks/useTransport.js` | Preview individual sources, queue album playback, expose current/playing state to row controls, and recover from media errors |
+| `src/hooks/useTransport.js` | Preview sources, queue playback, route live MASTER audio, suspend idle processing, expose transport state, and recover from media errors |
 | `src/hooks/useAppearance.js` | Resolve and apply persisted display preferences |
 | `src/components/*Workspace.jsx` | Own one user workflow and its local interaction state |
 | `src/lib/project-commands.js` | Immutable commands for albums, tracks, candidates, assets, and sequence edits |
@@ -110,6 +110,21 @@ allow an intermediate queued snapshot to become authoritative.
 When the page is being left, an unsaved final snapshot is sent through the
 same-origin state endpoint with `sendBeacon`. Imported JSON is validated and
 persisted by the server before it replaces the open client state.
+
+Sequence is the entry workspace. Track Review, Album Decisions, Mastering,
+Assets, Audio Library, and Settings are separate lazy chunks; pointer/focus
+intent and browser idle time warm them before use. Repeated album, sequence,
+and source lookups are memoized, while long sequence/library rows use CSS
+render containment so offscreen catalogs do not create unnecessary paint work.
+
+The shared transport creates one Web Audio graph on first playback. Track gain
+and MASTER EQ/compressor/output/limiter changes use short AudioParam ramps while
+the context is running. Raw library sources, clean references, and already
+rendered previews use the direct bypass path. Pause suspends rather than closes
+the context, keeping resume immediate while releasing real-time processing.
+Compact header metering samples fewer time-domain points and skips FFT reads in
+VU mode; the full frequency display retains its 2,048-point FFT. This graph is
+for responsive auditioning only—FFmpeg remains authoritative for every print.
 
 ## HTTP and local security boundary
 

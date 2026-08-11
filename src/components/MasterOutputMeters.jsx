@@ -120,11 +120,13 @@ const ROUTING_STATE = {
   raw: { className: "is-raw-route", label: "", description: "Raw direct audio; mastering bypassed" },
 };
 
-function CompactMasterMonitor({ frame, clipping, mode, onModeChange, spectrumLine, spectrumArea, dominantBand, stateLabel, routing }) {
+function CompactMasterMonitor({ frame, clipping, mode, onModeChange, onOpenMastering, spectrumLine, spectrumArea, dominantBand, stateLabel, routing, effectsActive }) {
   const normalizedRouting = ROUTING_STATE[routing] ? routing : "raw";
   const routingState = ROUTING_STATE[normalizedRouting];
+  const masterEffectsAreActive = normalizedRouting === "mastering" && effectsActive;
   return (
-    <section className={`header-master-meter ${routingState.className} ${frame.active ? "is-active" : ""} ${clipping ? "has-clip" : ""}`} aria-label={`Master output monitor. ${routingState.description}. ${clipping ? "Peak clip" : stateLabel}`} title={`${routingState.description}. ${stateLabel}`} data-testid="header-master-meter" data-meter-mode={mode} data-meter-active={frame.active ? "true" : "false"} data-meter-routing={normalizedRouting} data-routing-label={routingState.label}>
+    <section className={`header-master-meter ${routingState.className} ${masterEffectsAreActive ? "has-master-effects" : ""} ${frame.active ? "is-active" : ""} ${clipping ? "has-clip" : ""}`} aria-label={`Master output monitor. ${routingState.description}. ${clipping ? "Peak clip" : stateLabel}`} title={`${routingState.description}. ${stateLabel}`} data-testid="header-master-meter" data-meter-mode={mode} data-meter-active={frame.active ? "true" : "false"} data-meter-routing={normalizedRouting} data-master-effects={masterEffectsAreActive ? "true" : "false"} data-routing-label={routingState.label}>
+      <button type="button" className="header-meter-link" onClick={onOpenMastering} aria-label="Open Mastering" title="Open Mastering" />
       <div className="header-meter-display">
         {mode === "vu" ? (
           <div className="header-vu-channels">
@@ -147,7 +149,7 @@ function CompactMasterMonitor({ frame, clipping, mode, onModeChange, spectrumLin
   );
 }
 
-export const MasterOutputMeters = memo(function MasterOutputMeters({ meteringRef, available, playing, monitorLabel, monitorRouting = "raw", compact = false }) {
+export const MasterOutputMeters = memo(function MasterOutputMeters({ meteringRef, available, playing, monitorLabel, monitorRouting = "raw", effectsActive = false, compact = false, onOpenMastering }) {
   const [frame, setFrame] = useState(EMPTY_FRAME);
   const [compactMode, setCompactMode] = useState("vu");
   const [peakResetVersion, setPeakResetVersion] = useState(0);
@@ -167,15 +169,16 @@ export const MasterOutputMeters = memo(function MasterOutputMeters({ meteringRef
 
     const draw = (timestamp) => {
       animationRef.current = requestAnimationFrame(draw);
-      if (timestamp - lastFrameAtRef.current < 32) return;
+      if (timestamp - lastFrameAtRef.current < (compact ? 50 : 32)) return;
       lastFrameAtRef.current = timestamp;
       const meter = meteringRef?.current;
       if (!meter) return;
 
       const leftSamples = readTimeDomain(meter.leftAnalyser, buffersRef.current, "left");
       const rightSamples = readTimeDomain(meter.rightAnalyser, buffersRef.current, "right");
-      const frequencyMagnitudes = readFrequencyDomain(meter.frequencyAnalyser, buffersRef.current);
-      if (!leftSamples || !rightSamples || !frequencyMagnitudes) return;
+      const needsSpectrum = !compact || compactMode === "spectrum";
+      const frequencyMagnitudes = needsSpectrum ? readFrequencyDomain(meter.frequencyAnalyser, buffersRef.current) : null;
+      if (!leftSamples || !rightSamples || (needsSpectrum && !frequencyMagnitudes)) return;
 
       const left = calculateSignalLevel(leftSamples);
       const right = calculateSignalLevel(rightSamples);
@@ -204,13 +207,13 @@ export const MasterOutputMeters = memo(function MasterOutputMeters({ meteringRef
         rightPeakDb: right.peakDb,
         leftPeakHoldDb: holdPeak("left", left.peakDb),
         rightPeakHoldDb: holdPeak("right", right.peakDb),
-        spectrum: sampleLogSpectrum(frequencyMagnitudes, meter.sampleRate, meter.frequencyAnalyser.fftSize),
+        spectrum: frequencyMagnitudes ? sampleLogSpectrum(frequencyMagnitudes, meter.sampleRate, meter.frequencyAnalyser.fftSize) : EMPTY_SPECTRUM,
       });
     };
 
     animationRef.current = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(animationRef.current);
-  }, [meteringRef, peakResetVersion, playing]);
+  }, [compact, compactMode, meteringRef, peakResetVersion, playing]);
 
   const dominantBand = useMemo(() => {
     let dominant = frame.spectrum[0];
@@ -240,7 +243,7 @@ export const MasterOutputMeters = memo(function MasterOutputMeters({ meteringRef
   const spectrumArea = spectrumAreaPath(frame.spectrum);
   const clipping = frame.leftPeakDb >= -0.1 || frame.rightPeakDb >= -0.1;
 
-  if (compact) return <CompactMasterMonitor frame={frame} clipping={clipping} mode={compactMode} onModeChange={setCompactMode} spectrumLine={spectrumLine} spectrumArea={spectrumArea} dominantBand={dominantBand} stateLabel={monitorLabel || stateLabel} routing={monitorRouting} />;
+  if (compact) return <CompactMasterMonitor frame={frame} clipping={clipping} mode={compactMode} onModeChange={setCompactMode} onOpenMastering={onOpenMastering} spectrumLine={spectrumLine} spectrumArea={spectrumArea} dominantBand={dominantBand} stateLabel={monitorLabel || stateLabel} routing={monitorRouting} effectsActive={effectsActive} />;
 
   return (
     <section className={`master-metering-console ${frame.active ? "is-active" : ""} ${clipping ? "has-clip" : ""}`} aria-labelledby="master-metering-title" data-testid="master-output-meter">

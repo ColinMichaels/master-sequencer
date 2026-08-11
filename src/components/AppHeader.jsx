@@ -29,7 +29,7 @@ const summaryDefinitions = [
   { id: "approvals", label: "Track approvals", Icon: CheckIcon, view: "review", action: "Open Track Review", detail: "Tracks with an approved master candidate" },
 ];
 
-export function AppHeader({ activeView, onViewChange, album, playableCount, approvalCount, appearance, resolvedMode, onAppearanceChange, onOpenAppearance, onOpenHelp, commandHistory, meteringRef, meteringAvailable, playing, monitorLabel, monitorRouting }) {
+export function AppHeader({ activeView, onViewChange, onViewIntent = () => {}, album, playableCount, approvalCount, appearance, resolvedMode, onAppearanceChange, onOpenAppearance, onOpenHelp, commandHistory, meteringRef, meteringAvailable, playing, monitorLabel, monitorRouting, masterEffectsActive = false }) {
   const [expandedStat, setExpandedStat] = useState("");
   const summaryRef = useRef(null);
   const trackCount = album?.tracks.length || 0;
@@ -65,14 +65,16 @@ export function AppHeader({ activeView, onViewChange, album, playableCount, appr
       if (index < 0 || isEditingTarget(event.target) || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       event.preventDefault();
       setExpandedStat("");
+      onViewIntent(navItems[index][0]);
       onViewChange(navItems[index][0]);
     };
     window.addEventListener("keydown", switchViewFromNumberKey);
     return () => window.removeEventListener("keydown", switchViewFromNumberKey);
-  }, [onViewChange]);
+  }, [onViewChange, onViewIntent]);
 
   const openView = (view) => {
     setExpandedStat("");
+    onViewIntent(view);
     onViewChange(view);
   };
 
@@ -81,7 +83,7 @@ export function AppHeader({ activeView, onViewChange, album, playableCount, appr
       <h1 className="sr-only">Project Sequencer</h1>
       <nav className="primary-nav" aria-label="Project views" style={{ "--nav-count": navItems.length }}>
         {navItems.map(([id, label, NavIcon], index) => (
-          <button key={id} type="button" className={activeView === id ? "is-active" : ""} onClick={() => onViewChange(id)} aria-current={activeView === id ? "page" : undefined} aria-label={label} aria-describedby={`nav-shortcut-${id}`} data-tooltip={`${label} · ${index + 1}`}>
+          <button key={id} type="button" className={activeView === id ? "is-active" : ""} onPointerEnter={() => onViewIntent(id)} onFocus={() => onViewIntent(id)} onClick={() => openView(id)} aria-current={activeView === id ? "page" : undefined} aria-label={label} aria-describedby={`nav-shortcut-${id}`} data-tooltip={`${label} · ${index + 1}`}>
             <NavIcon size={20} />
             <span className="sr-only">{label}</span>
             <span id={`nav-shortcut-${id}`} className="sr-only">Keyboard shortcut: number {index + 1} on the number row or numeric keypad</span>
@@ -89,7 +91,7 @@ export function AppHeader({ activeView, onViewChange, album, playableCount, appr
         ))}
       </nav>
       <div className="command-history" role="group" aria-label="Project edit history"><button type="button" disabled={!commandHistory.canUndo} onClick={commandHistory.undo} aria-label={commandHistory.canUndo ? `Undo ${commandHistory.undoLabel}` : "Nothing to undo"}>↶</button><button type="button" disabled={!commandHistory.canRedo} onClick={commandHistory.redo} aria-label={commandHistory.canRedo ? `Redo ${commandHistory.redoLabel}` : "Nothing to redo"}>↷</button></div>
-      <MasterOutputMeters compact meteringRef={meteringRef} available={meteringAvailable} playing={playing} monitorLabel={monitorLabel} monitorRouting={monitorRouting} />
+      <MasterOutputMeters compact meteringRef={meteringRef} available={meteringAvailable} playing={playing} monitorLabel={monitorLabel} monitorRouting={monitorRouting} effectsActive={masterEffectsActive} onOpenMastering={() => openView("mastering")} />
       <div className="header-summary-shell" ref={summaryRef}>
         <div className="header-summary" role="group" aria-label={`${album?.title || "Album"} statistics`}>
           {summaryStats.map(({ id, label, Icon, count }) => (
