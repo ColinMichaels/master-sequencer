@@ -1,4 +1,4 @@
-import { hostedDemoApi } from "./hosted-demo.js";
+import { onlineAppApi } from "./online-app.js";
 
 const jsonFetch = async (url, options = {}) => {
   const response = await fetch(url, {
@@ -48,7 +48,7 @@ const renderAudio = async (details, options = {}) => {
 };
 
 const localApi = {
-  hostedDemo: false,
+  onlineApp: false,
   bootstrap: () => jsonFetch("/api/bootstrap"),
   saveState: (state) => jsonFetch("/api/state", { method: "PUT", body: JSON.stringify(state) }),
   createProject: (details) => jsonFetch("/api/projects", { method: "POST", body: JSON.stringify(details) }),
@@ -82,7 +82,7 @@ const localApi = {
     : "",
 };
 
-export const api = import.meta.env?.VITE_HOSTED_DEMO === "true" ? hostedDemoApi : localApi;
+export const api = import.meta.env?.VITE_ONLINE_APP === "true" ? onlineAppApi : localApi;
 
 export const sourceKey = (sourceRef) => sourceRef
   ? sourceRef.privateSourceId

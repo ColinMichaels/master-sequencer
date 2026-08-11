@@ -82,11 +82,6 @@
   .rail-actions { display: flex; min-width: 260px; margin: 0; padding: 0; }
   .rail-add-button, .rail-project-button { min-width: 128px; min-height: 44px; margin: 0; }
   .content-shell { overflow: visible; }
-  .hosted-tester-notice { position: relative; top: auto; right: auto; left: auto; margin: 0.5rem; grid-template-columns: 1fr auto; }
-  .hosted-tester-notice strong { grid-column: 1; }
-  .hosted-tester-notice span { grid-column: 1 / -1; grid-row: 2; }
-  .hosted-tester-notice button { grid-column: 2; grid-row: 1; }
-  .content-shell.has-hosted-notice .error-banner { top: 0.5rem; }
   .sequence-workspace, .sequence-workspace.layout-preview-collapsed, .library-workspace, .review-workspace { display: block; height: auto; }
   .sequence-main, .review-panel, .library-main, .library-inspector, .layout-preview { overflow: visible; }
   .sequence-main { padding: 0.85rem 0.5rem; }

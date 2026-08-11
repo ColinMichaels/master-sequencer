@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createHostedDemoApi, hostedDemoLibrary } from "../src/lib/hosted-demo.js";
+import { createOnlineAppApi, onlineAppLibrary } from "../src/lib/online-app.js";
 
 const memoryStorage = () => {
   const values = new Map();
@@ -10,11 +10,11 @@ const memoryStorage = () => {
   };
 };
 
-test("hosted tester starts with the released Dreadnauts Album 1 and persists project changes in browser storage", async () => {
+test("online app starts with the released Dreadnauts Album 1 and persists project changes in browser storage", async () => {
   const storage = memoryStorage();
-  const first = createHostedDemoApi({ storage });
+  const first = createOnlineAppApi({ storage });
   const boot = await first.bootstrap();
-  assert.equal(first.hostedDemo, true);
+  assert.equal(first.onlineApp, true);
   assert.equal(boot.library.length, 9);
   assert.equal(boot.state.settings.project.artistName, "The Dreadnauts");
   assert.equal(boot.state.albums[0].title, "Cosmic Reggae Sessions");
@@ -29,32 +29,53 @@ test("hosted tester starts with the released Dreadnauts Album 1 and persists pro
 
   boot.state.albums[0].title = "Saved in Browser";
   await first.saveState(boot.state);
-  const second = createHostedDemoApi({ storage });
+  const second = createOnlineAppApi({ storage });
   assert.equal((await second.bootstrap()).state.albums[0].title, "Saved in Browser");
 });
 
-test("hosted tester supports separate browser-local projects and rejects local server capabilities", async () => {
+test("online app migrates existing browser projects without losing their saved decisions", async () => {
+  const sourceStorage = memoryStorage();
+  const sourceApi = createOnlineAppApi({ storage: sourceStorage });
+  const sourceBoot = await sourceApi.bootstrap();
+  await sourceApi.saveState(sourceBoot.state);
+  const legacyWorkspace = JSON.parse(sourceStorage.getItem("project-sequencer-online-v1"));
+  legacyWorkspace.projects[0].name = "The Dreadnauts — Album 1 Demo";
+  legacyWorkspace.projects[0].state.masteringPresets.master[0].name = "Tester Finish";
+  legacyWorkspace.projects[0].state.masteringPresets.master[0].id = "tester-finish";
+  legacyWorkspace.projects[0].state.albums[0].tracks[0].candidates[0].flags.push("Hosted playback only");
+
+  const migratedStorage = memoryStorage();
+  migratedStorage.setItem("project-sequencer-hosted-tester-v3", JSON.stringify(legacyWorkspace));
+  const migrated = await createOnlineAppApi({ storage: migratedStorage }).bootstrap();
+
+  assert.equal(migrated.projects[0].name, "The Dreadnauts — Album 1");
+  assert.equal(migrated.state.masteringPresets.master[0].name, "Release Finish");
+  assert.equal(migrated.state.albums[0].tracks[0].candidates[0].flags.includes("Hosted playback only"), false);
+  assert.ok(migratedStorage.getItem("project-sequencer-online-v1"));
+});
+
+test("online app supports separate browser-local projects and rejects local server capabilities", async () => {
   const storage = memoryStorage();
-  const api = createHostedDemoApi({ storage });
-  const created = await api.createProject({ name: "Second Project", artistName: "Tester", firstAlbumTitle: "New Album", era: "future" });
+  const api = createOnlineAppApi({ storage });
+  const created = await api.createProject({ name: "Second Project", artistName: "Artist", firstAlbumTitle: "New Album", era: "future" });
   assert.equal(created.state.albums[0].title, "New Album");
   assert.equal(created.projects.length, 2);
   await assert.rejects(api.registerSource({ path: "/device/audio" }), /local Project Sequencer server/);
   await assert.rejects(api.startRenderJob({}), /browser-session access/);
 });
 
-test("hosted waveform and analysis remain compact and contain no source paths", async () => {
-  const api = createHostedDemoApi({ storage: memoryStorage() });
-  const key = hostedDemoLibrary[0].key;
+test("online waveform and analysis remain compact and contain no source paths", async () => {
+  const api = createOnlineAppApi({ storage: memoryStorage() });
+  const key = onlineAppLibrary[0].key;
   const waveform = await api.waveform(key, 620);
   const analysis = await api.technicalAnalysis(key);
   assert.equal(waveform.points.length, 620);
-  assert.equal(waveform.duration, hostedDemoLibrary[0].duration);
+  assert.equal(waveform.duration, onlineAppLibrary[0].duration);
   assert.equal(typeof analysis.measurements.integratedLoudness, "number");
   assert.equal(JSON.stringify({ waveform, analysis }).includes("absolutePath"), false);
 });
 
-test("hosted tester indexes selected device files and folders only for the current API session", async () => {
+test("online app indexes selected device files and folders only for the current API session", async () => {
   const selections = {
     files: {
       cancelled: false,
@@ -70,7 +91,7 @@ test("hosted tester indexes selected device files and folders only for the curre
       entries: [{ file: { name: "Deep Cut.flac", size: 960_000, lastModified: 1_786_329_600_002 }, relativePath: "Disc 1/Deep Cut.flac" }],
     },
   };
-  const api = createHostedDemoApi({
+  const api = createOnlineAppApi({
     storage: memoryStorage(),
     sourcePicker: async (kind) => selections[kind],
     mediaUrlFactory: (file) => `blob:session/${encodeURIComponent(file.name)}`,
@@ -92,15 +113,15 @@ test("hosted tester indexes selected device files and folders only for the curre
   assert.match(pickedFolder.roots.at(-1).path, /current browser session only/);
   assert.equal(JSON.stringify(pickedFolder).includes("/Users/"), false);
 
-  const freshSession = createHostedDemoApi({ storage: memoryStorage() });
+  const freshSession = createOnlineAppApi({ storage: memoryStorage() });
   assert.equal((await freshSession.bootstrap()).library.length, 9);
 });
 
-test("hosted tester handles picker cancellation and selections without supported audio", async () => {
-  const cancelled = createHostedDemoApi({ storage: memoryStorage(), sourcePicker: async () => ({ cancelled: true, entries: [] }) });
+test("online app handles picker cancellation and selections without supported audio", async () => {
+  const cancelled = createOnlineAppApi({ storage: memoryStorage(), sourcePicker: async () => ({ cancelled: true, entries: [] }) });
   assert.equal((await cancelled.chooseSources("files")).cancelled, true);
 
-  const unsupported = createHostedDemoApi({
+  const unsupported = createOnlineAppApi({
     storage: memoryStorage(),
     sourcePicker: async () => ({ cancelled: false, label: "Documents", entries: [{ file: { name: "notes.txt" }, relativePath: "notes.txt" }] }),
   });

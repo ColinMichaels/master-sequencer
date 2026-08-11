@@ -3,7 +3,7 @@ import { FolderIcon, LockIcon, MusicIcon, PlusIcon, RefreshIcon, TrashIcon } fro
 import { AppearanceSettings } from "./AppearanceSettings.jsx";
 import { ProjectIdentityForm } from "./ProjectIdentityForm.jsx";
 
-export function SettingsWorkspace({ state, roots, scan, watching, scanning, hostedDemo = false, projectArtistName, currentProject, projects, projectBusy, revealPrivateFilenames, appearance, resolvedMode, onProjectIdentityChange, onAppearanceChange, onTogglePrivate, onAddRoot, onRemoveRoot, onChooseSources, onRescan, onImportState, onOpenProjects, onNewProject, onExportBundle }) {
+export function SettingsWorkspace({ state, roots, scan, watching, scanning, onlineApp = false, projectArtistName, currentProject, projects, projectBusy, revealPrivateFilenames, appearance, resolvedMode, onProjectIdentityChange, onAppearanceChange, onTogglePrivate, onAddRoot, onRemoveRoot, onChooseSources, onRescan, onImportState, onOpenProjects, onNewProject, onExportBundle }) {
   const [folderPath, setFolderPath] = useState("");
   const [folderLabel, setFolderLabel] = useState("");
   const [importError, setImportError] = useState("");
@@ -46,16 +46,16 @@ export function SettingsWorkspace({ state, roots, scan, watching, scanning, host
         </div>
         <ProjectIdentityForm artistName={projectArtistName} onSubmit={onProjectIdentityChange} />
         <div className="project-lifecycle-panel">
-          <span><small>Current saved project</small><strong>{currentProject?.name || "Local Project"}</strong><em>{projects.length} saved project{projects.length === 1 ? "" : "s"} {hostedDemo ? "in this browser" : "on this device"}</em></span>
+          <span><small>Current saved project</small><strong>{currentProject?.name || "Local Project"}</strong><em>{projects.length} saved project{projects.length === 1 ? "" : "s"} {onlineApp ? "in this browser" : "on this device"}</em></span>
           <div><button type="button" className="text-button" disabled={projectBusy} onClick={onOpenProjects}><FolderIcon /> Open Saved Project</button><button type="button" className="primary-button" disabled={projectBusy} onClick={onNewProject}><PlusIcon /> New Project</button></div>
         </div>
       </section>
       <AppearanceSettings appearance={appearance} resolvedMode={resolvedMode} onChange={onAppearanceChange} />
       <div className="settings-columns">
         <section className="settings-section">
-          <div className="settings-section-heading"><h3>{hostedDemo ? "Browser Audio" : "Audio Paths"}</h3><button type="button" className="text-button" disabled={scanning} title={hostedDemo ? "Refresh the current browser-session library" : "Rescan every configured source"} onClick={onRescan}><RefreshIcon /> {scanning ? "Scanning…" : hostedDemo ? "Refresh" : "Rescan All"}</button></div>
-          {hostedDemo && <p className="hosted-capability-note"><strong>Safe hosted boundary:</strong> this site stores project decisions in this browser. It can read only audio you explicitly choose for the current session; absolute device paths, audio bytes, Finder access, and FFmpeg exports are never stored or uploaded.</p>}
-          {!hostedDemo && <>
+          <div className="settings-section-heading"><h3>{onlineApp ? "Browser Audio" : "Audio Paths"}</h3><button type="button" className="text-button" disabled={scanning} title={onlineApp ? "Refresh the current browser-session library" : "Rescan every configured source"} onClick={onRescan}><RefreshIcon /> {scanning ? "Scanning…" : onlineApp ? "Refresh" : "Rescan All"}</button></div>
+          {onlineApp && <p className="online-privacy-note"><strong>Browser privacy:</strong> project decisions stay in this browser. The app can read only audio you explicitly choose for the current session; absolute device paths and audio bytes are never stored or uploaded.</p>}
+          {!onlineApp && <>
           <div className="native-path-grid">
             <button type="button" className="native-path-field" disabled={scanning} onClick={() => onChooseSources("files")}><MusicIcon /><span><strong>Audio file path</strong><small>{scanning ? "Waiting for the system picker…" : "Click to choose one or more audio files"}</small></span><em>Browse</em></button>
             <button type="button" className="native-path-field native-path-field--yellow" disabled={scanning} onClick={() => onChooseSources("folder")}><FolderIcon /><span><strong>Audio folder path</strong><small>Click to choose a full folder</small></span><em>Browse</em></button>
@@ -71,18 +71,18 @@ export function SettingsWorkspace({ state, roots, scan, watching, scanning, host
             </form>
           </details>
           </>}
-          {hostedDemo && <ul className="root-list">{roots.map((root) => <li key={root.id}><MusicIcon size={28}/><span><strong>{root.label}</strong><small>{root.path}</small></span><em className="is-connected">Ready</em></li>)}</ul>}
+          {onlineApp && <ul className="root-list">{roots.map((root) => <li key={root.id}><MusicIcon size={28}/><span><strong>{root.label}</strong><small>{root.path}</small></span><em className="is-connected">Ready</em></li>)}</ul>}
         </section>
 
         <section className="settings-section">
           <h3>Privacy and Project Data</h3>
           <label className="privacy-toggle"><span><LockIcon /><strong>Reveal protected filenames</strong><small>Off by default. Sequence and review views keep protected sources masked.</small></span><input type="checkbox" checked={revealPrivateFilenames} onChange={(event) => onTogglePrivate(event.target.checked)} /></label>
-          <div className="data-actions"><button type="button" className="primary-button" onClick={exportProject}>Export Project JSON</button>{!hostedDemo && <button type="button" className="primary-button" onClick={onExportBundle}>Export Portable Checksums</button>}<button type="button" className="primary-button primary-button--yellow" onClick={() => fileInput.current?.click()}>Import Project JSON</button><input ref={fileInput} type="file" accept="application/json,.json" hidden onChange={importProject}/></div>
-          <p className="settings-note"><strong>{hostedDemo ? "Browser project export:" : "Portable checksum bundle:"}</strong> {hostedDemo ? "downloads project decisions only. Album previews and selected device audio are not included." : "exports project JSON plus SHA-256 records for currently indexed sources. It contains no media bytes and does not copy audio."}</p>
+          <div className="data-actions"><button type="button" className="primary-button" onClick={exportProject}>Export Project JSON</button>{!onlineApp && <button type="button" className="primary-button" onClick={onExportBundle}>Export Portable Checksums</button>}<button type="button" className="primary-button primary-button--yellow" onClick={() => fileInput.current?.click()}>Import Project JSON</button><input ref={fileInput} type="file" accept="application/json,.json" hidden onChange={importProject}/></div>
+          <p className="settings-note"><strong>{onlineApp ? "Browser project export:" : "Portable checksum bundle:"}</strong> {onlineApp ? "downloads project decisions only. Album previews and selected device audio are not included." : "exports project JSON plus SHA-256 records for currently indexed sources. It contains no media bytes and does not copy audio."}</p>
           {importError && <p className="render-error" role="alert">{importError}</p>}
-          <dl className="data-locations">{hostedDemo ? <><div><dt>Open project</dt><dd>Browser local storage</dd></div><div><dt>Saved projects</dt><dd>This browser only</dd></div><div><dt>Demo audio</dt><dd>Official Apple Music previews</dd></div><div><dt>Device paths</dt><dd>Never stored or uploaded</dd></div></> : <><div><dt>Open project</dt><dd>data/sequencer-state.json</dd></div><div><dt>Saved projects</dt><dd>data/projects/</dd></div><div><dt>Audio metadata cache</dt><dd>data/audio-index-cache.json</dd></div><div><dt>File and folder paths</dt><dd>config/sequencer.local.json</dd></div></>}</dl>
-          <p className="settings-note"><strong>{hostedDemo ? "Hosted project storage:" : "Local project storage:"}</strong> {hostedDemo ? "notes, sequence order, audition choices, presets, and approvals remain in this browser until its site data is cleared." : "paths, notes, sequence order, audition choices, and approvals are stored in ignored JSON files on this device. Audio bytes are never stored in the project."}</p>
-          {!hostedDemo && <p className="settings-note">Removing a path never deletes audio. It only disconnects that folder from this index. Existing album references remain and return when the path is connected again.</p>}
+          <dl className="data-locations">{onlineApp ? <><div><dt>Open project</dt><dd>Browser local storage</dd></div><div><dt>Saved projects</dt><dd>This browser only</dd></div><div><dt>Included audio</dt><dd>Official Apple Music previews</dd></div><div><dt>Device paths</dt><dd>Never stored or uploaded</dd></div></> : <><div><dt>Open project</dt><dd>data/sequencer-state.json</dd></div><div><dt>Saved projects</dt><dd>data/projects/</dd></div><div><dt>Audio metadata cache</dt><dd>data/audio-index-cache.json</dd></div><div><dt>File and folder paths</dt><dd>config/sequencer.local.json</dd></div></>}</dl>
+          <p className="settings-note"><strong>{onlineApp ? "Browser project storage:" : "Local project storage:"}</strong> {onlineApp ? "notes, sequence order, audition choices, presets, and approvals remain in this browser until its site data is cleared." : "paths, notes, sequence order, audition choices, and approvals are stored in ignored JSON files on this device. Audio bytes are never stored in the project."}</p>
+          {!onlineApp && <p className="settings-note">Removing a path never deletes audio. It only disconnects that folder from this index. Existing album references remain and return when the path is connected again.</p>}
         </section>
       </div>
     </main>

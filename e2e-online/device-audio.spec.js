@@ -43,17 +43,17 @@ test("selected device audio joins the session library and plays without upload",
   const chooserPromise = page.waitForEvent("filechooser");
   await page.getByRole("button", { name: "Add Files" }).click();
   const chooser = await chooserPromise;
-  await chooser.setFiles({ name: "Tester Tone.wav", mimeType: "audio/wav", buffer: createWaveFile() });
+  await chooser.setFiles({ name: "Reference Tone.wav", mimeType: "audio/wav", buffer: createWaveFile() });
 
   const review = page.getByRole("dialog", { name: "Review Tracks" });
   await expect(review).toContainText("1 audio file found");
-  await expect(review).toContainText("Tester Tone.wav");
+  await expect(review).toContainText("Reference Tone.wav");
   await expect(review).toContainText("WAV · 0:02.000");
   await page.getByRole("button", { name: "Close dialog" }).click();
 
-  await expect(page.getByRole("row", { name: /Tester Tone\.wav/ })).toBeVisible();
+  await expect(page.getByRole("row", { name: /Reference Tone\.wav/ })).toBeVisible();
   await expect(page.getByText("1 device file in this session · never uploaded")).toBeVisible();
-  await page.getByRole("button", { name: "Preview Tester Tone.wav" }).click();
+  await page.getByRole("button", { name: "Preview Reference Tone.wav" }).click();
   await expect.poll(() => page.locator("audio").evaluate((audio) => audio.currentTime)).toBeGreaterThan(0);
   const playback = await page.locator("audio").evaluate((audio) => ({ currentTime: audio.currentTime, source: audio.currentSrc }));
   expect(playback.currentTime).toBeGreaterThan(0);

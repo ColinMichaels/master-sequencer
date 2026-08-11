@@ -1,12 +1,13 @@
 import { normalizeMasterBus } from "./mastering.js";
 
-const STORAGE_KEY = "project-sequencer-hosted-tester-v3";
+const STORAGE_KEY = "project-sequencer-online-v1";
+const LEGACY_STORAGE_KEY = "project-sequencer-hosted-tester-v3";
 const STORAGE_VERSION = 3;
 const ROOT_ID = "dreadnauts-album-one";
 const AUDIO_EXTENSIONS = new Set(["mp3", "wav", "flac", "aiff", "aif", "m4a", "aac", "ogg", "opus"]);
 const AUDIO_ACCEPT = [...AUDIO_EXTENSIONS].map((extension) => `.${extension}`).join(",");
 
-const DEMO_SOURCES = Object.freeze([
+const PREVIEW_SOURCES = Object.freeze([
   { id: "funky-space-reggae-vibes", title: "Funky Space Reggae Vibes", previewUrl: "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/2b/6d/9a/2b6d9a90-bbed-75be-e95e-c19251c8542f/mzaf_3227232006206776513.plus.aac.p.m4a" },
   { id: "intergalactic-mind-traveler", title: "Intergalactic Mind Traveler", previewUrl: "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/13/62/77/136277a5-bb5a-57a3-69aa-bda2fd576acf/mzaf_8925188031657701637.plus.aac.p.m4a" },
   { id: "captain-of-the-cosmic-tide", title: "Captain of the Cosmic Tide", previewUrl: "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/90/9a/5c/909a5cb1-158b-267f-53a3-92d4579a20f8/mzaf_7652213948932993798.plus.aac.p.m4a" },
@@ -24,7 +25,7 @@ const DEMO_SOURCES = Object.freeze([
 
 const sourceKeyFor = (source) => `${ROOT_ID}::${source.fileName}`;
 
-export const hostedDemoLibrary = DEMO_SOURCES.map((source, index) => ({
+export const onlineAppLibrary = PREVIEW_SOURCES.map((source, index) => ({
   key: sourceKeyFor(source),
   rootId: ROOT_ID,
   relativePath: source.fileName,
@@ -41,7 +42,7 @@ export const hostedDemoLibrary = DEMO_SOURCES.map((source, index) => ({
   probeError: "",
 }));
 
-export const hostedDemoRoots = [{
+export const onlineAppRoots = [{
   id: ROOT_ID,
   label: "The Dreadnauts — Cosmic Reggae Sessions",
   path: "Official Apple Music preview clips",
@@ -69,8 +70,8 @@ const componentPresets = () => ({
   output: [{ id: "headroom-check", name: "Headroom Check", settings: { outputGainDb: -1 } }],
   limiter: [{ id: "safe-ceiling", name: "Safe Ceiling", settings: { enabled: true, ceilingDbfs: -1, attackMs: 5, releaseMs: 80 } }],
   master: [{
-    id: "tester-finish",
-    name: "Tester Finish",
+    id: "release-finish",
+    name: "Release Finish",
     settings: normalizeMasterBus({
       eq: {
         enabled: true,
@@ -85,7 +86,7 @@ const componentPresets = () => ({
   }],
 });
 
-export const createHostedDemoState = () => ({
+export const createOnlineAppState = () => ({
   schemaVersion: 5,
   albumTemplates: [],
   masteringPresets: componentPresets(),
@@ -103,21 +104,21 @@ export const createHostedDemoState = () => ({
     status: "working",
     orderApproved: false,
     masterBus: normalizeMasterBus(),
-    baselineTrackOrder: DEMO_SOURCES.map((source) => source.id),
+    baselineTrackOrder: PREVIEW_SOURCES.map((source) => source.id),
     visualAssets: [],
-    tracks: DEMO_SOURCES.map((source, index) => ({
+    tracks: PREVIEW_SOURCES.map((source, index) => ({
       id: source.id,
       title: source.title,
       decisionStatus: "undecided",
       masterCandidateId: "",
-      auditionCandidateId: `${source.id}-demo`,
+      auditionCandidateId: `${source.id}-preview`,
       notes: index === 0 ? "Use the MASTER controls to hear and see changes against an official 30-second Album 1 preview in real time." : "",
       visualAssets: [],
       candidates: [{
-        id: `${source.id}-demo`,
+        id: `${source.id}-preview`,
         label: "Official Apple Music preview",
         sourceRef: { rootId: ROOT_ID, relativePath: source.fileName },
-        flags: ["Official 30-second preview", "Hosted playback only"],
+        flags: ["Official 30-second preview", "Streaming preview"],
         notes: "",
       }],
     })),
@@ -140,8 +141,8 @@ const initialWorkspace = () => {
   const now = new Date().toISOString();
   return {
     version: STORAGE_VERSION,
-    activeProjectId: "hosted-tester-project",
-    projects: [{ id: "hosted-tester-project", name: "The Dreadnauts — Album 1 Demo", createdAt: now, updatedAt: now, state: createHostedDemoState() }],
+    activeProjectId: "online-project",
+    projects: [{ id: "online-project", name: "The Dreadnauts — Album 1", createdAt: now, updatedAt: now, state: createOnlineAppState() }],
   };
 };
 
@@ -149,7 +150,7 @@ const validateState = (state) => {
   if (!state || typeof state !== "object" || !Array.isArray(state.albums)) throw new Error("That project is not valid Project Sequencer data.");
   if (state.schemaVersion !== 5) {
     const direction = Number(state.schemaVersion) > 5 ? "newer than" : "older than";
-    throw new Error(`Project state version ${state.schemaVersion ?? "unknown"} is ${direction} this hosted tester build supports.`);
+    throw new Error(`Project state version ${state.schemaVersion ?? "unknown"} is ${direction} this online app supports.`);
   }
   return clone(state);
 };
@@ -191,12 +192,31 @@ const freshProjectState = ({ artistName, firstAlbumTitle, era, appearance }) => 
 
 const resolveStorage = (storage) => storage || globalThis.localStorage;
 
+const migrateOnlineWorkspace = (workspace) => {
+  workspace.projects.forEach((project) => {
+    if (project.name === "The Dreadnauts — Album 1 Demo") project.name = "The Dreadnauts — Album 1";
+    const masterPresets = project.state?.masteringPresets?.master || [];
+    masterPresets.forEach((preset) => {
+      if (preset.name === "Tester Finish") preset.name = "Release Finish";
+      if (preset.id === "tester-finish") preset.id = "release-finish";
+    });
+    project.state?.albums?.forEach((album) => album.tracks?.forEach((track) => track.candidates?.forEach((candidate) => {
+      candidate.flags = (candidate.flags || []).map((flag) => flag === "Hosted playback only" ? "Streaming preview" : flag);
+    })));
+  });
+  return workspace;
+};
+
 const readWorkspace = (storage) => {
   try {
-    const parsed = JSON.parse(resolveStorage(storage).getItem(STORAGE_KEY));
+    const resolvedStorage = resolveStorage(storage);
+    const currentValue = resolvedStorage.getItem(STORAGE_KEY);
+    const parsed = JSON.parse(currentValue || resolvedStorage.getItem(LEGACY_STORAGE_KEY));
     if (parsed?.version !== STORAGE_VERSION || !Array.isArray(parsed.projects) || !parsed.projects.some((project) => project.id === parsed.activeProjectId)) return initialWorkspace();
     parsed.projects.forEach((project) => validateState(project.state));
-    return parsed;
+    const migrated = migrateOnlineWorkspace(parsed);
+    if (!currentValue) resolvedStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+    return migrated;
   } catch {
     return initialWorkspace();
   }
@@ -206,7 +226,7 @@ const writeWorkspace = (storage, workspace) => {
   resolveStorage(storage).setItem(STORAGE_KEY, JSON.stringify(workspace));
 };
 
-const hostedCapabilityError = () => Promise.reject(new Error("This action needs the local Project Sequencer server. The hosted tester can use only browser-session access to files you explicitly choose; it cannot use system paths or FFmpeg."));
+const onlineCapabilityError = () => Promise.reject(new Error("This action needs the local Project Sequencer server. The online app can use only browser-session access to files you explicitly choose; it cannot use system paths or FFmpeg."));
 
 const safeRelativePath = (value, fallback) => {
   const parts = String(value || fallback || "audio").replaceAll("\\", "/").split("/").filter((part) => part && part !== "." && part !== "..");
@@ -330,7 +350,7 @@ const waveformFromBrowserFile = async (file, libraryFile, requestedPoints = 900)
   }
 };
 
-export const createHostedDemoApi = ({ storage, sourcePicker = pickBrowserAudioSources, mediaUrlFactory = createBrowserMediaUrl, metadataReader = readBrowserAudioMetadata } = {}) => {
+export const createOnlineAppApi = ({ storage, sourcePicker = pickBrowserAudioSources, mediaUrlFactory = createBrowserMediaUrl, metadataReader = readBrowserAudioMetadata } = {}) => {
   const browserLibrary = [];
   const browserRoots = [];
   const browserFiles = new Map();
@@ -339,12 +359,12 @@ export const createHostedDemoApi = ({ storage, sourcePicker = pickBrowserAudioSo
   const browserSessionId = globalThis.crypto?.randomUUID?.().slice(0, 12) || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   let rootSequence = 0;
 
-  const allLibrary = () => [...hostedDemoLibrary, ...browserLibrary];
-  const allRoots = () => [...hostedDemoRoots, ...browserRoots];
+  const allLibrary = () => [...onlineAppLibrary, ...browserLibrary];
+  const allRoots = () => [...onlineAppRoots, ...browserRoots];
   const libraryPayload = (extra = {}) => ({
     library: clone(allLibrary()),
     roots: clone(allRoots()),
-    scan: { reusedMetadata: hostedDemoLibrary.length, probedMetadata: browserLibrary.length, completedAt: new Date().toISOString() },
+    scan: { reusedMetadata: onlineAppLibrary.length, probedMetadata: browserLibrary.length, completedAt: new Date().toISOString() },
     watching: { configured: false, enabled: false, watchedRootIds: [] },
     scanning: false,
     ...extra,
@@ -407,7 +427,7 @@ export const createHostedDemoApi = ({ storage, sourcePicker = pickBrowserAudioSo
 
   const mediaUrl = (key) => {
     if (browserMediaUrls.has(key)) return browserMediaUrls.get(key);
-    const source = DEMO_SOURCES.find((item) => sourceKeyFor(item) === key);
+    const source = PREVIEW_SOURCES.find((item) => sourceKeyFor(item) === key);
     return source?.previewUrl || "";
   };
 
@@ -415,7 +435,7 @@ export const createHostedDemoApi = ({ storage, sourcePicker = pickBrowserAudioSo
     const file = allLibrary().find((item) => item.key === key);
     if (!file) throw new Error("That audio source is not available in this browser session.");
     const browserFile = browserFiles.get(key);
-    if (!browserFile) return syntheticWaveform(file, Math.max(0, hostedDemoLibrary.findIndex((item) => item.key === key)), requestedPoints);
+    if (!browserFile) return syntheticWaveform(file, Math.max(0, onlineAppLibrary.findIndex((item) => item.key === key)), requestedPoints);
     const cacheKey = `${key}:${requestedPoints}`;
     if (!waveformCache.has(cacheKey)) waveformCache.set(cacheKey, waveformFromBrowserFile(browserFile, file, requestedPoints));
     return waveformCache.get(cacheKey);
@@ -423,7 +443,7 @@ export const createHostedDemoApi = ({ storage, sourcePicker = pickBrowserAudioSo
 
   const removeBrowserSource = async (sourceId) => {
     const rootIndex = browserRoots.findIndex((root) => root.id === sourceId);
-    if (rootIndex < 0) return hostedCapabilityError();
+    if (rootIndex < 0) return onlineCapabilityError();
     browserRoots.splice(rootIndex, 1);
     for (let index = browserLibrary.length - 1; index >= 0; index -= 1) {
       const file = browserLibrary[index];
@@ -439,7 +459,7 @@ export const createHostedDemoApi = ({ storage, sourcePicker = pickBrowserAudioSo
   };
 
   return {
-  hostedDemo: true,
+  onlineApp: true,
   bootstrap: async () => {
     const workspace = readWorkspace(storage);
     const project = workspace.projects.find((item) => item.id === workspace.activeProjectId);
@@ -463,7 +483,7 @@ export const createHostedDemoApi = ({ storage, sourcePicker = pickBrowserAudioSo
   },
   createProject: async (details) => {
     const workspace = readWorkspace(storage);
-    const id = globalThis.crypto?.randomUUID?.() || `hosted-${Date.now()}`;
+    const id = globalThis.crypto?.randomUUID?.() || `online-${Date.now()}`;
     const name = cleanText(details?.name, "Project name");
     const artistName = cleanText(details?.artistName, "Artist name");
     const firstAlbumTitle = cleanText(details?.firstAlbumTitle, "First album title");
@@ -483,7 +503,7 @@ export const createHostedDemoApi = ({ storage, sourcePicker = pickBrowserAudioSo
     writeWorkspace(storage, workspace);
     return { state: clone(project.state), projects: publicProjects(workspace), activeProjectId: projectId };
   },
-  restoreRecovery: hostedCapabilityError,
+  restoreRecovery: onlineCapabilityError,
   beaconState: (state) => {
     try {
       const workspace = readWorkspace(storage);
@@ -498,25 +518,25 @@ export const createHostedDemoApi = ({ storage, sourcePicker = pickBrowserAudioSo
   },
   rescan: async () => libraryPayload(),
   libraryStatus: async () => libraryPayload(),
-  portableBundle: hostedCapabilityError,
-  registerSource: hostedCapabilityError,
+  portableBundle: onlineCapabilityError,
+  registerSource: onlineCapabilityError,
   chooseSources,
-  chooseProjectAssets: hostedCapabilityError,
-  renderAudio: hostedCapabilityError,
-  startRenderJob: hostedCapabilityError,
-  getRenderJob: hostedCapabilityError,
-  waitForRenderJob: hostedCapabilityError,
-  cancelRenderJob: hostedCapabilityError,
+  chooseProjectAssets: onlineCapabilityError,
+  renderAudio: onlineCapabilityError,
+  startRenderJob: onlineCapabilityError,
+  getRenderJob: onlineCapabilityError,
+  waitForRenderJob: onlineCapabilityError,
+  cancelRenderJob: onlineCapabilityError,
   waveform,
   technicalAnalysis: async (key) => {
     if (browserFiles.has(key)) throw new Error("Detailed loudness analysis for device audio requires the local Project Sequencer app.");
-    const index = Math.max(0, hostedDemoLibrary.findIndex((file) => file.key === key));
+    const index = Math.max(0, onlineAppLibrary.findIndex((file) => file.key === key));
     return { key, measurements: { integratedLoudness: -16.4 + index * 0.8, loudnessRange: 5.2 + index * 0.7, truePeak: -2.1 + index * 0.2, dcOffset: 0, silenceBoundaries: [] }, analyzedAt: new Date().toISOString(), cached: false };
   },
   listRenderJobs: async () => ({ jobs: [] }),
-  renderManifest: hostedCapabilityError,
-  revealRender: hostedCapabilityError,
-  addRoot: hostedCapabilityError,
+  renderManifest: onlineCapabilityError,
+  revealRender: onlineCapabilityError,
+  addRoot: onlineCapabilityError,
   removeSource: removeBrowserSource,
   removeRoot: removeBrowserSource,
   mediaUrl,
@@ -524,4 +544,4 @@ export const createHostedDemoApi = ({ storage, sourcePicker = pickBrowserAudioSo
   };
 };
 
-export const hostedDemoApi = createHostedDemoApi();
+export const onlineAppApi = createOnlineAppApi();

@@ -4,7 +4,7 @@ import { formatBytes, formatDuration, slugify, titleFromFilename } from "../lib/
 import { createLibrarySearchIndex, saveLibraryFilter } from "../lib/library-search.js";
 import { FolderIcon, LockIcon, MusicIcon, PlayIcon, PlusIcon, RefreshIcon, SearchIcon, WaveIcon } from "./Icons.jsx";
 
-export function AudioLibraryWorkspace({ state, activeAlbum, library, roots, formats, scan, watching, hostedDemo = false, revealPrivateFilenames, scanning, onRescan, onPreviewFile, onProjectChange, onAlbumChangeById, onImportFiles, onImportFolder }) {
+export function AudioLibraryWorkspace({ state, activeAlbum, library, roots, formats, scan, watching, onlineApp = false, revealPrivateFilenames, scanning, onRescan, onPreviewFile, onProjectChange, onAlbumChangeById, onImportFiles, onImportFolder }) {
   const [query, setQuery] = useState("");
   const [format, setFormat] = useState("all");
   const [rootId, setRootId] = useState("all");
@@ -131,7 +131,7 @@ export function AudioLibraryWorkspace({ state, activeAlbum, library, roots, form
           <select aria-label="Filter by format" value={format} onChange={(event) => setFormat(event.target.value)}><option value="all">All formats</option>{formats.map((item) => <option key={item} value={item}>{item.toUpperCase()}</option>)}</select>
           <select aria-label="Filter by root" value={rootId} onChange={(event) => setRootId(event.target.value)}><option value="all">All roots</option>{roots.map((root) => <option key={root.id} value={root.id}>{root.label}</option>)}</select>
           <select aria-label="Filter by usage" value={usageFilter} onChange={(event) => setUsageFilter(event.target.value)}><option value="all">All usage</option><option value="unassigned">Unassigned</option><option value="assigned">Assigned</option></select>
-          <button type="button" className="text-button" disabled={scanning} title={hostedDemo ? "Refresh the current browser-session library" : "Rescan configured sources"} onClick={onRescan}><RefreshIcon /> {scanning ? "Scanning…" : hostedDemo ? "Refresh" : "Rescan"}</button>
+          <button type="button" className="text-button" disabled={scanning} title={onlineApp ? "Refresh the current browser-session library" : "Rescan configured sources"} onClick={onRescan}><RefreshIcon /> {scanning ? "Scanning…" : onlineApp ? "Refresh" : "Rescan"}</button>
         </div>
         <div className="saved-filter-bar"><label>Saved filter<select value={savedFilterId} onChange={(event) => applySavedFilter(event.target.value)}><option value="">Choose saved filter</option>{savedFilters.map((filter) => <option key={filter.id} value={filter.id}>{filter.name}</option>)}</select></label><form onSubmit={saveCurrentFilter}><input aria-label="Saved filter name" required value={filterName} onChange={(event) => setFilterName(event.target.value)} placeholder="Filter name" /><button type="submit" className="text-button">Save Current</button></form><button type="button" className="text-button text-button--danger" disabled={!savedFilterId} onClick={deleteSavedFilter}>Delete</button></div>
         <div className="audio-table" role="table" aria-label="Audio files">
@@ -159,10 +159,10 @@ export function AudioLibraryWorkspace({ state, activeAlbum, library, roots, form
       <aside className="library-inspector">
         <section className="source-summary">
           <h2>Audio Sources</h2>
-          <p className="watch-status"><strong>{hostedDemo ? "Album previews + device audio" : watching?.enabled ? "Watching connected folders" : watching?.configured ? "Watching unavailable" : "Manual incremental rescans"}</strong><span>{hostedDemo ? `${sessionFileCount} device file${sessionFileCount === 1 ? "" : "s"} in this session · never uploaded` : scan ? `${scan.reusedMetadata} cached · ${scan.probedMetadata} updated` : "Scan status unavailable"}</span></p>
-          <div className="source-summary-actions"><button type="button" className="text-button" disabled={scanning} title={hostedDemo ? "Choose audio files from this device for the current browser session" : "Add audio files"} onClick={onImportFiles}><MusicIcon /> Add Files</button><button type="button" className="text-button" disabled={scanning} title={hostedDemo ? "Choose an audio folder from this device for the current browser session" : "Add an audio folder"} onClick={onImportFolder}><FolderIcon /> Add Folder</button></div>
+          <p className="watch-status"><strong>{onlineApp ? "Album previews + device audio" : watching?.enabled ? "Watching connected folders" : watching?.configured ? "Watching unavailable" : "Manual incremental rescans"}</strong><span>{onlineApp ? `${sessionFileCount} device file${sessionFileCount === 1 ? "" : "s"} in this session · never uploaded` : scan ? `${scan.reusedMetadata} cached · ${scan.probedMetadata} updated` : "Scan status unavailable"}</span></p>
+          <div className="source-summary-actions"><button type="button" className="text-button" disabled={scanning} title={onlineApp ? "Choose audio files from this device for the current browser session" : "Add audio files"} onClick={onImportFiles}><MusicIcon /> Add Files</button><button type="button" className="text-button" disabled={scanning} title={onlineApp ? "Choose an audio folder from this device for the current browser session" : "Add an audio folder"} onClick={onImportFolder}><FolderIcon /> Add Folder</button></div>
           <ul>{roots.map((root) => <li key={root.id}><span>{root.label}<small>{root.path}</small></span><strong className={root.connected ? "is-connected" : "is-offline"}>{root.connectionState === "reconnected" ? "Reconnected" : root.connected ? "Connected" : "Offline"}</strong></li>)}</ul>
-          <p>{hostedDemo ? "Selected audio plays directly from this device for the current session. Reloading disconnects it; no audio is uploaded or copied." : "Audio remains in its original location."}</p>
+          <p>{onlineApp ? "Selected audio plays directly from this device for the current session. Reloading disconnects it; no audio is uploaded or copied." : "Audio remains in its original location."}</p>
         </section>
         <dl className="scan-summary">
           <div><dt>{library.length}</dt><dd>Files</dd></div>

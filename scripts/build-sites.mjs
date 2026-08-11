@@ -10,7 +10,7 @@ const viteBin = path.join(root, "node_modules", "vite", "bin", "vite.js");
 await new Promise((resolve, reject) => {
   const child = spawn(process.execPath, [viteBin, "build"], {
     cwd: root,
-    env: { ...process.env, VITE_HOSTED_DEMO: "true" },
+    env: { ...process.env, VITE_ONLINE_APP: "true" },
     stdio: "inherit",
   });
   child.on("error", reject);
