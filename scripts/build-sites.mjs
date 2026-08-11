@@ -1,4 +1,4 @@
-import { cp, mkdir, readdir, rename, rm } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, rename, rm } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
@@ -16,6 +16,13 @@ await new Promise((resolve, reject) => {
   child.on("error", reject);
   child.on("close", (code) => code === 0 ? resolve() : reject(new Error(`Vite exited with status ${code}.`)));
 });
+
+const builtAssets = path.join(dist, "assets");
+const builtScripts = (await readdir(builtAssets)).filter((entry) => entry.endsWith(".js"));
+const bundledSource = (await Promise.all(builtScripts.map((entry) => readFile(path.join(builtAssets, entry), "utf8")))).join("\n");
+if (bundledSource.includes("/api/bootstrap") || !bundledSource.includes("This action is not available in the browser.")) {
+  throw new Error("Sites build selected the local API instead of the browser-safe online adapter.");
+}
 
 const client = path.join(dist, "client");
 await rm(client, { recursive: true, force: true });

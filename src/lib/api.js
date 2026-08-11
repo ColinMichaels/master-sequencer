@@ -82,7 +82,11 @@ const localApi = {
     : "",
 };
 
-export const api = import.meta.env?.VITE_ONLINE_APP === "true" ? onlineAppApi : localApi;
+// Keep the Vite environment access static so production builds can replace and
+// tree-shake this branch. Optional chaining here leaves the local API selected
+// in a Sites build, where /api/* routes do not exist.
+const onlineAppEnabled = typeof import.meta.env !== "undefined" && import.meta.env.VITE_ONLINE_APP === "true";
+export const api = onlineAppEnabled ? onlineAppApi : localApi;
 
 export const sourceKey = (sourceRef) => sourceRef
   ? sourceRef.privateSourceId
