@@ -2,14 +2,14 @@ import React, { useMemo, useState } from "react";
 import { sourceKey } from "../lib/api.js";
 import { formatDuration } from "../lib/format.js";
 import { isTrackSequenced } from "../lib/sequence-tracks.js";
-import { ChevronIcon, DragIcon, ExportIcon, PanelRightIcon, PlayIcon, PlusIcon, RefreshIcon, TransitionIcon, TrashIcon } from "./Icons.jsx";
+import { ChevronIcon, DragIcon, ExportIcon, PlayIcon, PlusIcon, RefreshIcon, TransitionIcon, TrashIcon } from "./Icons.jsx";
 
 const sourceLabel = (track, candidate, file, revealPrivateFilenames) => {
   if (track.privacy === "protected" && !revealPrivateFilenames) return candidate.label;
   return `${candidate.label} · ${file?.name || "Source offline"}`;
 };
 
-export function SequenceWorkspace({ album, libraryMap, revealPrivateFilenames, transitioningTrackId, renderingAvailable = true, layoutPreviewCollapsed, onToggleLayoutPreview, onAlbumChange, onAddTracks, onPlayFrom, onTransition, onExport, onRemoveFromSequence, onRestoreToSequence }) {
+export function SequenceWorkspace({ album, libraryMap, revealPrivateFilenames, transitioningTrackId, renderingAvailable = true, onAlbumChange, onAddTracks, onPlayFrom, onTransition, onExport, onRemoveFromSequence, onRestoreToSequence }) {
   const [draggedTrackId, setDraggedTrackId] = useState("");
   const [removeArmedTrackId, setRemoveArmedTrackId] = useState("");
   const tracks = useMemo(() => album.tracks.filter(isTrackSequenced), [album.tracks]);
@@ -19,7 +19,6 @@ export function SequenceWorkspace({ album, libraryMap, revealPrivateFilenames, t
     const candidate = resolveCandidate(track);
     return candidate ? libraryMap.get(sourceKey(candidate.sourceRef)) : null;
   };
-  const totalRuntime = useMemo(() => tracks.reduce((sum, track) => sum + (resolveFile(track)?.duration || 0), 0), [tracks, libraryMap]);
 
   const moveTrack = (trackId, direction) => onAlbumChange((draft) => {
     const sequencePositions = draft.tracks.reduce((positions, track, index) => {
@@ -62,7 +61,7 @@ export function SequenceWorkspace({ album, libraryMap, revealPrivateFilenames, t
   };
 
   return (
-    <main className={`sequence-workspace ${layoutPreviewCollapsed ? "layout-preview-collapsed" : ""}`}>
+    <main className="sequence-workspace">
       <section className="sequence-main" aria-labelledby="sequence-title">
         <div className="workspace-heading">
           <div>
@@ -136,24 +135,6 @@ export function SequenceWorkspace({ album, libraryMap, revealPrivateFilenames, t
         )}
       </section>
 
-      <aside className={`layout-preview ${layoutPreviewCollapsed ? "is-collapsed" : ""}`} aria-label="Album layout preview">
-        <header className="layout-preview-heading">
-          {!layoutPreviewCollapsed && <h2 id="layout-title">Album Layout Preview</h2>}
-          <button type="button" className="panel-toggle panel-toggle--right" onClick={onToggleLayoutPreview} aria-expanded={!layoutPreviewCollapsed} aria-controls="album-layout-panel" aria-label={layoutPreviewCollapsed ? "Show album layout preview" : "Hide album layout preview"} data-tooltip={layoutPreviewCollapsed ? "Show album layout preview" : "Hide album layout preview"}><PanelRightIcon collapsed={layoutPreviewCollapsed} /></button>
-        </header>
-        {!layoutPreviewCollapsed && <div id="album-layout-panel" className="album-proof">
-          <p className="proof-artist">{album.artist}</p>
-          <p className="proof-title">{album.title}</p>
-          <ol>
-            {tracks.map((track, index) => {
-              const file = resolveFile(track);
-              return <li key={track.id} className={!file ? "is-missing" : ""}><span>{index + 1}.</span><strong>{track.title}{!file ? " — incomplete" : ""}</strong><time>{formatDuration(file?.duration)}</time></li>;
-            })}
-          </ol>
-          <p className="proof-runtime"><span>Total playable runtime</span><strong>{formatDuration(totalRuntime)}</strong></p>
-          <p className="proof-note">{album.orderApproved ? "Approved album order" : "Private working layout"}</p>
-        </div>}
-      </aside>
     </main>
   );
 }

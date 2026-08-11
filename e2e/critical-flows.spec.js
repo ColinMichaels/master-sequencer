@@ -14,6 +14,7 @@ test.beforeEach(async ({ request, page }) => {
 });
 
 test("bootstrap renders the project and protected sources remain masked", async ({ page, request }) => {
+  await expect(page.locator(".layout-preview")).toHaveCount(0);
   const bootstrap = await (await request.get("/api/bootstrap")).json();
   expect(bootstrap.state.schemaVersion).toBe(5);
   expect(bootstrap.library).toHaveLength(4);
@@ -67,7 +68,7 @@ test("project import rejects future schemas and modal focus returns to its opene
   await expect(page.getByRole("heading", { name: /Fixture Album.*Working Sequence/ })).toBeVisible();
 });
 
-test("project setup owns the artist used by layouts and new albums", async ({ page, request }) => {
+test("project setup owns the artist used by new albums", async ({ page, request }) => {
   const freshProject = structuredClone(e2eProjectState);
   freshProject.settings.project.setupComplete = false;
   await request.put("/api/state", { data: freshProject, headers: { Origin: origin } });
@@ -81,14 +82,12 @@ test("project setup owns the artist used by layouts and new albums", async ({ pa
   await setup.getByRole("button", { name: "Start Project" }).click();
   await expect(setup).toBeHidden();
 
-  await expect(page.locator(".proof-artist")).toHaveText("Open Orbit Ensemble");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await expect(page.getByLabel("Artist name")).toHaveValue("Open Orbit Ensemble");
 
   await page.getByRole("button", { name: "Add Album" }).click();
   await page.getByLabel("Album title").fill("Second Light");
   await page.getByRole("button", { name: "Add Album", exact: true }).last().click();
-  await expect(page.locator(".proof-artist")).toHaveText("Open Orbit Ensemble");
   await expect(page.locator(".status-strip [role='status']")).toContainText("Saved locally");
 
   const bootstrap = await (await request.get("/api/bootstrap")).json();
