@@ -20,10 +20,22 @@ const withSecurityHeaders = (response) => {
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 };
 
-const upstreamFailure = () => new Response("The Album 1 demo stream is temporarily unavailable.", {
-  status: 502,
-  headers: { "Cache-Control": "no-store", "Content-Type": "text/plain; charset=utf-8" },
-});
+const upstreamFailure = (stage, status = "") => {
+  console.error(`Album 1 demo stream upstream failure: ${stage}${status ? ` (${status})` : ""}`);
+  return new Response("The Album 1 demo stream is temporarily unavailable.", {
+    status: 502,
+    headers: { "Cache-Control": "no-store", "Content-Type": "text/plain; charset=utf-8" },
+  });
+};
+
+const sessionCookieFrom = (headers) => {
+  const values = typeof headers.getSetCookie === "function" ? headers.getSetCookie() : [headers.get("Set-Cookie")];
+  return values
+    .flatMap((value) => String(value || "").split(/,(?=\s*[^;,]+=)/))
+    .map((value) => value.trim())
+    .find((value) => value.startsWith("dn_audio_session="))
+    ?.split(";", 1)[0];
+};
 
 export const proxyDreadnautsDemoAudio = async (request, env = {}) => {
   if (!["GET", "HEAD"].includes(request.method)) return new Response("Method not allowed.", { status: 405, headers: { Allow: "GET, HEAD" } });
@@ -36,17 +48,17 @@ export const proxyDreadnautsDemoAudio = async (request, env = {}) => {
       method: "POST",
       headers: { "X-Dreadnauts-Player": "player-v1" },
     });
-    if (!ticketResponse.ok) return upstreamFailure();
-    const sessionCookie = ticketResponse.headers.get("Set-Cookie")?.split(";", 1)[0];
+    if (!ticketResponse.ok) return upstreamFailure("ticket", ticketResponse.status);
+    const sessionCookie = sessionCookieFrom(ticketResponse.headers);
     const ticket = await ticketResponse.json();
     const expectedPath = `/api/audio/stream/${trackId}?`;
-    if (!sessionCookie || typeof ticket?.url !== "string" || !ticket.url.startsWith(expectedPath)) return upstreamFailure();
+    if (!sessionCookie || typeof ticket?.url !== "string" || !ticket.url.startsWith(expectedPath)) return upstreamFailure("ticket-payload");
 
     const headers = new Headers({ Cookie: sessionCookie });
     const range = request.headers.get("Range");
     if (request.method === "GET" && range) headers.set("Range", range);
     const streamResponse = await upstreamFetch(new URL(ticket.url, DREADNAUTS_ORIGIN), { method: request.method, headers });
-    if (!streamResponse.ok && streamResponse.status !== 206) return upstreamFailure();
+    if (!streamResponse.ok && streamResponse.status !== 206) return upstreamFailure("stream", streamResponse.status);
     const responseHeaders = new Headers(streamResponse.headers);
     responseHeaders.delete("Set-Cookie");
     responseHeaders.set("Cache-Control", "private, no-store, max-age=0");
@@ -55,8 +67,8 @@ export const proxyDreadnautsDemoAudio = async (request, env = {}) => {
       statusText: streamResponse.statusText,
       headers: responseHeaders,
     }));
-  } catch {
-    return upstreamFailure();
+  } catch (error) {
+    return upstreamFailure("exception", error?.name || "Error");
   }
 };
 
