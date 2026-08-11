@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildMasterBusFilters, buildPreviewEntries, buildRenderGraph } from "../server/audio-renderer.mjs";
+import { buildAdvancedMasteringFilters, buildMasterBusFilters, buildPreviewEntries, buildRenderGraph } from "../server/audio-renderer.mjs";
 import { calculateProgramTimeline, normalizeMasterBus, normalizeMastering, programDuration } from "../src/lib/mastering.js";
+import { ADVANCED_PROCESSOR_TYPES, createAdvancedProcessor, createDefaultAdvancedMastering } from "../src/lib/advanced-mastering.js";
 
 test("mastering settings clamp trims and ending lengths to the source", () => {
   const settings = normalizeMastering({ trimStart: 8, trimEnd: 6, fadeIn: 99, endMode: "fade", endDuration: 99, gapAfter: 2 }, 10);
@@ -159,6 +160,26 @@ test("neutral and bypassed MASTER buses remain literal render no-ops", () => {
   const graph = buildRenderGraph([{ sourceDuration: 10, mastering: {} }], { masterBus: { bypass: true, outputGainDb: 6 } });
   assert.equal(graph.outputLabel, "t0");
   assert.doesNotMatch(graph.filterComplex, /mastered|acompressor|alimiter|lowshelf|highshelf|equalizer/);
+});
+
+test("Premium rack filters follow the movable patch order and support repeated equipment", () => {
+  const firstEq = createAdvancedProcessor(ADVANCED_PROCESSOR_TYPES.eq, "eq-1");
+  firstEq.parameters.lowShelf.gainDb = 2;
+  const limiter = createAdvancedProcessor(ADVANCED_PROCESSOR_TYPES.limiter, "limit-1");
+  limiter.parameters.ceilingDbfs = -1.2;
+  limiter.parameters.oversample = 4;
+  const secondEq = createAdvancedProcessor(ADVANCED_PROCESSOR_TYPES.eq, "eq-2");
+  secondEq.parameters.highShelf.gainDb = -1;
+  const rack = { ...createDefaultAdvancedMastering(), nodes: [limiter, firstEq, secondEq] };
+  const processed = buildAdvancedMasteringFilters(rack);
+  assert.deepEqual(processed.settings.nodes.map((node) => node.id), ["limit-1", "eq-1", "eq-2"]);
+  assert.match(processed.filters.join(","), /^aresample=192000,alimiter=.*aresample=48000,lowshelf=f=120:g=2:p=2,highshelf=f=8000:g=-1:p=2$/);
+
+  const graph = buildRenderGraph([{ sourceDuration: 10, mastering: {} }], { masteringPath: "advanced", advancedMastering: rack });
+  assert.equal(graph.masteringPath, "advanced");
+  assert.equal(graph.outputLabel, "mastered");
+  assert.ok(graph.filterComplex.indexOf("alimiter") < graph.filterComplex.indexOf("lowshelf"));
+  assert.ok(graph.filterComplex.indexOf("lowshelf") < graph.filterComplex.indexOf("highshelf"));
 });
 
 test("transition previews keep the edited tail and play through the complete next track", () => {

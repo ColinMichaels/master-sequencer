@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { sourceKey } from "../lib/api.js";
 import { api } from "../lib/api.js";
 import { DELIVERY_PROFILES } from "../lib/delivery-profiles.js";
@@ -12,6 +12,8 @@ import { transitionCurve } from "../lib/waveform.js";
 import { RenderHistory } from "./RenderHistory.jsx";
 import { MasterBusControls, MasteringNumberField as NumberField, TrackLevelControl } from "./MasteringControls.jsx";
 import { MasteringReferenceAB } from "./MasteringReferenceAB.jsx";
+import { AdvancedMasteringRack } from "./AdvancedMasteringRack.jsx";
+import { createDefaultAdvancedMastering, normalizeAdvancedMastering, normalizeMasteringPath } from "../lib/advanced-mastering.js";
 
 const fileForTrack = (track, libraryMap) => {
   const candidate = track.candidates.find((item) => item.id === track.auditionCandidateId);
@@ -20,15 +22,22 @@ const fileForTrack = (track, libraryMap) => {
 
 const timeLabel = (value, precise = false) => value <= 0 ? (precise ? "0:00.000" : "0:00") : formatDuration(value, precise);
 
-export function MasteringWorkspace({ album, libraryMap, presets, renderingAvailable = true, revealPrivateFilenames = false, protectedSourceKeys, activeComparison, onAlbumChange, onPreview, onReferenceCompare, previewingTrackId, onOpenExport, onTrackFocus, onPreviewChapter, onSavePreset, onLoadPreset, onDeletePreset, meteringRef, meteringAvailable, playing, liveProcessing, monitorLabel }) {
+export function MasteringWorkspace({ album, libraryMap, presets, renderingAvailable = true, revealPrivateFilenames = false, protectedSourceKeys, activeComparison, onAlbumChange, onPreview, onReferenceCompare, previewingTrackId, onOpenExport, onTrackFocus, onPreviewChapter, onPlayFrom, onTogglePlayback, onSeekTrack, currentTrackId, currentTime, onSavePreset, onLoadPreset, onDeletePreset, meteringRef, meteringAvailable, playing, liveProcessing, monitorLabel }) {
   const tracks = useMemo(() => sequenceTracks(album), [album]);
   const [selectedTrackId, setSelectedTrackId] = useState(tracks[0]?.id || "");
+  const pendingPlaybackTrackId = useRef("");
   const [analysisByKey, setAnalysisByKey] = useState({});
   const [analyzingKey, setAnalyzingKey] = useState("");
   const [analysisError, setAnalysisError] = useState("");
   useEffect(() => {
     if (!tracks.some((track) => track.id === selectedTrackId)) setSelectedTrackId(tracks[0]?.id || "");
   }, [album.id, tracks, selectedTrackId]);
+  useEffect(() => {
+    if (!currentTrackId || !tracks.some((track) => track.id === currentTrackId)) return;
+    if (pendingPlaybackTrackId.current && pendingPlaybackTrackId.current !== currentTrackId) return;
+    pendingPlaybackTrackId.current = "";
+    setSelectedTrackId(currentTrackId);
+  }, [currentTrackId, tracks]);
   useEffect(() => { onTrackFocus(selectedTrackId); }, [onTrackFocus, selectedTrackId]);
 
   const entries = useMemo(() => tracks.flatMap((track) => {
@@ -48,6 +57,8 @@ export function MasteringWorkspace({ album, libraryMap, presets, renderingAvaila
   const analysis = selectedFile ? analysisByKey[selectedFile.key] : null;
   const delivery = album.delivery || {};
   const masterBus = useMemo(() => normalizeMasterBus(album.masterBus), [album.masterBus]);
+  const masteringPath = normalizeMasteringPath(album.masteringPath);
+  const advancedMastering = useMemo(() => normalizeAdvancedMastering(album.advancedMastering), [album.advancedMastering]);
 
   const updateMastering = (field, value) => onAlbumChange((draft) => {
     const track = draft.tracks.find((item) => item.id === selectedTrackId);
@@ -81,6 +92,11 @@ export function MasteringWorkspace({ album, libraryMap, presets, renderingAvaila
     draft.masterBus = normalizeMasterBus(next);
   });
   const resetMasterBus = () => onAlbumChange((draft) => { draft.masterBus = normalizeMasterBus(); });
+  const updateMasteringPath = (value) => onAlbumChange((draft) => {
+    draft.masteringPath = normalizeMasteringPath(value);
+    draft.advancedMastering = normalizeAdvancedMastering(draft.advancedMastering || createDefaultAdvancedMastering());
+  });
+  const updateAdvancedMastering = (value) => onAlbumChange((draft) => { draft.advancedMastering = normalizeAdvancedMastering(value); });
   const updateReference = (sourceRef) => onAlbumChange((draft) => {
     if (sourceRef) draft.masteringReferenceSourceRef = sourceRef;
     else delete draft.masteringReferenceSourceRef;
@@ -121,7 +137,17 @@ export function MasteringWorkspace({ album, libraryMap, presets, renderingAvaila
         onCompare={compareReference}
       />
 
-      <MasterBusControls bus={masterBus} presets={presets} onChange={updateMasterBus} onReset={resetMasterBus} onSavePreset={onSavePreset} onLoadPreset={onLoadPreset} onDeletePreset={onDeletePreset} meteringRef={meteringRef} meteringAvailable={meteringAvailable} playing={playing} liveProcessing={liveProcessing} monitorLabel={monitorLabel} />
+      <section className="mastering-tier-selector" aria-label="Mastering equipment level">
+        <div><strong>Mastering Equipment</strong><small>Basic stays intact while Premium uses its own movable rack.</small></div>
+        <div role="group" aria-label="Choose mastering equipment level">
+          <button type="button" className={masteringPath === "basic" ? "is-active" : ""} aria-pressed={masteringPath === "basic"} onClick={() => updateMasteringPath("basic")}><span>BASIC</span><strong>Component Chain</strong><small>Fast fixed EQ · compressor · output · limiter</small></button>
+          <button type="button" className={masteringPath === "advanced" ? "is-active" : ""} aria-pressed={masteringPath === "advanced"} onClick={() => updateMasteringPath("advanced")}><span>PREMIUM</span><strong>Analog Rack</strong><small>Multiple units · drag-to-patch signal order</small></button>
+        </div>
+      </section>
+
+      {masteringPath === "advanced"
+        ? <AdvancedMasteringRack rack={advancedMastering} onChange={updateAdvancedMastering} meteringRef={meteringRef} meteringAvailable={meteringAvailable} playing={playing} liveProcessing={liveProcessing} monitorLabel={monitorLabel} />
+        : <MasterBusControls bus={masterBus} presets={presets} onChange={updateMasterBus} onReset={resetMasterBus} onSavePreset={onSavePreset} onLoadPreset={onLoadPreset} onDeletePreset={onDeletePreset} meteringRef={meteringRef} meteringAvailable={meteringAvailable} playing={playing} liveProcessing={liveProcessing} monitorLabel={monitorLabel} />}
 
       <div className="mastering-columns">
         <nav className="mastering-track-list" aria-label={`${album.title} mastering tracks`}>
@@ -129,7 +155,23 @@ export function MasteringWorkspace({ album, libraryMap, presets, renderingAvaila
           <ol>{tracks.map((track, index) => {
             const timelineEntry = timelineByTrackId.get(track.id);
             const file = fileForTrack(track, libraryMap);
-            return <li key={track.id}><button type="button" className={`${track.id === selectedTrackId ? "is-active" : ""} ${!file ? "is-missing" : ""}`} onClick={() => setSelectedTrackId(track.id)}><span>{index + 1}</span><span><strong>{track.title}</strong><small>{file ? masteringSummary(track.mastering) : "Missing audio"}</small></span><time>{timelineEntry ? timeLabel(timelineEntry.outputStart) : "—:—"}</time></button></li>;
+            const current = currentTrackId === track.id;
+            const trackPlaying = current && playing;
+            const playbackLabel = trackPlaying
+              ? `${track.title}. Playing. Press to pause.`
+              : current
+                ? `${track.title}. Paused. Press to resume.`
+                : `${track.title}. Press to play from this track.`;
+            const selectAndToggleTrack = () => {
+              setSelectedTrackId(track.id);
+              if (!file) return;
+              if (current) onTogglePlayback();
+              else {
+                pendingPlaybackTrackId.current = track.id;
+                onPlayFrom(index);
+              }
+            };
+            return <li key={track.id}><button type="button" className={`${track.id === selectedTrackId ? "is-active" : ""} ${trackPlaying ? "is-playing" : ""} ${!file ? "is-missing" : ""}`} onClick={selectAndToggleTrack} aria-label={file ? playbackLabel : `${track.title}. Missing audio.`} aria-pressed={trackPlaying}><span>{index + 1}</span><span><strong>{track.title}</strong><small>{file ? masteringSummary(track.mastering) : "Missing audio"}</small></span><time>{timelineEntry ? timeLabel(timelineEntry.outputStart) : "—:—"}</time></button></li>;
           })}</ol>
         </nav>
 
@@ -151,7 +193,9 @@ export function MasteringWorkspace({ album, libraryMap, presets, renderingAvaila
                 fadeIn={settings.fadeIn}
                 endMode={settings.endMode}
                 endDuration={settings.endDuration}
+                playheadTime={currentTrackId === selectedTrackId ? currentTime : null}
                 onTrimChange={updateMastering}
+                onSeek={(time) => onSeekTrack(tracks.indexOf(selectedTrack), time)}
               />
 
               <section className="technical-analysis">

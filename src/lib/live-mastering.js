@@ -1,4 +1,5 @@
 import { normalizeMasterBus } from "./mastering.js";
+import { ADVANCED_PROCESSOR_TYPES, ADVANCED_RACK_MAX_PROCESSORS, activeAdvancedProcessors, normalizeAdvancedMastering, normalizeMasteringPath } from "./advanced-mastering.js";
 
 const clamp = (value, minimum, maximum) => Math.min(maximum, Math.max(minimum, value));
 
@@ -71,7 +72,8 @@ const configureAnalyser = (analyser, { fftSize, smoothingTimeConstant = 0 }) => 
   analyser.maxDecibels = 0;
 };
 
-export const activeMasteringProcessors = (masterBus = {}) => {
+export const activeMasteringProcessors = (masterBus = {}, masteringPath = "basic", advancedMastering = {}) => {
+  if (normalizeMasteringPath(masteringPath) === "advanced") return activeAdvancedProcessors(advancedMastering);
   const settings = normalizeMasterBus(masterBus);
   if (settings.bypass) return [];
   return [
@@ -84,11 +86,12 @@ export const activeMasteringProcessors = (masterBus = {}) => {
 
 export const playbackBypassesMastering = (entry) => !entry?.track || Boolean(entry.renderedPreview) || Boolean(entry.referenceTrack);
 
-export const masterMonitorRouting = ({ entry, masterBus, meteringAvailable } = {}) => {
+export const masterMonitorRouting = ({ entry, masterBus, masteringPath, advancedMastering, meteringAvailable } = {}) => {
   if (entry?.referenceTrack) return "reference";
   if (entry?.renderedPreview) return "mastering";
-  if (!entry && meteringAvailable !== false && activeMasteringProcessors(masterBus).length) return "mastering";
-  if (!entry?.track || meteringAvailable === false || normalizeMasterBus(masterBus).bypass) return "raw";
+  if (!entry && meteringAvailable !== false && activeMasteringProcessors(masterBus, masteringPath, advancedMastering).length) return "mastering";
+  const pathBypassed = normalizeMasteringPath(masteringPath) === "advanced" ? normalizeAdvancedMastering(advancedMastering).bypass : normalizeMasterBus(masterBus).bypass;
+  if (!entry?.track || meteringAvailable === false || pathBypassed) return "raw";
   return "mastering";
 };
 
@@ -101,15 +104,31 @@ export const comparisonPlaybackStart = ({ baseStart = 0, elapsed = 0, duration =
 
 export const applyLiveMasteringSettings = (graph, masterBus = {}, options = {}) => {
   const settings = normalizeMasterBus(masterBus);
+  const masteringPath = normalizeMasteringPath(options.masteringPath);
+  const advancedMastering = normalizeAdvancedMastering(options.advancedMastering);
   const sourceBypassed = Boolean(options.sourceBypassed);
-  const masterBypassed = sourceBypassed || settings.bypass;
+  const pathBypassed = masteringPath === "advanced" ? advancedMastering.bypass : settings.bypass;
+  const masterBypassed = sourceBypassed || pathBypassed;
   const trackGainDb = Number.isFinite(Number(options.trackGainDb)) ? Number(options.trackGainDb) : 0;
   const updateParam = (param, value, timeConstant) => setParam(param, value, graph.context, timeConstant);
+
+  const desiredSlotCount = masteringPath === "advanced" ? advancedMastering.nodes.length : 0;
+  if (graph.advancedInput && Array.isArray(graph.processorSlots) && graph.rackSlotCount !== desiredSlotCount && typeof graph.advancedInput.disconnect === "function") {
+    graph.advancedInput.disconnect();
+    graph.processorSlots.forEach((slot) => { if (typeof slot.output.disconnect === "function") slot.output.disconnect(); });
+    if (desiredSlotCount === 0) graph.advancedInput.connect(graph.advancedProcessedGain);
+    else {
+      graph.advancedInput.connect(graph.processorSlots[0].input);
+      graph.processorSlots.slice(0, desiredSlotCount).forEach((slot, index) => slot.output.connect(index + 1 < desiredSlotCount ? graph.processorSlots[index + 1].input : graph.advancedProcessedGain));
+    }
+    graph.rackSlotCount = desiredSlotCount;
+  }
 
   updateParam(graph.directGain?.gain, sourceBypassed ? 1 : 0, 0.006);
   updateParam(graph.trackGain?.gain, decibelsToGain(trackGainDb));
   updateParam(graph.bypassGain?.gain, !sourceBypassed && masterBypassed ? 1 : 0, 0.006);
-  updateParam(graph.processedGain?.gain, !sourceBypassed && !masterBypassed ? 1 : 0, 0.006);
+  updateParam(graph.processedGain?.gain, !sourceBypassed && !masterBypassed && masteringPath === "basic" ? 1 : 0, 0.006);
+  updateParam(graph.advancedProcessedGain?.gain, !sourceBypassed && !masterBypassed && masteringPath === "advanced" ? 1 : 0, 0.006);
 
   graph.lowShelf.type = "lowshelf";
   updateParam(graph.lowShelf.frequency, settings.eq.lowShelf.frequencyHz);
@@ -142,7 +161,72 @@ export const applyLiveMasteringSettings = (graph, masterBus = {}, options = {}) 
   updateParam(graph.limiter.attack, clamp(settings.limiter.attackMs / 1_000, 0, 1));
   updateParam(graph.limiter.release, clamp(settings.limiter.releaseMs / 1_000, 0, 1));
 
-  return { settings, sourceBypassed, masterBypassed, trackGainDb };
+  let advancedCompressor = null;
+  let advancedLimiter = null;
+  const processorMeters = {};
+  if (Array.isArray(graph.processorSlots)) {
+    graph.processorSlots.forEach((slot, index) => {
+      const node = advancedMastering.nodes[index];
+      const active = masteringPath === "advanced" && node && !node.bypass;
+      const eq = active && node.typeId === ADVANCED_PROCESSOR_TYPES.eq ? node.parameters : null;
+      const compressorSettings = active && node.typeId === ADVANCED_PROCESSOR_TYPES.compressor ? node.parameters : null;
+      const outputSettings = active && node.typeId === ADVANCED_PROCESSOR_TYPES.output ? node.parameters : null;
+      const limiterSettings = active && node.typeId === ADVANCED_PROCESSOR_TYPES.limiter ? node.parameters : null;
+
+      slot.lowShelf.type = "lowshelf";
+      updateParam(slot.lowShelf.frequency, eq?.lowShelf.frequencyHz ?? 120);
+      updateParam(slot.lowShelf.gain, eq?.lowShelf.gainDb ?? 0);
+      slot.midBand.type = "peaking";
+      updateParam(slot.midBand.frequency, eq?.midBand.frequencyHz ?? 1_000);
+      updateParam(slot.midBand.Q, eq?.midBand.q ?? 1);
+      updateParam(slot.midBand.gain, eq?.midBand.gainDb ?? 0);
+      slot.highShelf.type = "highshelf";
+      updateParam(slot.highShelf.frequency, eq?.highShelf.frequencyHz ?? 8_000);
+      updateParam(slot.highShelf.gain, eq?.highShelf.gainDb ?? 0);
+
+      const mix = compressorSettings?.mix ?? 0;
+      updateParam(slot.compressorDry.gain, 1 - mix, 0.006);
+      updateParam(slot.compressorWet.gain, mix, 0.006);
+      updateParam(slot.compressor.threshold, compressorSettings?.thresholdDb ?? 0);
+      updateParam(slot.compressor.ratio, compressorSettings?.ratio ?? 1);
+      updateParam(slot.compressor.knee, compressorSettings?.knee ?? 0);
+      updateParam(slot.compressor.attack, clamp((compressorSettings?.attackMs ?? 1) / 1_000, 0, 1));
+      updateParam(slot.compressor.release, clamp((compressorSettings?.releaseMs ?? 1) / 1_000, 0, 1));
+      updateParam(slot.makeupGain.gain, decibelsToGain(compressorSettings?.makeupGainDb ?? 0));
+      updateParam(slot.outputGain.gain, decibelsToGain(outputSettings?.outputGainDb ?? 0));
+      updateParam(slot.limiter.threshold, limiterSettings?.ceilingDbfs ?? 0);
+      updateParam(slot.limiter.knee, 0);
+      updateParam(slot.limiter.ratio, limiterSettings ? 20 : 1);
+      updateParam(slot.limiter.attack, clamp((limiterSettings?.attackMs ?? 1) / 1_000, 0, 1));
+      updateParam(slot.limiter.release, clamp((limiterSettings?.releaseMs ?? 1) / 1_000, 0, 1));
+      if (compressorSettings && !advancedCompressor) advancedCompressor = slot.compressor;
+      if (limiterSettings && !advancedLimiter) advancedLimiter = slot.limiter;
+      if (node?.typeId === ADVANCED_PROCESSOR_TYPES.compressor) processorMeters[`processor:${node.id}:compressor`] = slot.compressor;
+      if (node?.typeId === ADVANCED_PROCESSOR_TYPES.limiter) processorMeters[`processor:${node.id}:limiter`] = slot.limiter;
+    });
+  }
+
+  return { settings, masteringPath, advancedMastering, sourceBypassed, masterBypassed, trackGainDb, metering: { compressor: advancedCompressor || graph.compressor, limiter: advancedLimiter || graph.limiter, processorMeters } };
+};
+
+const createProcessorSlot = (context) => {
+  const input = context.createGain();
+  const lowShelf = context.createBiquadFilter();
+  const midBand = context.createBiquadFilter();
+  const highShelf = context.createBiquadFilter();
+  const compressorDry = context.createGain();
+  const compressor = context.createDynamicsCompressor();
+  const makeupGain = context.createGain();
+  const compressorWet = context.createGain();
+  const compressorSum = context.createGain();
+  const outputGain = context.createGain();
+  const limiter = context.createDynamicsCompressor();
+  const output = context.createGain();
+  input.connect(lowShelf).connect(midBand).connect(highShelf);
+  highShelf.connect(compressorDry).connect(compressorSum);
+  highShelf.connect(compressor).connect(makeupGain).connect(compressorWet).connect(compressorSum);
+  compressorSum.connect(outputGain).connect(limiter).connect(output);
+  return { input, lowShelf, midBand, highShelf, compressorDry, compressor, makeupGain, compressorWet, compressorSum, outputGain, limiter, output };
 };
 
 export const createLiveMasteringGraph = (audio, AudioContextClass) => {
@@ -164,12 +248,15 @@ export const createLiveMasteringGraph = (audio, AudioContextClass) => {
   const outputGain = context.createGain();
   const limiter = context.createDynamicsCompressor();
   const processedGain = context.createGain();
+  const advancedInput = context.createGain();
+  const advancedProcessedGain = context.createGain();
   const masterOutput = context.createGain();
   const frequencyAnalyser = context.createAnalyser();
   const channelSplitter = context.createChannelSplitter(2);
   const leftAnalyser = context.createAnalyser();
   const rightAnalyser = context.createAnalyser();
   const channelMerger = context.createChannelMerger(2);
+  const processorSlots = Array.from({ length: ADVANCED_RACK_MAX_PROCESSORS }, () => createProcessorSlot(context));
 
   configureAnalyser(frequencyAnalyser, { fftSize: 2_048, smoothingTimeConstant: 0.76 });
   configureAnalyser(eqInputAnalyser, { fftSize: 2_048, smoothingTimeConstant: 0.76 });
@@ -186,6 +273,8 @@ export const createLiveMasteringGraph = (audio, AudioContextClass) => {
   highShelf.connect(compressorDry).connect(compressorSum);
   highShelf.connect(compressor).connect(makeupGain).connect(compressorWet).connect(compressorSum);
   compressorSum.connect(outputGain).connect(limiter).connect(processedGain).connect(masterOutput);
+  trackGain.connect(advancedInput);
+  advancedInput.connect(advancedProcessedGain).connect(masterOutput);
   masterOutput.connect(frequencyAnalyser).connect(channelSplitter);
   channelSplitter.connect(leftAnalyser, 0, 0);
   channelSplitter.connect(rightAnalyser, 1, 0);
@@ -211,6 +300,10 @@ export const createLiveMasteringGraph = (audio, AudioContextClass) => {
     outputGain,
     limiter,
     processedGain,
+    advancedInput,
+    advancedProcessedGain,
+    processorSlots,
+    rackSlotCount: 0,
     masterOutput,
     frequencyAnalyser,
     channelSplitter,

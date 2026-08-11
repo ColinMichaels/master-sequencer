@@ -96,7 +96,7 @@ export function TransportWaveform({
         <button
           type="button"
           className="transport-waveform"
-          disabled={!canSeek}
+          aria-disabled={!canSeek}
           onClick={seekFromPointer}
           onKeyDown={handleSeekKey}
           aria-label={`${trackTitle || "Current track"} waveform. Trim starts at ${timeLabel(settings.trimStart)} and ends at ${timeLabel(settings.trimEnd)}. ${editSummary}.`}

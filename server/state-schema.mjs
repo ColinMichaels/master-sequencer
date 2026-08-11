@@ -1,8 +1,9 @@
 import { MASTERING_LIMITS, normalizeMasterBus } from "../src/lib/mastering.js";
+import { ADVANCED_PROCESSOR_TYPES, ADVANCED_RACK_MAX_PROCESSORS, ADVANCED_RACK_VERSION, buildSerialConnections, createDefaultAdvancedMastering, normalizeAdvancedMastering, normalizeMasteringPath } from "../src/lib/advanced-mastering.js";
 import { MASTERING_PRESET_TYPES } from "../src/lib/mastering-presets.js";
 import { isValidAlbumReleaseDate } from "../src/lib/release-date.js";
 
-export const CURRENT_SCHEMA_VERSION = 5;
+export const CURRENT_SCHEMA_VERSION = 6;
 
 const DEFAULT_PROJECT_ARTIST = "Untitled Artist";
 const deliveryProfileIds = new Set(["", "archive-wav", "distribution-wav", "review-mp3"]);
@@ -88,6 +89,34 @@ const validateMasterBus = (masterBus, label) => {
   validateCompressorSettings(masterBus.compressor, `${label} compressor`);
   validateNumberRange(masterBus.outputGainDb, MASTERING_LIMITS.outputGainDb, `${label} outputGainDb`);
   validateLimiterSettings(masterBus.limiter, `${label} limiter`);
+};
+
+const validateAdvancedMastering = (rack, label) => {
+  validateObject(rack, label);
+  if (rack.graphVersion !== ADVANCED_RACK_VERSION) throw new Error(`${label} graphVersion must be ${ADVANCED_RACK_VERSION}.`);
+  validateBoolean(rack.bypass, `${label} bypass`);
+  if (!Array.isArray(rack.nodes) || rack.nodes.length > ADVANCED_RACK_MAX_PROCESSORS) throw new Error(`${label} must contain no more than ${ADVANCED_RACK_MAX_PROCESSORS} processors.`);
+  const ids = new Set();
+  for (const node of rack.nodes) {
+    validateObject(node, `${label} processor`);
+    if (typeof node.id !== "string" || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(node.id) || node.id.length > 120 || ids.has(node.id)) throw new Error(`${label} processor ids must be unique safe identifiers.`);
+    ids.add(node.id);
+    if (!Object.values(ADVANCED_PROCESSOR_TYPES).includes(node.typeId)) throw new Error(`${label} contains an unsupported processor type.`);
+    if (node.definitionVersion !== 1) throw new Error(`${label} processor ${node.id} has an unsupported definition version.`);
+    if (typeof node.name !== "string" || !node.name.trim() || node.name.length > 80) throw new Error(`${label} processor ${node.id} needs a name up to 80 characters.`);
+    validateBoolean(node.bypass, `${label} processor ${node.id} bypass`);
+    if (node.typeId === ADVANCED_PROCESSOR_TYPES.eq) validateEqSettings(node.parameters, `${label} processor ${node.id}`);
+    else if (node.typeId === ADVANCED_PROCESSOR_TYPES.compressor) validateCompressorSettings(node.parameters, `${label} processor ${node.id}`);
+    else if (node.typeId === ADVANCED_PROCESSOR_TYPES.output) {
+      validateObject(node.parameters, `${label} processor ${node.id}`);
+      validateNumberRange(node.parameters.outputGainDb, MASTERING_LIMITS.outputGainDb, `${label} processor ${node.id} outputGainDb`);
+    } else {
+      validateLimiterSettings(node.parameters, `${label} processor ${node.id}`);
+      if (![1, 2, 4].includes(node.parameters.oversample)) throw new Error(`${label} processor ${node.id} oversample must be 1, 2, or 4.`);
+    }
+  }
+  const expectedConnections = buildSerialConnections(rack.nodes);
+  if (!Array.isArray(rack.connections) || JSON.stringify(rack.connections) !== JSON.stringify(expectedConnections)) throw new Error(`${label} connections must match the processor order from input to output.`);
 };
 
 const validateMasteringPresets = (library) => {
@@ -181,6 +210,8 @@ export const validateState = (state) => {
     if (album.releaseDate !== undefined && !isValidAlbumReleaseDate(album.releaseDate)) throw new Error(`${album.title} releaseDate must be a valid YYYY-MM-DD calendar date or blank.`);
     if (album.orderApproved !== undefined && typeof album.orderApproved !== "boolean") throw new Error(`${album.title} orderApproved must be a boolean.`);
     validateMasterBus(album.masterBus, `${album.title} MASTER bus`);
+    if (album.masteringPath !== normalizeMasteringPath(album.masteringPath)) throw new Error(`${album.title} masteringPath must be basic or advanced.`);
+    validateAdvancedMastering(album.advancedMastering, `${album.title} Premium rack`);
     if (album.masteringReferenceSourceRef !== undefined) validateSourceReference(album.masteringReferenceSourceRef, `${album.title} mastering reference`);
     if (album.delivery !== undefined) {
       if (!album.delivery || typeof album.delivery !== "object" || Array.isArray(album.delivery)) throw new Error(`${album.title} delivery record must be an object.`);
@@ -306,6 +337,15 @@ const migrations = new Map([
       ...(state.settings || {}),
       librarySavedFilters: Array.isArray(state.settings?.librarySavedFilters) ? state.settings.librarySavedFilters : [],
     },
+  })],
+  [5, (state) => ({
+    ...state,
+    schemaVersion: 6,
+    albums: Array.isArray(state.albums) ? state.albums.map((album) => ({
+      ...album,
+      masteringPath: normalizeMasteringPath(album.masteringPath),
+      advancedMastering: normalizeAdvancedMastering(album.advancedMastering || createDefaultAdvancedMastering()),
+    })) : state.albums,
   })],
 ]);
 

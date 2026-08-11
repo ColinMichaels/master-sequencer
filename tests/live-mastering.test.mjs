@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { activeMasteringProcessors, applyLiveMasteringSettings, comparisonPlaybackStart, compressorGainReductionDb, createLiveMasteringGraph, decibelsToGain, equalizerLiveImpact, masterMonitorRouting, playbackBypassesMastering } from "../src/lib/live-mastering.js";
+import { ADVANCED_PROCESSOR_TYPES, createAdvancedProcessor, createDefaultAdvancedMastering } from "../src/lib/advanced-mastering.js";
 
 const parameter = () => ({ value: 0 });
 const filter = () => ({ type: "", frequency: parameter(), gain: parameter(), Q: parameter() });
@@ -11,6 +12,7 @@ const settingsGraph = () => ({
   trackGain: gain(),
   bypassGain: gain(),
   processedGain: gain(),
+  advancedProcessedGain: gain(),
   lowShelf: filter(),
   midBand: filter(),
   highShelf: filter(),
@@ -75,6 +77,33 @@ test("raw library and rendered previews bypass live processing to prevent altere
   assert.equal(graph.bypassGain.gain.value, 0);
   assert.equal(graph.processedGain.gain.value, 0);
   assert.equal(graph.trackGain.gain.value, decibelsToGain(-12));
+});
+
+test("Premium live processing assigns each rack position and meter in movable serial order", () => {
+  const graph = settingsGraph();
+  const slot = () => ({ lowShelf: filter(), midBand: filter(), highShelf: filter(), compressorDry: gain(), compressor: compressor(), makeupGain: gain(), compressorWet: gain(), outputGain: gain(), limiter: compressor() });
+  graph.processorSlots = [slot(), slot(), slot(), slot()];
+  const limiter = createAdvancedProcessor(ADVANCED_PROCESSOR_TYPES.limiter, "limit-1");
+  limiter.parameters.ceilingDbfs = -1.4;
+  const eq = createAdvancedProcessor(ADVANCED_PROCESSOR_TYPES.eq, "eq-1");
+  eq.parameters.highShelf.gainDb = 2.5;
+  const output = createAdvancedProcessor(ADVANCED_PROCESSOR_TYPES.output, "out-1");
+  output.parameters.outputGainDb = -2;
+  const secondLimiter = createAdvancedProcessor(ADVANCED_PROCESSOR_TYPES.limiter, "limit-2");
+  secondLimiter.parameters.ceilingDbfs = -2.2;
+  const rack = { ...createDefaultAdvancedMastering(), nodes: [limiter, eq, output, secondLimiter] };
+
+  const result = applyLiveMasteringSettings(graph, enabledMaster, { masteringPath: "advanced", advancedMastering: rack });
+  assert.equal(graph.processedGain.gain.value, 0);
+  assert.equal(graph.advancedProcessedGain.gain.value, 1);
+  assert.equal(graph.processorSlots[0].limiter.threshold.value, -1.4);
+  assert.equal(graph.processorSlots[1].highShelf.gain.value, 2.5);
+  assert.equal(graph.processorSlots[2].outputGain.gain.value, decibelsToGain(-2));
+  assert.equal(graph.processorSlots[3].limiter.threshold.value, -2.2);
+  assert.equal(result.metering.limiter, graph.processorSlots[0].limiter);
+  assert.equal(result.metering.processorMeters["processor:limit-1:limiter"], graph.processorSlots[0].limiter);
+  assert.equal(result.metering.processorMeters["processor:limit-2:limiter"], graph.processorSlots[3].limiter);
+  assert.deepEqual(activeMasteringProcessors(enabledMaster, "advanced", rack), ["LIMIT", "EQ", "OUT", "LIMIT"]);
 });
 
 test("live MASTER controls schedule short ramps while audio is running to avoid zipper noise", () => {
@@ -153,6 +182,7 @@ test("the live graph connects one media source to direct, bypass, and processed 
       this.release = parameter();
     }
     connect(node, output = 0, input = 0) { this.connections.push({ node, output, input }); return node; }
+    disconnect() { this.connections = []; }
   }
   class FakeAudioContext {
     constructor() { this.destination = new FakeNode("destination"); this.sampleRate = 48_000; }
@@ -168,11 +198,13 @@ test("the live graph connects one media source to direct, bypass, and processed 
   const graph = createLiveMasteringGraph({}, FakeAudioContext);
   assert.equal(graph.source.connections.length, 2);
   assert.equal(graph.directGain.connections[0].node, graph.masterOutput);
-  assert.equal(graph.trackGain.connections.length, 2);
+  assert.equal(graph.trackGain.connections.length, 3);
   assert.equal(graph.bypassGain.connections[0].node, graph.masterOutput);
   assert.equal(graph.trackGain.connections[1].node, graph.eqInputAnalyser);
+  assert.equal(graph.trackGain.connections[2].node, graph.advancedInput);
   assert.equal(graph.eqInputAnalyser.connections[0].node, graph.lowShelf);
   assert.equal(graph.processedGain.connections[0].node, graph.masterOutput);
+  assert.equal(graph.advancedProcessedGain.connections[0].node, graph.masterOutput);
   assert.equal(graph.masterOutput.connections[0].node, graph.frequencyAnalyser);
   assert.equal(graph.frequencyAnalyser.connections[0].node, graph.channelSplitter);
   assert.deepEqual(graph.channelSplitter.connections.map(({ node, output }) => [node, output]), [[graph.leftAnalyser, 0], [graph.rightAnalyser, 1]]);
@@ -183,4 +215,16 @@ test("the live graph connects one media source to direct, bypass, and processed 
   assert.equal(graph.eqInputAnalyser.smoothingTimeConstant, 0.76);
   assert.equal(graph.leftAnalyser.fftSize, 1_024);
   assert.equal(graph.rightAnalyser.fftSize, 1_024);
+
+  const premiumRack = createDefaultAdvancedMastering();
+  applyLiveMasteringSettings(graph, enabledMaster, { masteringPath: "advanced", advancedMastering: premiumRack });
+  assert.equal(graph.rackSlotCount, 4);
+  assert.equal(graph.advancedInput.connections[0].node, graph.processorSlots[0].input);
+  assert.equal(graph.processorSlots[3].output.connections[0].node, graph.advancedProcessedGain);
+  assert.equal(graph.processorSlots[4].output.connections.length, 0);
+
+  applyLiveMasteringSettings(graph, enabledMaster, { masteringPath: "basic" });
+  assert.equal(graph.rackSlotCount, 0);
+  assert.equal(graph.advancedInput.connections[0].node, graph.advancedProcessedGain);
+  assert.equal(graph.processorSlots[0].output.connections.length, 0);
 });

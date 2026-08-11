@@ -3,12 +3,14 @@ import { api, sourceKey } from "../lib/api.js";
 import { normalizeMastering } from "../lib/mastering.js";
 import { applyLiveMasteringSettings, comparisonPlaybackStart, createLiveMasteringGraph, playbackBypassesMastering } from "../lib/live-mastering.js";
 
-export const useTransport = ({ libraryMap, masterBus, liveTracks = [] }) => {
+export const useTransport = ({ libraryMap, masterBus, masteringPath = "basic", advancedMastering, liveTracks = [] }) => {
   const audioRef = useRef(null);
   const audioGraph = useRef(null);
   const meteringRef = useRef(null);
   const currentRef = useRef(null);
   const masterBusRef = useRef(masterBus);
+  const masteringPathRef = useRef(masteringPath);
+  const advancedMasteringRef = useRef(advancedMastering);
   const liveTracksRef = useRef(liveTracks);
   const [current, setCurrent] = useState(null);
   const [status, setStatus] = useState("Ready");
@@ -23,6 +25,8 @@ export const useTransport = ({ libraryMap, masterBus, liveTracks = [] }) => {
   const playToken = useRef(0);
 
   masterBusRef.current = masterBus;
+  masteringPathRef.current = masteringPath;
+  advancedMasteringRef.current = advancedMastering;
   liveTracksRef.current = liveTracks;
 
   const liveSettingsForEntry = useCallback((entry) => {
@@ -34,7 +38,19 @@ export const useTransport = ({ libraryMap, masterBus, liveTracks = [] }) => {
 
   const updateAudioGraph = useCallback((entry = currentRef.current) => {
     if (!audioGraph.current) return;
-    applyLiveMasteringSettings(audioGraph.current, masterBusRef.current, liveSettingsForEntry(entry));
+    const result = applyLiveMasteringSettings(audioGraph.current, masterBusRef.current, {
+      ...liveSettingsForEntry(entry),
+      masteringPath: masteringPathRef.current,
+      advancedMastering: advancedMasteringRef.current,
+    });
+    if (meteringRef.current && result?.metering) {
+      meteringRef.current.compressor = result.metering.compressor;
+      meteringRef.current.limiter = result.metering.limiter;
+      (meteringRef.current.processorMeterKeys || []).forEach((key) => { delete meteringRef.current[key]; });
+      const processorMeterKeys = Object.keys(result.metering.processorMeters || {});
+      processorMeterKeys.forEach((key) => { meteringRef.current[key] = result.metering.processorMeters[key]; });
+      meteringRef.current.processorMeterKeys = processorMeterKeys;
+    }
   }, [liveSettingsForEntry]);
 
   const ensureAudioGraph = useCallback(() => {
@@ -78,7 +94,7 @@ export const useTransport = ({ libraryMap, masterBus, liveTracks = [] }) => {
 
   useEffect(() => {
     updateAudioGraph();
-  }, [masterBus, liveTracks, updateAudioGraph]);
+  }, [masterBus, masteringPath, advancedMastering, liveTracks, updateAudioGraph]);
 
   useEffect(() => () => {
     const graph = audioGraph.current;
@@ -180,7 +196,7 @@ export const useTransport = ({ libraryMap, masterBus, liveTracks = [] }) => {
     }, startAt);
   }, [playEntry]);
 
-  const playSequence = useCallback((album, startIndex = 0) => {
+  const playSequence = useCallback((album, startIndex = 0, startAt = 0) => {
     const candidates = album.tracks.slice(startIndex).map((track, offset) => ({
       file: fileForTrack(track),
       trackTitle: track.title,
@@ -198,7 +214,7 @@ export const useTransport = ({ libraryMap, masterBus, liveTracks = [] }) => {
     queue.current = entries;
     queueCursor.current = 0;
     setStatus(skipped ? `Playing available order; ${skipped} missing source ${skipped === 1 ? "is" : "are"} skipped.` : "Playing the complete working order.");
-    playEntry(entries[0]);
+    playEntry(entries[0], startAt);
   }, [fileForTrack, playEntry]);
 
   const previewChapter = useCallback((album, startIndex = 0) => {

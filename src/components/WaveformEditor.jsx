@@ -62,6 +62,7 @@ function WaveformMarker({ kind, label, value, minimum, maximum, duration, onChan
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}
       onKeyDown={handleKeyDown}
+      onClick={(event) => event.stopPropagation()}
       onDragStart={(event) => event.preventDefault()}
     >
       <span aria-hidden="true">{kind === "start" ? "S" : "E"}</span>
@@ -80,7 +81,9 @@ export function WaveformEditor({
   fadeIn,
   endMode,
   endDuration,
+  playheadTime,
   onTrimChange,
+  onSeek,
 }) {
   const [requestVersion, setRequestVersion] = useState(0);
   const [waveform, setWaveform] = useState({ loading: true, error: "", points: [] });
@@ -103,6 +106,12 @@ export function WaveformEditor({
   const endFadeStart = Math.max(trimStart, trimEnd - endDuration);
   const nextCopy = nextTrackTitle ? `Next: ${nextTrackTitle}` : "Final playable track";
   const ruler = [0, 0.25, 0.5, 0.75, 1];
+  const seekFromPointer = (event) => {
+    if (!onSeek || event.target.closest(".waveform-marker, .waveform-feedback")) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    if (!bounds.width) return;
+    onSeek(roundMillis(clamp((event.clientX - bounds.left) / bounds.width, 0, 1) * duration));
+  };
 
   return (
     <section className="waveform-editor" aria-labelledby="waveform-editor-title">
@@ -118,9 +127,10 @@ export function WaveformEditor({
       </header>
 
       <div
-        className={`waveform-plot ${waveform.loading ? "is-loading" : ""} ${waveform.error ? "has-error" : ""}`}
+        className={`waveform-plot ${onSeek ? "is-seekable" : ""} ${waveform.loading ? "is-loading" : ""} ${waveform.error ? "has-error" : ""}`}
         role="group"
         aria-label={`Waveform for ${trackTitle}. Kept audio starts at ${timeLabel(trimStart)} and ends at ${timeLabel(trimEnd)}.`}
+        onClick={seekFromPointer}
       >
         <svg className="waveform-svg" viewBox="0 0 1000 100" preserveAspectRatio="none" aria-hidden="true">
           <line className="waveform-center-line" x1="0" y1="50" x2="1000" y2="50" />
@@ -136,6 +146,7 @@ export function WaveformEditor({
 
         <WaveformMarker kind="start" label="Start" value={trimStart} minimum={0} maximum={Math.max(0, trimEnd - 0.1)} duration={duration} onChange={(value) => onTrimChange("trimStart", value)} />
         <WaveformMarker kind="end" label="End" value={trimEnd} minimum={Math.min(duration, trimStart + 0.1)} maximum={duration} duration={duration} onChange={(value) => onTrimChange("trimEnd", value)} />
+        {Number.isFinite(playheadTime) ? <div className="waveform-playhead" style={{ left: percent(playheadTime, duration) }} aria-hidden="true" /> : null}
 
         <div className="waveform-ruler" aria-hidden="true">
           {ruler.map((tick) => <span key={tick} style={{ left: `${tick * 100}%` }}>{timeLabel(duration * tick)}</span>)}
@@ -152,7 +163,7 @@ export function WaveformEditor({
         {showEndFade && <span><i className="waveform-key waveform-key--fade" />{endMode === "crossfade" ? "Crossfade" : "Fade out"}</span>}
         <strong>End {timeLabel(trimEnd)}</strong>
       </div>
-      <p className="waveform-help">Drag the S and E markers. Arrow keys adjust 0.1s; Shift adjusts 1s; Option adjusts 0.01s.</p>
+      <p className="waveform-help">Click the waveform to seek playback. Drag the S and E markers; arrow keys adjust 0.1s, Shift adjusts 1s, and Option adjusts 0.01s.</p>
     </section>
   );
 }

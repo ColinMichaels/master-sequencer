@@ -72,7 +72,11 @@ npm start
   and retain next-track context while sequencing. Set non-destructive opening
   fades, natural endings, hard cuts, fade-outs, crossfades, and post-track
   silence; balance each track before fades and transitions; shape the complete
-  album through a shared MASTER EQ, compressor, output stage, and limiter;
+  album through either the preserved Basic MASTER chain or a Premium analog
+  rack with repeatable EQ, compressor, output, and precision-limiter instances.
+  Premium equipment can be inserted, duplicated, bypassed, removed, and
+  drag-repatched in any serial order; the same saved order drives live audition
+  and the documented FFmpeg print;
   preview edited starts and endings; then print a selected track or
   continuous album program as 24-bit/48 kHz WAV or 320 kbps MP3. Run optional
   rebuildable true-peak, loudness, DC-offset, and silence analysis; navigate a
@@ -126,6 +130,14 @@ frequency displays update from the live Web Audio graph only while relevant.
 Pausing suspends that graph until playback resumes, and running parameter
 changes use short ramps to avoid zipper noise. FFmpeg prints remain the exact
 render authority; live browser processing is an audition path.
+
+Basic and Premium are independent album paths. Existing projects migrate with
+Basic active and unchanged, while Premium starts with a separate four-unit
+serial rack. Premium limiter prints can run at 1x, 2x, or 4x sample rate before
+returning to 48 kHz; the UI explicitly identifies the live device-rate audition
+and final print distinction. External VST3/AU execution is not simulated: the
+rack reserves a visible native-host boundary, and actual third-party binaries
+remain blocked until the isolated signed desktop companion is implemented.
 
 Projects can be started fresh and reopened from the album rail or Settings.
 Before a switch, pending edits are flushed into the current project's ignored

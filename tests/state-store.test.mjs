@@ -5,14 +5,15 @@ import path from "node:path";
 import test from "node:test";
 import { createStateStore, migrateState, validateState } from "../server/state-store.mjs";
 import { normalizeMasterBus } from "../src/lib/mastering.js";
+import { createDefaultAdvancedMastering } from "../src/lib/advanced-mastering.js";
 
 const seed = {
-  schemaVersion: 5,
+  schemaVersion: 6,
   albumTemplates: [],
   masteringPresets: { eq: [], compressor: [], output: [], limiter: [], master: [] },
   activeAlbumId: "album",
   settings: { project: { artistName: "Test Artist", setupComplete: true }, revealPrivateFilenames: false },
-  albums: [{ id: "album", title: "Album", masterBus: normalizeMasterBus(), tracks: [{ id: "track", title: "Track", candidates: [] }] }],
+  albums: [{ id: "album", title: "Album", masterBus: normalizeMasterBus(), masteringPath: "basic", advancedMastering: createDefaultAdvancedMastering(), tracks: [{ id: "track", title: "Track", candidates: [] }] }],
 };
 
 test("state validation rejects duplicate track ids", () => {
@@ -130,7 +131,7 @@ test("version 1 project state migrates to the current schema without changing al
   legacy.schemaVersion = 1;
   delete legacy.settings.project;
   const migrated = migrateState(legacy);
-  assert.equal(migrated.schemaVersion, 5);
+  assert.equal(migrated.schemaVersion, 6);
   assert.deepEqual(migrated.albumTemplates, []);
   assert.deepEqual(migrated.settings.librarySavedFilters, []);
   assert.equal(migrated.activeAlbumId, legacy.activeAlbumId);
@@ -148,7 +149,7 @@ test("version 2 project state inherits its artist without interrupting an existi
   legacy.albums[0].artist = "Legacy Ensemble";
   delete legacy.settings.project;
   const migrated = migrateState(legacy);
-  assert.equal(migrated.schemaVersion, 5);
+  assert.equal(migrated.schemaVersion, 6);
   assert.deepEqual(migrated.albumTemplates, []);
   assert.deepEqual(migrated.settings.librarySavedFilters, []);
   assert.deepEqual(migrated.settings.project, { artistName: "Legacy Ensemble", setupComplete: true });
@@ -164,7 +165,7 @@ test("version 3 project state gains a neutral MASTER bus without changing track 
   legacy.albums[0].tracks[0].masterCandidateId = "";
   legacy.albums[0].tracks[0].auditionCandidateId = "";
   const migrated = migrateState(legacy);
-  assert.equal(migrated.schemaVersion, 5);
+  assert.equal(migrated.schemaVersion, 6);
   assert.deepEqual(migrated.albumTemplates, []);
   assert.deepEqual(migrated.settings.librarySavedFilters, []);
   assert.deepEqual(migrated.albums[0].masterBus, normalizeMasterBus());
@@ -180,9 +181,22 @@ test("version 4 project state gains neutral saved library filters", () => {
   legacy.schemaVersion = 4;
   delete legacy.settings.librarySavedFilters;
   const migrated = migrateState(legacy);
-  assert.equal(migrated.schemaVersion, 5);
+  assert.equal(migrated.schemaVersion, 6);
   assert.deepEqual(migrated.settings.librarySavedFilters, []);
   assert.deepEqual(migrated.albums[0].masterBus, normalizeMasterBus());
+});
+
+test("version 5 project state keeps Basic active and gains an independent Premium rack", () => {
+  const legacy = structuredClone(seed);
+  legacy.schemaVersion = 5;
+  delete legacy.albums[0].masteringPath;
+  delete legacy.albums[0].advancedMastering;
+  legacy.albums[0].masterBus.outputGainDb = -3;
+  const migrated = migrateState(legacy);
+  assert.equal(migrated.schemaVersion, 6);
+  assert.equal(migrated.albums[0].masteringPath, "basic");
+  assert.equal(migrated.albums[0].masterBus.outputGainDb, -3);
+  assert.deepEqual(migrated.albums[0].advancedMastering, createDefaultAdvancedMastering());
 });
 
 test("future project-state versions are rejected without guessing", () => {

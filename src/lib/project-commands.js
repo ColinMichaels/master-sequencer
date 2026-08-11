@@ -3,6 +3,7 @@ import { mergeAppearance } from "./appearance.js";
 import { slugify } from "./format.js";
 import { buildImportedTracks } from "./import-tracks.js";
 import { normalizeMasterBus } from "./mastering.js";
+import { createDefaultAdvancedMastering } from "./advanced-mastering.js";
 import { setTrackSequenced } from "./sequence-tracks.js";
 
 export const DEFAULT_PROJECT_ARTIST = "Untitled Artist";
@@ -41,6 +42,8 @@ export const addAlbum = (state, { title, era }) => {
     status: era === "past" ? "archive" : era === "current" ? "working" : "empty",
     orderApproved: false,
     masterBus: normalizeMasterBus(),
+    masteringPath: "basic",
+    advancedMastering: createDefaultAdvancedMastering(),
     delivery: { profileId: "", masterApproved: false, readyToPublish: false },
     baselineTrackOrder: [],
     sequenceVersions: [],

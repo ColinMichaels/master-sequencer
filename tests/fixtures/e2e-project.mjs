@@ -1,8 +1,9 @@
 import { normalizeMasterBus } from "../../src/lib/mastering.js";
 import { createMasteringPresetLibrary } from "../../src/lib/mastering-presets.js";
+import { createDefaultAdvancedMastering } from "../../src/lib/advanced-mastering.js";
 
 export const e2eProjectState = {
-  schemaVersion: 5,
+  schemaVersion: 6,
   albumTemplates: [],
   masteringPresets: createMasteringPresetLibrary(),
   activeAlbumId: "fixture-album",
@@ -20,6 +21,8 @@ export const e2eProjectState = {
     status: "working",
     orderApproved: false,
     masterBus: normalizeMasterBus(),
+    masteringPath: "basic",
+    advancedMastering: createDefaultAdvancedMastering(),
     baselineTrackOrder: ["alpha", "protected"],
     visualAssets: [],
     tracks: [

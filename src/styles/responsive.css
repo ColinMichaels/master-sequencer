@@ -37,6 +37,11 @@
   .lyric-file-row { grid-template-columns: 1fr; }
   .lyric-file-row > div { justify-content: flex-end; }
   .mastering-heading { grid-template-columns: minmax(0, 1fr) auto; }
+  .premium-faceplate, .premium-faceplate--compressor { grid-template-columns: minmax(135px, 0.35fr) minmax(180px, 0.55fr) minmax(0, 1.2fr); }
+  .premium-faceplate--compressor .settings-curve { display: none; }
+  .premium-knob-bank, .premium-knob-bank--compressor { grid-template-columns: repeat(4, minmax(70px, 1fr)); }
+  .premium-knob-bank--limiter { grid-template-columns: repeat(3, minmax(76px, 1fr)); }
+  .premium-oversample { grid-column: 1 / -1; }
   .reference-ab-body { grid-template-columns: minmax(230px, 0.8fr) minmax(260px, 1fr); }
   .reference-ab-toggle { grid-column: 1 / -1; }
   .master-module-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-areas: "eq compressor" "output limiter"; }
@@ -170,6 +175,32 @@
   .lyric-file-row { grid-template-columns: minmax(0, 1fr) auto; }
   .mastering-workspace { height: auto; padding: 0.85rem 0.5rem; overflow: visible; }
   .mastering-heading { display: grid; grid-template-columns: 1fr; }
+  .mastering-tier-selector { grid-template-columns: 1fr; }
+  .mastering-tier-selector > div:last-child { grid-template-columns: 1fr; }
+  .premium-rack-heading, .premium-rack-toolbar { align-items: stretch; flex-direction: column; }
+  .premium-rack-master-actions { justify-content: flex-start; }
+  .premium-rack-toolbar > div:first-child { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+  .premium-rack-toolbar select { width: 100%; min-width: 0; }
+  .premium-plugin-boundary { max-width: none; }
+  .premium-rack-layout { grid-template-columns: 1fr; }
+  .premium-patch-bay { border-right: 0; border-bottom: 1px solid #514d45; }
+  .premium-patch-bay ol { display: flex; overflow-x: auto; }
+  .premium-patch-bay ol::before { top: 15px; right: 30px; bottom: auto; left: 30px; width: auto; height: 3px; }
+  .premium-patch-bay li { min-width: 145px; }
+  .premium-patch-bay li button, .premium-patch-terminal { min-height: 72px; }
+  .premium-patch-bay > p { display: none; }
+  .premium-equipment-rack { padding: 7px; }
+  .premium-rack-unit { padding-inline: 0.75rem; }
+  .premium-unit-heading { grid-template-columns: auto minmax(0, 1fr); }
+  .premium-unit-actions { grid-column: 1 / -1; justify-content: flex-end; }
+  .premium-faceplate, .premium-faceplate--compressor, .premium-faceplate--output { grid-template-columns: 1fr; }
+  .premium-brand { padding: 0; text-align: center; }
+  .premium-vu { min-height: 112px; }
+  .premium-faceplate--compressor .settings-curve { display: block; }
+  .premium-knob-bank, .premium-knob-bank--compressor { grid-template-columns: repeat(3, minmax(72px, 1fr)); }
+  .premium-knob-bank--eq { grid-template-columns: repeat(2, minmax(80px, 1fr)); }
+  .premium-knob-bank--limiter { grid-template-columns: repeat(3, minmax(70px, 1fr)); }
+  .premium-exact-values { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .mastering-heading dl { display: none; }
   .mastering-delivery-controls { grid-template-columns: minmax(0, 1fr) auto auto; }
   .mastering-delivery-controls .primary-button { grid-column: 1 / -1; width: 100%; }

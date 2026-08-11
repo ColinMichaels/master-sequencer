@@ -21,7 +21,7 @@ const NumberField = ({ limits, minimum, maximum, ...props }) => (
 
 const EMPTY_PRESET_LIBRARY = Object.freeze({});
 
-const ModuleSwitch = ({ label, checked, onChange }) => (
+export const ModuleSwitch = ({ label, checked, onChange }) => (
   <label className={`master-module-switch ${checked ? "is-enabled" : ""}`} data-tooltip={checked ? label.replace(/^Enable/, "Disable") : label}>
     <input type="checkbox" checked={checked} aria-label={label} onChange={(event) => onChange(event.target.checked)} />
     <span aria-hidden="true"><i /></span>
@@ -49,7 +49,7 @@ const displayControlValue = (value, suffix, precision) => {
   return `${number.toFixed(digits)}${suffix ? `${separator}${suffix}` : ""}`;
 };
 
-function RotaryControl({ label, value, limits, minimum, maximum, step = 0.1, suffix = "", precision, scale = "linear", disabled = false, compact = false, onChange }) {
+export function RotaryControl({ label, value, limits, minimum, maximum, step = 0.1, suffix = "", precision, scale = "linear", disabled = false, compact = false, onChange }) {
   const min = limits?.minimum ?? minimum;
   const max = limits?.maximum ?? maximum;
   const safeValue = clamp(Number(value), min, max);
@@ -155,7 +155,7 @@ function useLiveEqImpact({ active, meteringRef, eq }) {
   return impact;
 }
 
-function EqResponseGraph({ eq, meteringRef, active }) {
+export function EqResponseGraph({ eq, meteringRef, active }) {
   const liveImpact = useLiveEqImpact({ active, meteringRef, eq });
   const values = useMemo(() => Array.from({ length: EQ_LIVE_POINT_COUNT }, (_, index) => {
     const frequency = 20 * (1_000 ** (index / (EQ_LIVE_POINT_COUNT - 1)));
@@ -208,8 +208,8 @@ function useLiveGainReduction({ active, meteringRef, nodeKey }) {
   return reductionDb;
 }
 
-function CompressorTransferGraph({ compressor, meteringRef, active }) {
-  const reductionDb = useLiveGainReduction({ active, meteringRef, nodeKey: "compressor" });
+export function CompressorTransferGraph({ compressor, meteringRef, active, meterNodeKey = "compressor" }) {
+  const reductionDb = useLiveGainReduction({ active, meteringRef, nodeKey: meterNodeKey });
   const values = Array.from({ length: 61 }, (_, index) => {
     const input = -60 + index;
     const compressed = input <= compressor.thresholdDb
@@ -246,8 +246,8 @@ function CompressorTransferGraph({ compressor, meteringRef, active }) {
   );
 }
 
-function LimiterTransferGraph({ limiter, meteringRef, active }) {
-  const reductionDb = useLiveGainReduction({ active, meteringRef, nodeKey: "limiter" });
+export function LimiterTransferGraph({ limiter, meteringRef, active, meterNodeKey = "limiter" }) {
+  const reductionDb = useLiveGainReduction({ active, meteringRef, nodeKey: meterNodeKey });
   const values = Array.from({ length: 61 }, (_, index) => Math.min(-60 + index, limiter.ceilingDbfs));
   const markerY = 112 - ((limiter.ceilingDbfs + 60) / 60) * 112;
   const reductionHeight = (clamp(reductionDb, 0, MAX_LIVE_LIMITER_REDUCTION_DB) / MAX_LIVE_LIMITER_REDUCTION_DB) * 112;
@@ -278,7 +278,7 @@ function LimiterTransferGraph({ limiter, meteringRef, active }) {
   );
 }
 
-const ManualValues = ({ children }) => (
+export const ManualValues = ({ children }) => (
   <details className="manual-control-bank">
     <summary><strong>Exact values</strong><small><span>Show text controls</span><span>Hide text controls</span></small></summary>
     <div className="manual-control-content">{children}</div>

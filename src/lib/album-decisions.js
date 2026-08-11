@@ -1,5 +1,6 @@
 import { slugify } from "./format.js";
 import { normalizeMasterBus } from "./mastering.js";
+import { createDefaultAdvancedMastering } from "./advanced-mastering.js";
 import { isTrackSequenced } from "./sequence-tracks.js";
 
 const uniqueId = (base, existingIds) => {
@@ -166,6 +167,8 @@ export const createAlbumFromTemplate = (state, templateId, title) => {
     status: "empty",
     orderApproved: false,
     masterBus: normalizeMasterBus(),
+    masteringPath: "basic",
+    advancedMastering: createDefaultAdvancedMastering(),
     delivery: { profileId: "", masterApproved: false, readyToPublish: false },
     baselineTrackOrder: tracks.map((track) => track.id),
     sequenceVersions: [],

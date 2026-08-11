@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { calculateProgramTimeline, normalizeMasterBus, normalizeMastering } from "../src/lib/mastering.js";
+import { ADVANCED_PROCESSOR_TYPES, normalizeAdvancedMastering, normalizeMasteringPath, processorDefinition } from "../src/lib/advanced-mastering.js";
 import { validateDeliveryRequest } from "../src/lib/delivery-profiles.js";
 import { sourceKey } from "./audio-library.mjs";
 
@@ -177,7 +178,47 @@ export const buildMasterBusFilters = (masterBus = {}) => {
   return { settings, filters };
 };
 
-export const buildRenderGraph = (entries, { singleTrack = false, masterBus = {} } = {}) => {
+export const buildAdvancedMasteringFilters = (advancedMastering = {}) => {
+  const settings = normalizeAdvancedMastering(advancedMastering);
+  const filters = [];
+  if (settings.bypass) return { settings, filters };
+  for (const node of settings.nodes) {
+    if (node.bypass) continue;
+    const parameters = node.parameters;
+    if (node.typeId === ADVANCED_PROCESSOR_TYPES.eq) {
+      if (parameters.lowShelf.gainDb !== 0) filters.push(`lowshelf=f=${seconds(parameters.lowShelf.frequencyHz)}:g=${seconds(parameters.lowShelf.gainDb)}:p=2`);
+      if (parameters.midBand.gainDb !== 0) filters.push(`equalizer=f=${seconds(parameters.midBand.frequencyHz)}:t=q:w=${seconds(parameters.midBand.q)}:g=${seconds(parameters.midBand.gainDb)}`);
+      if (parameters.highShelf.gainDb !== 0) filters.push(`highshelf=f=${seconds(parameters.highShelf.frequencyHz)}:g=${seconds(parameters.highShelf.gainDb)}:p=2`);
+    } else if (node.typeId === ADVANCED_PROCESSOR_TYPES.compressor) {
+      filters.push([
+        `acompressor=threshold=${decibelsToAmplitude(parameters.thresholdDb)}`,
+        `ratio=${seconds(parameters.ratio)}`,
+        `attack=${seconds(parameters.attackMs)}`,
+        `release=${seconds(parameters.releaseMs)}`,
+        `knee=${seconds(parameters.knee)}`,
+        `makeup=${decibelsToAmplitude(parameters.makeupGainDb)}`,
+        `mix=${seconds(parameters.mix)}`,
+        `link=${parameters.link}`,
+        `detection=${parameters.detection}`,
+      ].join(":"));
+    } else if (node.typeId === ADVANCED_PROCESSOR_TYPES.output) {
+      if (parameters.outputGainDb !== 0) filters.push(`volume=${seconds(parameters.outputGainDb)}dB`);
+    } else if (node.typeId === ADVANCED_PROCESSOR_TYPES.limiter) {
+      if (parameters.oversample > 1) filters.push(`aresample=${48_000 * parameters.oversample}`);
+      filters.push([
+        `alimiter=limit=${decibelsToAmplitude(parameters.ceilingDbfs)}`,
+        `attack=${seconds(parameters.attackMs)}`,
+        `release=${seconds(parameters.releaseMs)}`,
+        "level=false",
+        "latency=true",
+      ].join(":"));
+      if (parameters.oversample > 1) filters.push("aresample=48000");
+    }
+  }
+  return { settings, filters };
+};
+
+export const buildRenderGraph = (entries, { singleTrack = false, masterBus = {}, masteringPath = "basic", advancedMastering = {} } = {}) => {
   if (!entries.length) throw new Error("No playable audio is available to render.");
   const filters = [];
   const normalized = entries.map((entry, index) => {
@@ -202,12 +243,13 @@ export const buildRenderGraph = (entries, { singleTrack = false, masterBus = {} 
     }
     current = output;
   }
-  const master = buildMasterBusFilters(masterBus);
+  const activePath = normalizeMasteringPath(masteringPath);
+  const master = activePath === "advanced" ? buildAdvancedMasteringFilters(advancedMastering) : buildMasterBusFilters(masterBus);
   if (master.filters.length) {
     filters.push(`[${current}]${master.filters.join(",")}[mastered]`);
     current = "mastered";
   }
-  return { filterComplex: filters.join(";"), outputLabel: current, normalized, masterBus: master.settings };
+  return { filterComplex: filters.join(";"), outputLabel: current, normalized, masteringPath: activePath, masterBus: normalizeMasterBus(masterBus), advancedMastering: normalizeAdvancedMastering(advancedMastering) };
 };
 
 const formatCueTime = (time) => {
@@ -216,13 +258,18 @@ const formatCueTime = (time) => {
   return `${minutes.toString().padStart(2, "0")}:${remainder.toFixed(3).padStart(6, "0")}`;
 };
 
-const createCueSheet = ({ album, timeline, masterBus, audioName, format, createdAt, warnings }) => {
+const createCueSheet = ({ album, timeline, masteringPath, masterBus, advancedMastering, audioName, format, createdAt, warnings }) => {
+  const masterSummary = masteringPath === "advanced"
+    ? advancedMastering.bypass
+      ? "Premium rack bypassed"
+      : `Premium rack: ${advancedMastering.nodes.map((node) => `${processorDefinition(node.typeId)?.name || node.typeId}${node.bypass ? " (bypassed)" : ""}`).join(" → ") || "direct input to output"}`
+    : masterBus.bypass ? "bypassed" : `EQ ${masterBus.eq.enabled ? "on" : "off"} · compressor ${masterBus.compressor.enabled ? "on" : "off"} · output ${formatDb(masterBus.outputGainDb)} · limiter ${masterBus.limiter.enabled ? `${masterBus.limiter.ceilingDbfs} dBFS` : "off"}`;
   const lines = [
     `${album.artist} — ${album.title}`,
     `Rendered: ${createdAt}`,
     `Audio: ${audioName}`,
     `Format: ${format === "wav" ? "WAV · 24-bit PCM · 48 kHz" : "MP3 · 320 kbps · 48 kHz"}`,
-    `MASTER bus: ${masterBus.bypass ? "bypassed" : `EQ ${masterBus.eq.enabled ? "on" : "off"} · compressor ${masterBus.compressor.enabled ? "on" : "off"} · output ${formatDb(masterBus.outputGainDb)} · limiter ${masterBus.limiter.enabled ? `${masterBus.limiter.ceilingDbfs} dBFS` : "off"}`}`,
+    `${masteringPath === "advanced" ? "MASTER path" : "MASTER bus"}: ${masterSummary}`,
     "",
     "PROGRAM CUES",
   ];
@@ -300,7 +347,7 @@ export const renderAudio = async ({ album, scope, trackId, candidateId = "", for
   const previewDerivative = ["preview", "comparison"].includes(scope);
   const renderFormat = previewDerivative ? "mp3" : format;
   const singleTrack = entries.length === 1;
-  const graph = buildRenderGraph(entries, { singleTrack, masterBus: album.masterBus });
+  const graph = buildRenderGraph(entries, { singleTrack, masterBus: album.masterBus, masteringPath: album.masteringPath, advancedMastering: album.advancedMastering });
   const timeline = calculateProgramTimeline(entries);
   const expectedDuration = timeline.at(-1)?.outputEnd || 0;
   const createdAt = new Date().toISOString();
@@ -341,9 +388,9 @@ export const renderAudio = async ({ album, scope, trackId, candidateId = "", for
     if (!previewDerivative) {
       cuePath = path.join(directory, `${path.basename(audioName, `.${renderFormat}`)}-cue-sheet.txt`);
       manifestPath = path.join(directory, `${path.basename(audioName, `.${renderFormat}`)}-render-manifest.json`);
-      await writeFile(cuePath, createCueSheet({ album, timeline, masterBus: graph.masterBus, audioName, format: renderFormat, createdAt, warnings }));
+      await writeFile(cuePath, createCueSheet({ album, timeline, masteringPath: graph.masteringPath, masterBus: graph.masterBus, advancedMastering: graph.advancedMastering, audioName, format: renderFormat, createdAt, warnings }));
       await writeFile(manifestPath, `${JSON.stringify({
-        schemaVersion: 2,
+        schemaVersion: 3,
         renderId: id,
         createdAt,
         album: { id: album.id, artist: album.artist, title: album.title },
@@ -359,6 +406,8 @@ export const renderAudio = async ({ album, scope, trackId, candidateId = "", for
         audioFile: audioName,
         warnings,
         masterBus: graph.masterBus,
+        masteringPath: graph.masteringPath,
+        advancedMastering: graph.advancedMastering,
         tracks: timeline.map((entry) => ({
           id: entry.track.id,
           title: entry.track.title,

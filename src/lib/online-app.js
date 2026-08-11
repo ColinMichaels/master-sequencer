@@ -1,4 +1,5 @@
 import { normalizeMasterBus } from "./mastering.js";
+import { createDefaultAdvancedMastering, normalizeAdvancedMastering } from "./advanced-mastering.js";
 
 const STORAGE_KEY = "project-sequencer-online-v1";
 const LEGACY_STORAGE_KEY = "project-sequencer-hosted-tester-v3";
@@ -87,7 +88,7 @@ const componentPresets = () => ({
 });
 
 export const createOnlineAppState = () => ({
-  schemaVersion: 5,
+  schemaVersion: 6,
   albumTemplates: [],
   masteringPresets: componentPresets(),
   activeAlbumId: "cosmic-reggae-sessions",
@@ -105,6 +106,8 @@ export const createOnlineAppState = () => ({
     status: "working",
     orderApproved: false,
     masterBus: normalizeMasterBus(),
+    masteringPath: "basic",
+    advancedMastering: createDefaultAdvancedMastering(),
     baselineTrackOrder: PREVIEW_SOURCES.map((source) => source.id),
     visualAssets: [],
     tracks: PREVIEW_SOURCES.map((source, index) => ({
@@ -149,11 +152,12 @@ const initialWorkspace = () => {
 
 const validateState = (state) => {
   if (!state || typeof state !== "object" || !Array.isArray(state.albums)) throw new Error("That project is not valid Project Sequencer data.");
-  if (state.schemaVersion !== 5) {
-    const direction = Number(state.schemaVersion) > 5 ? "newer than" : "older than";
+  if (state.schemaVersion === 5) state = { ...state, schemaVersion: 6, albums: state.albums.map((album) => ({ ...album, masteringPath: "basic", advancedMastering: createDefaultAdvancedMastering() })) };
+  if (state.schemaVersion !== 6) {
+    const direction = Number(state.schemaVersion) > 6 ? "newer than" : "older than";
     throw new Error(`Project state version ${state.schemaVersion ?? "unknown"} is ${direction} this online app supports.`);
   }
-  return clone(state);
+  return clone({ ...state, albums: state.albums.map((album) => ({ ...album, masteringPath: album.masteringPath === "advanced" ? "advanced" : "basic", advancedMastering: normalizeAdvancedMastering(album.advancedMastering) })) });
 };
 
 const cleanText = (value, label) => {
@@ -167,7 +171,7 @@ const slugify = (value) => value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-"
 const freshProjectState = ({ artistName, firstAlbumTitle, era, appearance }) => {
   const albumId = slugify(firstAlbumTitle);
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     albumTemplates: [],
     masteringPresets: componentPresets(),
     activeAlbumId: albumId,
@@ -185,6 +189,8 @@ const freshProjectState = ({ artistName, firstAlbumTitle, era, appearance }) => 
       status: "empty",
       orderApproved: false,
       masterBus: normalizeMasterBus(),
+      masteringPath: "basic",
+      advancedMastering: createDefaultAdvancedMastering(),
       baselineTrackOrder: [],
       visualAssets: [],
       tracks: [],

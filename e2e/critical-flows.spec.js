@@ -43,7 +43,7 @@ test("first-time visitors see help once and can reopen app instructions from qui
 test("bootstrap renders the project and protected sources remain masked", async ({ page, request }) => {
   await expect(page.locator(".layout-preview")).toHaveCount(0);
   const bootstrap = await (await request.get("/api/bootstrap")).json();
-  expect(bootstrap.state.schemaVersion).toBe(5);
+  expect(bootstrap.state.schemaVersion).toBe(6);
   expect(bootstrap.library).toHaveLength(4);
   expect(bootstrap.library.some((file) => file.name === "Hidden Coda.wav")).toBeFalsy();
   expect(bootstrap.library.some((file) => file.name === "[Private source file]")).toBeTruthy();
@@ -182,6 +182,60 @@ test("Mastering keeps delivery compact and reveals secondary guidance on demand"
   await masterBusHelp.focus();
   await expect(masterBusTooltip).toBeVisible();
   await expect(masterBusTooltip).toHaveText("Every preview and exported track passes through this shared chain.");
+});
+
+test("Premium mastering patches repeated equipment in the same saved order used by the audio path", async ({ page, request }) => {
+  await page.getByRole("button", { name: "Mastering", exact: true }).click();
+  await page.getByRole("button", { name: /PREMIUM Analog Rack/ }).click();
+
+  const rack = page.getByRole("region", { name: "Advanced Mastering Rack" });
+  const patchButtons = rack.locator(".premium-patch-bay li button");
+  await expect(rack).toBeVisible();
+  await expect(rack.locator(".premium-rack-unit")).toHaveCount(4);
+  await expect(patchButtons).toContainText(["01 · EQ", "02 · COMP", "03 · OUT", "04 · LIMIT"]);
+
+  const patchItems = rack.locator(".premium-patch-bay li");
+  await patchItems.nth(1).dragTo(patchItems.nth(2));
+  await expect(patchButtons).toContainText(["01 · COMP", "02 · EQ", "03 · OUT", "04 · LIMIT"]);
+  await rack.getByRole("button", { name: "Duplicate Program Equalizer", exact: true }).click();
+  await expect(rack.locator(".premium-rack-unit")).toHaveCount(5);
+  await expect(rack.locator(".premium-rack-unit").getByText("Program Equalizer Copy", { exact: true })).toBeVisible();
+
+  await rack.getByRole("checkbox", { name: "Enable Bus Compressor", exact: true }).click();
+  await expect(rack.locator(".premium-rack-unit").first()).toHaveAttribute("aria-label", /bypassed/);
+  await rack.getByRole("slider", { name: "Output level graphical control", exact: true }).fill("-1.5");
+  await rack.getByLabel("Equipment to add", { exact: true }).selectOption("sequencer.precision-limiter");
+  await rack.getByRole("button", { name: "Add to end of rack", exact: true }).click();
+  await expect(rack.locator(".premium-rack-unit")).toHaveCount(6);
+  await expect(page.locator(".status-strip [role='status']")).toContainText("Saved locally");
+
+  const bootstrap = await (await request.get("/api/bootstrap")).json();
+  const savedAlbum = bootstrap.state.albums[0];
+  expect(savedAlbum.masteringPath).toBe("advanced");
+  expect(savedAlbum.advancedMastering.nodes.map((node) => node.typeId)).toEqual([
+    "sequencer.bus-compressor",
+    "sequencer.program-eq",
+    "sequencer.program-eq",
+    "sequencer.master-output",
+    "sequencer.precision-limiter",
+    "sequencer.precision-limiter",
+  ]);
+  expect(savedAlbum.advancedMastering.nodes[0].bypass).toBe(true);
+  expect(savedAlbum.advancedMastering.nodes[3].parameters.outputGainDb).toBe(-1.5);
+  expect(savedAlbum.advancedMastering.connections).toEqual([
+    { from: "input", to: savedAlbum.advancedMastering.nodes[0].id },
+    ...savedAlbum.advancedMastering.nodes.slice(0, -1).map((node, index) => ({ from: node.id, to: savedAlbum.advancedMastering.nodes[index + 1].id })),
+    { from: savedAlbum.advancedMastering.nodes.at(-1).id, to: "output" },
+  ]);
+
+  await page.reload();
+  await page.getByRole("button", { name: "Mastering", exact: true }).click();
+  await expect(page.getByRole("button", { name: /PREMIUM Analog Rack/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".premium-patch-bay li button")).toContainText(["01 · COMP", "02 · EQ", "03 · EQ", "04 · OUT", "05 · LIMIT", "06 · LIMIT"]);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator(".premium-patch-bay")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
 });
 
 test("long sequence lists scroll inside the workspace while controls stay visible", async ({ page, request }) => {
@@ -639,6 +693,47 @@ test("the sequence row follows the main player track and playback state", async 
   await expect(alphaRow).toHaveClass(/is-playing/);
 });
 
+test("mastering follows shared playback, seeks from its waveform, and reveals transition details at the markers", async ({ page }) => {
+  await page.getByRole("button", { name: "Mastering", exact: true }).click();
+
+  const trackList = page.getByRole("navigation", { name: "Fixture Album mastering tracks" });
+  const alphaTrack = trackList.getByRole("button", { name: /Alpha Tone/ });
+  const waveform = page.getByRole("group", { name: /Waveform for Alpha Tone/ });
+  const transitionDetail = page.locator(".transport-transition");
+
+  await expect(transitionDetail).toBeHidden();
+  await page.locator(".transport-trim-line--start i").hover();
+  await expect(transitionDetail).toBeVisible();
+  await page.locator(".mastering-editor > header").hover();
+  await expect(transitionDetail).toBeHidden();
+
+  const waveformBox = await waveform.boundingBox();
+  await waveform.click({ position: { x: waveformBox.width * 0.6, y: waveformBox.height * 0.5 } });
+  await expect(alphaTrack).toHaveClass(/is-playing/);
+  await expect(alphaTrack).toHaveAttribute("aria-label", /Playing.*pause/);
+  await expect(page.locator(".transport-copy strong")).toHaveText("Alpha Tone");
+  await expect.poll(() => page.locator(".transport-audio-source").evaluate((audio) => audio.currentTime)).toBeGreaterThan(0.5);
+  await expect(page.locator(".waveform-playhead")).toBeVisible();
+
+  await alphaTrack.click();
+  await expect(alphaTrack).not.toHaveClass(/is-playing/);
+  await expect(alphaTrack).toHaveAttribute("aria-label", /Paused.*resume/);
+  await expect(page.locator(".transport-playback-toggle")).toHaveAttribute("aria-label", "Resume playback");
+
+  await page.getByRole("button", { name: "Sequence", exact: true }).click();
+  const protectedRow = page.locator(".sequence-track").filter({ hasText: "[SIGNAL SOURCE WITHHELD]" });
+  await protectedRow.locator(".track-title").click();
+  await expect(protectedRow).toHaveClass(/is-playing/);
+  await protectedRow.locator(".track-status").click();
+  await expect(protectedRow).not.toHaveClass(/is-playing/);
+
+  await page.getByRole("button", { name: "Mastering", exact: true }).click();
+  const protectedTrack = trackList.getByRole("button", { name: /SIGNAL SOURCE WITHHELD/ });
+  await expect(protectedTrack).toHaveClass(/is-active/);
+  await expect(protectedTrack).toHaveAttribute("aria-label", /Paused.*resume/);
+  await expect(page.locator(".mastering-editor > header h2")).toHaveText("[SIGNAL SOURCE WITHHELD]");
+});
+
 test("album decisions persist versions, transition notes, explicit approval, and safe templates", async ({ page, request }) => {
   await page.getByRole("button", { name: "Album Decisions" }).click();
   const primaryDecisionGrid = page.locator(".decision-primary-grid");
@@ -822,6 +917,10 @@ test("mastering analysis, chapter cues, and delivery authority remain explicit",
   await page.getByLabel("Bypass MASTER").uncheck();
   await expect(headerMeter).toHaveAttribute("data-meter-routing", "mastering");
   await expect.poll(() => headerMeter.evaluate((element) => getComputedStyle(element).borderColor)).toBe("rgb(168, 201, 47)");
+  // The earlier meter exercise can legitimately advance the sequence to its
+  // next source. Re-select the intended mastering track before the A/B check.
+  await page.locator(".mastering-track-list").getByRole("button", { name: /^Alpha Tone\./ }).click();
+  await expect(page.locator(".transport-copy")).toContainText("Alpha Tone");
   await page.locator(".reference-ab-panel > summary").click();
   await page.getByLabel("Reference audio track").selectOption("test-root::Alternate Mix.mp3");
   await page.getByRole("button", { name: /B Clean reference/ }).click();

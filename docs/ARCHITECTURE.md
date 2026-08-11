@@ -177,6 +177,10 @@ locally. Undo/redo is session-local; autosave persists the resulting state.
 Portable bundles are generated on demand and downloaded directly without
 creating a second media tree.
 
+Schema version 6 keeps the fixed Basic MASTER bus intact and adds a separately
+stored Premium serial rack. Migration always leaves Basic selected, so opening
+an older project does not change its live or rendered sound.
+
 ## Adding a feature safely
 
 1. Put domain rules in a pure `src/lib` module when they can be independent of
@@ -199,16 +203,23 @@ commands, state migrations, and style layers. `src/App.jsx` remains the primary
 client composition hub; future feature families should keep moving domain
 rules into focused modules instead of growing it indefinitely. The prioritized
 plan is maintained in [QUALITY-REVIEW-AND-ROADMAP.md](./QUALITY-REVIEW-AND-ROADMAP.md).
-The proposed Basic/Premium mastering split, processor graph, shared DSP core,
-and isolated native plug-in companion are specified separately in
+The schema-6 Basic/Premium mastering split and serial processor graph are now
+implemented. `src/lib/advanced-mastering.js` owns normalization, equipment
+definitions, serial connections, and the 12-instance safety limit;
+`AdvancedMasteringRack.jsx` owns the hardware rack and patch lane; the live Web
+Audio slot pool and FFmpeg filter builder consume the same ordered node list.
+Basic remains the default after migration, and each path keeps independent
+state. The higher-fidelity shared DSP core and isolated native plug-in companion
+remain specified separately in
 [ADVANCED-MASTERING-AUDIO-PIPELINE-PLAN.md](./ADVANCED-MASTERING-AUDIO-PIPELINE-PLAN.md).
 
 ## Verification layers
 
 - `npm test` covers pure domain rules, server boundaries, migrations, recovery,
-  render jobs, and a real generated-audio FFmpeg print.
+  render jobs, Basic prints, and a real 4x-oversampled Premium FFmpeg print.
 - `npm run test:browser` starts an isolated repository-owned server with tiny
   generated fixtures. It covers persistence, privacy masking, independent
   audition/master choices, import rejection, modal focus, filters, mobile
-  overflow, a real render job, and byte-range delivery.
+  overflow, drag-to-repatch Premium persistence, a real render job, and
+  byte-range delivery.
 - Browser/IAB remains the human-visible desktop/mobile and keyboard QA path.

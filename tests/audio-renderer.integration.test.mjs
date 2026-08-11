@@ -6,6 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import { renderAudio } from "../server/audio-renderer.mjs";
 import { generateSineWave, measurePeakDb, probeAudio } from "./helpers/audio-fixtures.mjs";
+import { ADVANCED_PROCESSOR_TYPES, createAdvancedProcessor, createDefaultAdvancedMastering } from "../src/lib/advanced-mastering.js";
 
 const checksum = async (filePath) => createHash("sha256").update(await readFile(filePath)).digest("hex");
 
@@ -92,7 +93,8 @@ test("a generated short FFmpeg print preserves sources and keeps audio, cue, and
   assert.match(cue, /2\. 00:00\.650\s+Second Tone/);
   assert.match(cue, /MASTER bus: EQ on · compressor on · output -1 dB · limiter -1 dBFS/);
   assert.match(cue, /gain -3 dB/);
-  assert.equal(manifest.schemaVersion, 2);
+  assert.equal(manifest.schemaVersion, 3);
+  assert.equal(manifest.masteringPath, "basic");
   assert.equal(manifest.renderId, result.id);
   assert.equal(manifest.audioFile, result.audioName);
   assert.equal(manifest.delivery.profileId, "archive-wav");
@@ -143,6 +145,40 @@ test("an individual track print applies track gain and the album MASTER bus", as
   assert.equal(manifest.scope, "track");
   assert.equal(manifest.tracks[0].gainDb, -3);
   assert.equal(manifest.masterBus.outputGainDb, -6);
+});
+
+test("a short Premium rack print follows the patched order with oversampling and preserves its source", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "project-sequencer-premium-print-"));
+  const sourcePath = path.join(root, "source.wav");
+  await generateSineWave(sourcePath, { duration: 0.45, frequency: 720 });
+  const sourceChecksum = await checksum(sourcePath);
+  const limiter = createAdvancedProcessor(ADVANCED_PROCESSOR_TYPES.limiter, "limit-first");
+  limiter.parameters.ceilingDbfs = -1.1;
+  limiter.parameters.oversample = 4;
+  const output = createAdvancedProcessor(ADVANCED_PROCESSOR_TYPES.output, "output-second");
+  output.parameters.outputGainDb = -2;
+  const compressor = createAdvancedProcessor(ADVANCED_PROCESSOR_TYPES.compressor, "compressor-third");
+  compressor.parameters.thresholdDb = -22;
+  const advancedMastering = { ...createDefaultAdvancedMastering(), nodes: [limiter, output, compressor] };
+  const album = {
+    id: "premium-print",
+    artist: "Fixture Artist",
+    title: "Premium Rack Fixture",
+    masteringPath: "advanced",
+    advancedMastering,
+    tracks: [{ id: "source", title: "Premium Source", auditionCandidateId: "source-a", candidates: [{ id: "source-a", sourceRef: { rootId: "fixture", relativePath: "source.wav" } }] }],
+  };
+  const result = await renderAudio({ album, scope: "track", trackId: "source", format: "wav", getLibraryFile: () => ({ absolutePath: sourcePath, duration: 0.45 }), outputRoot: path.join(root, "exports") });
+  const probe = await probeAudio(result.audioPath);
+  assert.equal(probe.streams[0].codec_name, "pcm_s24le");
+  assert.equal(probe.streams[0].sample_rate, "48000");
+  assert.equal(await checksum(sourcePath), sourceChecksum);
+  const manifest = JSON.parse(await readFile(result.manifestPath, "utf8"));
+  const cue = await readFile(result.cuePath, "utf8");
+  assert.equal(manifest.masteringPath, "advanced");
+  assert.deepEqual(manifest.advancedMastering.nodes.map((node) => node.id), ["limit-first", "output-second", "compressor-third"]);
+  assert.equal(manifest.advancedMastering.nodes[0].parameters.oversample, 4);
+  assert.match(cue, /MASTER path: Premium rack: Precision Limiter → Master Output → Bus Compressor/);
 });
 
 test("cancelling a real FFmpeg print removes its partial derivative directory", async () => {

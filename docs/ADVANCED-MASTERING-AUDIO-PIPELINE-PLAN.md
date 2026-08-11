@@ -2,9 +2,49 @@
 
 Plan date: 2026-08-11
 
-Status: product and engineering concept; not yet an implementation or release approval
+Status: serial rack foundation implemented; native Premium DSP and VST3 host remain planned; not a release approval
 
 ![Premium mastering rack concept](./concepts/premium-mastering-rack-concept-v1.png)
+
+## Implementation checkpoint — 2026-08-11
+
+Implemented on the `codex/advanced-mastering-rack` branch:
+
+- Schema 6 keeps `album.masterBus` intact, migrates every existing album with
+  `masteringPath: basic`, and adds an independent normalized Premium rack.
+- The first serial rack supports up to 12 built-in EQ, compressor, output, and
+  precision-limiter instances with insert, duplicate, drag reorder, arrow
+  reorder, bypass, remove, reset, and exact-value controls.
+- Stored `nodes` plus canonical `connections` form one input-to-output chain.
+  Invalid types, duplicate identifiers, unsafe values, and non-serial
+  connections fail validation.
+- The browser live path uses a preallocated processor-slot pool so reordering
+  does not recreate the media source or interrupt the shared transport. Basic
+  and Premium audition paths remain separately gain-routed, and clean
+  references/rendered previews retain their direct bypass.
+- The authoritative FFmpeg graph consumes the same ordered Premium nodes.
+  Limiter prints support 1x, 2x, or 4x processing rate and return to the
+  documented 48 kHz output. Cue sheets and schema-3 render manifests record the
+  selected tier, rack order, bypass state, parameters, and connections.
+- The CSS/SVG rack follows Concept A with a patch lane, rack rails, screws,
+  brushed faceplates, physical knobs, a compressor VU, technical curves,
+  responsive phone controls, and native accessible inputs.
+- Unit, state-migration, live-graph, FFmpeg integration, and rendered browser
+  coverage prove repeated instances, drag-to-repatch persistence, Basic/Premium
+  isolation, oversampled printing, mobile containment, and source checksums.
+
+Still intentionally gated:
+
+- Installed VST3 or AU binaries are not loaded by the browser or Node server.
+  The UI names this boundary instead of pretending a third-party processor is
+  active. Phase 5 still requires the isolated, signed native companion, SDK and
+  license review, crash recovery, latency compensation, state chunks, and a
+  generic fallback editor.
+- The built-in rack currently shares the proven Basic Web Audio/FFmpeg
+  algorithms, with order, repetition, limiter print oversampling, and hardware
+  interaction as its added capabilities. The C++ analog-modelled DSP core,
+  BS.1770 true-peak qualification, richer EQ bands, and colored compressor
+  modes remain Phase 3 work and must not be claimed as complete.
 
 ## Product decision
 

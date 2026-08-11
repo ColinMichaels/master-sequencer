@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { normalizeMasterBus } from "../src/lib/mastering.js";
+import { createDefaultAdvancedMastering } from "../src/lib/advanced-mastering.js";
 import { createMasteringPresetLibrary } from "../src/lib/mastering-presets.js";
 import { CURRENT_SCHEMA_VERSION, migrateState, validateState } from "./state-schema.mjs";
 
@@ -59,6 +60,8 @@ const freshProjectState = ({ artistName, firstAlbumTitle, era, appearance }) => 
       status: "empty",
       orderApproved: false,
       masterBus: normalizeMasterBus(),
+      masteringPath: "basic",
+      advancedMastering: createDefaultAdvancedMastering(),
       baselineTrackOrder: [],
       visualAssets: [],
       tracks: [],
