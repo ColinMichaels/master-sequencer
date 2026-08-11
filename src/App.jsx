@@ -91,27 +91,26 @@ function AddTracksForm({ album, scanning, hostedDemo = false, onChoose, onReview
   return (
     <div className="modal-form add-tracks-form">
       <p>Add tracks to <strong>{album.title}</strong>. Audio stays where it is; Project Sequencer saves only the path and your project decisions.</p>
-      {hostedDemo ? <p className="hosted-capability-note"><strong>Hosted tester:</strong> assign the official Album 1 previews from Audio Library, or add a blank track. Device audio and folder paths are available only in the local app.</p> : <>
+      {hostedDemo && <p className="hosted-capability-note"><strong>Device audio stays private:</strong> choose files or a folder for this browser session. Audio plays directly from your device and is never uploaded.</p>}
       <div className="native-path-grid">
         <button type="button" className="native-path-field" disabled={scanning} onClick={() => onChoose("files")}>
           <MusicIcon />
-          <span><strong>Audio file path</strong><small>{scanning ? "Waiting for the system picker…" : "Click to choose one or more audio files"}</small></span>
+          <span><strong>{hostedDemo ? "Audio files" : "Audio file path"}</strong><small>{scanning ? "Waiting for the system picker…" : "Click to choose one or more audio files"}</small></span>
           <em>Browse</em>
         </button>
         <button type="button" className="native-path-field native-path-field--yellow" disabled={scanning} onClick={() => onChoose("folder")}>
           <FolderIcon />
-          <span><strong>Audio folder path</strong><small>Click to choose a full folder</small></span>
+          <span><strong>{hostedDemo ? "Audio folder" : "Audio folder path"}</strong><small>Click to choose a full folder</small></span>
           <em>Browse</em>
         </button>
       </div>
-      <details className="manual-path-fallback">
+      {!hostedDemo && <details className="manual-path-fallback">
         <summary>Enter a path manually</summary>
         <form className="inline-path-form" onSubmit={(event) => { event.preventDefault(); onReviewPath(selectedPath); }}>
           <label>Audio file or folder path<input required value={selectedPath} onChange={(event) => setSelectedPath(event.target.value)} placeholder="/Volumes/Masters/Album" /></label>
           <button type="submit" className="text-button" disabled={scanning}>Review Path</button>
         </form>
-      </details>
-      </>}
+      </details>}
       <div className="form-divider"><span>or add a placeholder</span></div>
       <form className="inline-path-form" onSubmit={(event) => { event.preventDefault(); onAddBlank(blankTitle); }}>
         <label>Blank track title<input required value={blankTitle} onChange={(event) => setBlankTitle(event.target.value)} placeholder="New Track" /></label>
@@ -592,7 +591,7 @@ export default function App() {
       <AppHeader activeView={activeView} onViewChange={setActiveView} album={sequenceAlbum} playableCount={playableCount} approvalCount={approvalCount} appearance={appearance} resolvedMode={resolvedMode} onAppearanceChange={updateAppearance} onOpenAppearance={() => setActiveView("settings")} commandHistory={project.commandHistory} />
       <AlbumRail albums={project.state.albums} activeAlbumId={activeAlbum.id} currentProject={currentProject} collapsed={albumsCollapsed} projectBusy={project.projectOperation} onToggle={() => setAlbumsCollapsed((current) => !current)} onSelectAlbum={selectAlbum} onAddAlbum={() => setModal("album")} onRenameAlbum={openRenameAlbum} onDeleteAlbum={openDeleteAlbum} onOpenProjects={() => setModal("projects")} onNewProject={() => setModal("new-project")} />
       <div className={`content-shell ${api.hostedDemo && !hostedNoticeDismissed ? "has-hosted-notice" : ""}`}>
-        {api.hostedDemo && !hostedNoticeDismissed && <div className="hosted-tester-notice" role="status"><strong>Hosted tester mode</strong><span>Explore the released Dreadnauts Album 1 through official 30-second Apple Music previews. Sequencing, mastering settings, meters, presets, and saves stay browser-local; device paths and FFmpeg prints stay in the local app.</span><button type="button" onClick={() => setHostedNoticeDismissed(true)} aria-label="Dismiss hosted tester notice">×</button></div>}
+        {api.hostedDemo && !hostedNoticeDismissed && <div className="hosted-tester-notice" role="status"><strong>Hosted tester mode</strong><span>Explore Album 1 or add device audio for this session. Sequencing, mastering, meters, presets, and saves stay browser-local; selected audio is never uploaded, and FFmpeg prints remain in the local app.</span><button type="button" onClick={() => setHostedNoticeDismissed(true)} aria-label="Dismiss hosted tester notice">×</button></div>}
         {project.error && <div className="error-banner" role="alert"><strong>Project warning</strong><span>{project.error}</span><button type="button" onClick={() => project.setError("")}>Dismiss</button></div>}
         {activeView === "sequence" && <SequenceWorkspace album={activeAlbum} libraryMap={project.libraryMap} revealPrivateFilenames={revealPrivateFilenames} transitioningTrackId={transitioningTrackId} renderingAvailable={!api.hostedDemo} layoutPreviewCollapsed={layoutPreviewCollapsed} onToggleLayoutPreview={() => setLayoutPreviewCollapsed((current) => !current)} onAlbumChange={onAlbumChange} onAddTracks={() => setModal("tracks")} onPlayFrom={(index) => transport.playSequence(sequenceAlbum, index)} onTransition={previewSequenceTransition} onExport={exportSequence} onRemoveFromSequence={removeTrackFromSequence} onRestoreToSequence={restoreTrackToSequence} />}
         {activeView === "review" && <TrackReviewWorkspace album={activeAlbum} libraryMap={project.libraryMap} revealPrivateFilenames={revealPrivateFilenames} onAlbumChange={onAlbumChange} onPreviewFile={transport.previewFile} onOpenLibrary={() => setActiveView("library")} />}
@@ -603,7 +602,7 @@ export default function App() {
         {activeView === "settings" && <SettingsWorkspace state={project.state} roots={project.roots} scan={project.scan} watching={project.watching} scanning={project.scanning} hostedDemo={api.hostedDemo} projectArtistName={configuredArtistName} currentProject={currentProject} projects={project.projects} projectBusy={project.projectOperation} revealPrivateFilenames={revealPrivateFilenames} appearance={appearance} resolvedMode={resolvedMode} onProjectIdentityChange={saveProjectIdentity} onAppearanceChange={updateAppearance} onTogglePrivate={(checked) => project.updateState((draft) => { draft.settings ||= {}; draft.settings.revealPrivateFilenames = checked; })} onAddRoot={project.addRoot} onRemoveRoot={project.removeRoot} onChooseSources={project.chooseSources} onRescan={project.rescan} onImportState={importState} onOpenProjects={() => setModal("projects")} onNewProject={() => setModal("new-project")} onExportBundle={exportPortableBundle} />}
       </div>
       <TransportBar audioRef={transport.audioRef} audioHandlers={transport.audioHandlers} current={transport.current} status={transport.status} activeAlbum={sequenceAlbum} visual={transportVisual} playing={transport.playing} currentTime={transport.currentTime} mediaDuration={transport.mediaDuration} liveMasteringLabel={liveMasteringLabel} resetArmed={resetArmed} onTogglePlayback={transport.togglePlayback} onSeek={transport.seek} onPlaySequence={() => transport.playSequence(sequenceAlbum)} onResetOrder={resetOrder} onExport={exportSequence} />
-      <div className="status-strip"><span role="status" aria-live="polite">{project.saveStatus}</span><span>{api.hostedDemo ? `${project.library.length} official Album 1 previews · changes stay in this browser` : `${project.library.length} audio files indexed · ${project.roots.length} configured path${project.roots.length === 1 ? "" : "s"}`}</span><strong>{api.hostedDemo ? "Hosted tester" : "Local mode"}</strong></div>
+      <div className="status-strip"><span role="status" aria-live="polite">{project.saveStatus}</span><span>{api.hostedDemo ? `${project.library.length} audio files available · changes stay in this browser` : `${project.library.length} audio files indexed · ${project.roots.length} configured path${project.roots.length === 1 ? "" : "s"}`}</span><strong>{api.hostedDemo ? "Hosted tester" : "Local mode"}</strong></div>
       {showFirstRunGuide && (
         <FirstRunGuide
           artistName={configuredArtistName}

@@ -3,6 +3,8 @@ import { normalizeMasterBus } from "./mastering.js";
 const STORAGE_KEY = "project-sequencer-hosted-tester-v3";
 const STORAGE_VERSION = 3;
 const ROOT_ID = "dreadnauts-album-one";
+const AUDIO_EXTENSIONS = new Set(["mp3", "wav", "flac", "aiff", "aif", "m4a", "aac", "ogg", "opus"]);
+const AUDIO_ACCEPT = [...AUDIO_EXTENSIONS].map((extension) => `.${extension}`).join(",");
 
 const DEMO_SOURCES = Object.freeze([
   { id: "funky-space-reggae-vibes", title: "Funky Space Reggae Vibes", previewUrl: "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/2b/6d/9a/2b6d9a90-bbed-75be-e95e-c19251c8542f/mzaf_3227232006206776513.plus.aac.p.m4a" },
@@ -204,23 +206,97 @@ const writeWorkspace = (storage, workspace) => {
   resolveStorage(storage).setItem(STORAGE_KEY, JSON.stringify(workspace));
 };
 
-const libraryPayload = () => ({
-  library: clone(hostedDemoLibrary),
-  roots: clone(hostedDemoRoots),
-  scan: { reusedMetadata: hostedDemoLibrary.length, probedMetadata: 0, completedAt: new Date().toISOString() },
-  watching: { configured: false, enabled: false, watchedRootIds: [] },
-  scanning: false,
-});
+const hostedCapabilityError = () => Promise.reject(new Error("This action needs the local Project Sequencer server. The hosted tester can use only browser-session access to files you explicitly choose; it cannot use system paths or FFmpeg."));
 
-const hostedCapabilityError = () => Promise.reject(new Error("This action needs the local Project Sequencer server. The hosted tester never receives device paths or source files."));
-
-const mediaUrl = (key) => {
-  const source = DEMO_SOURCES.find((item) => sourceKeyFor(item) === key);
-  return source?.previewUrl || "";
+const safeRelativePath = (value, fallback) => {
+  const parts = String(value || fallback || "audio").replaceAll("\\", "/").split("/").filter((part) => part && part !== "." && part !== "..");
+  return parts.join("/") || fallback || "audio";
 };
 
-const waveform = (key, requestedPoints = 900) => {
-  const sourceIndex = Math.max(0, hostedDemoLibrary.findIndex((file) => file.key === key));
+const fileExtension = (name) => String(name || "").split(".").at(-1)?.toLowerCase() || "";
+
+const pickWithFileInput = (kind) => new Promise((resolve, reject) => {
+  if (typeof document === "undefined") {
+    reject(new Error("Browser file selection is unavailable in this environment."));
+    return;
+  }
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = AUDIO_ACCEPT;
+  input.multiple = true;
+  if (kind === "folder") input.setAttribute("webkitdirectory", "");
+  input.hidden = true;
+  document.body.append(input);
+  const finish = (files, cancelled = false) => {
+    input.remove();
+    const pickedEntries = files.map((file) => ({ file, relativePath: safeRelativePath(file.webkitRelativePath, file.name) }));
+    const folderName = kind === "folder" ? pickedEntries[0]?.relativePath.split("/")[0] : "";
+    const entries = folderName
+      ? pickedEntries.map((entry) => ({ ...entry, relativePath: safeRelativePath(entry.relativePath.slice(folderName.length + 1), entry.file.name) }))
+      : pickedEntries;
+    resolve({ cancelled, label: kind === "folder" ? folderName || "Selected audio folder" : "Selected audio files", entries });
+  };
+  input.addEventListener("change", () => finish([...input.files], input.files.length === 0), { once: true });
+  input.addEventListener("cancel", () => finish([], true), { once: true });
+  input.click();
+});
+
+const walkDirectory = async (handle, prefix = "") => {
+  const entries = [];
+  for await (const child of handle.values()) {
+    const relativePath = safeRelativePath(`${prefix}/${child.name}`, child.name);
+    if (child.kind === "file") entries.push({ file: await child.getFile(), relativePath });
+    else if (child.kind === "directory") entries.push(...await walkDirectory(child, relativePath));
+  }
+  return entries;
+};
+
+const pickBrowserAudioSources = async (kind) => {
+  try {
+    if (kind === "files" && typeof globalThis.showOpenFilePicker === "function") {
+      const handles = await globalThis.showOpenFilePicker({
+        multiple: true,
+        types: [{ description: "Audio files", accept: { "audio/*": [...AUDIO_EXTENSIONS].map((extension) => `.${extension}`) } }],
+      });
+      return { cancelled: handles.length === 0, label: "Selected audio files", entries: await Promise.all(handles.map(async (handle) => ({ file: await handle.getFile(), relativePath: handle.name }))) };
+    }
+    if (kind === "folder" && typeof globalThis.showDirectoryPicker === "function") {
+      const handle = await globalThis.showDirectoryPicker({ mode: "read" });
+      return { cancelled: false, label: handle.name || "Selected audio folder", entries: await walkDirectory(handle) };
+    }
+    return pickWithFileInput(kind);
+  } catch (error) {
+    if (error?.name === "AbortError") return { cancelled: true, label: "", entries: [] };
+    throw error;
+  }
+};
+
+const createBrowserMediaUrl = (file) => URL.createObjectURL(file);
+
+const readBrowserAudioMetadata = ({ mediaUrl }) => new Promise((resolve) => {
+  const audio = document.createElement("audio");
+  let settled = false;
+  const finish = (duration = 0, probeError = "") => {
+    if (settled) return;
+    settled = true;
+    audio.removeAttribute("src");
+    audio.load();
+    resolve({ duration: Number.isFinite(duration) ? duration : 0, probeError });
+  };
+  const timeout = globalThis.setTimeout(() => finish(0, "Audio metadata timed out."), 12_000);
+  audio.addEventListener("loadedmetadata", () => {
+    globalThis.clearTimeout(timeout);
+    finish(audio.duration);
+  }, { once: true });
+  audio.addEventListener("error", () => {
+    globalThis.clearTimeout(timeout);
+    finish(0, "Audio metadata could not be read by this browser.");
+  }, { once: true });
+  audio.preload = "metadata";
+  audio.src = mediaUrl;
+});
+
+const syntheticWaveform = (file, sourceIndex, requestedPoints = 900) => {
   const pointCount = Math.min(1_600, Math.max(240, Number.parseInt(requestedPoints, 10) || 900));
   const points = Array.from({ length: pointCount }, (_, index) => {
     const phase = index / Math.max(1, pointCount - 1);
@@ -228,11 +304,141 @@ const waveform = (key, requestedPoints = 900) => {
     const edge = Math.min(1, phase * 14, (1 - phase) * 14);
     return Number(Math.min(1, shape * edge).toFixed(4));
   });
-  const file = hostedDemoLibrary[sourceIndex];
-  return Promise.resolve({ key, duration: file.duration, pointCount, sampleCount: Math.round(file.duration * file.sampleRate), points });
+  return { key: file.key, duration: file.duration, pointCount, sampleCount: Math.round(file.duration * (file.sampleRate || 44_100)), points };
 };
 
-export const createHostedDemoApi = ({ storage } = {}) => ({
+const waveformFromBrowserFile = async (file, libraryFile, requestedPoints = 900) => {
+  const AudioContextClass = globalThis.AudioContext || globalThis.webkitAudioContext;
+  if (!AudioContextClass) throw new Error("Waveform analysis is unavailable in this browser.");
+  const pointCount = Math.min(1_600, Math.max(240, Number.parseInt(requestedPoints, 10) || 900));
+  const context = new AudioContextClass();
+  try {
+    const buffer = await context.decodeAudioData(await file.arrayBuffer());
+    const points = Array.from({ length: pointCount }, (_, bucket) => {
+      const start = Math.floor(bucket * buffer.length / pointCount);
+      const end = Math.max(start + 1, Math.floor((bucket + 1) * buffer.length / pointCount));
+      let peak = 0;
+      for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
+        const samples = buffer.getChannelData(channel);
+        for (let index = start; index < end; index += 1) peak = Math.max(peak, Math.abs(samples[index] || 0));
+      }
+      return Number(Math.min(1, peak).toFixed(4));
+    });
+    return { key: libraryFile.key, duration: buffer.duration, pointCount, sampleCount: buffer.length, points };
+  } finally {
+    await context.close();
+  }
+};
+
+export const createHostedDemoApi = ({ storage, sourcePicker = pickBrowserAudioSources, mediaUrlFactory = createBrowserMediaUrl, metadataReader = readBrowserAudioMetadata } = {}) => {
+  const browserLibrary = [];
+  const browserRoots = [];
+  const browserFiles = new Map();
+  const browserMediaUrls = new Map();
+  const waveformCache = new Map();
+  const browserSessionId = globalThis.crypto?.randomUUID?.().slice(0, 12) || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  let rootSequence = 0;
+
+  const allLibrary = () => [...hostedDemoLibrary, ...browserLibrary];
+  const allRoots = () => [...hostedDemoRoots, ...browserRoots];
+  const libraryPayload = (extra = {}) => ({
+    library: clone(allLibrary()),
+    roots: clone(allRoots()),
+    scan: { reusedMetadata: hostedDemoLibrary.length, probedMetadata: browserLibrary.length, completedAt: new Date().toISOString() },
+    watching: { configured: false, enabled: false, watchedRootIds: [] },
+    scanning: false,
+    ...extra,
+  });
+
+  const chooseSources = async (kind) => {
+    if (!["files", "folder"].includes(kind)) throw new Error("Choose either audio files or an audio folder.");
+    const selection = await sourcePicker(kind);
+    if (selection?.cancelled) return libraryPayload({ cancelled: true, pickedKeys: [] });
+    const entries = (selection?.entries || []).filter(({ file }) => AUDIO_EXTENSIONS.has(fileExtension(file?.name)));
+    if (!entries.length) throw new Error("No supported audio files were found in that selection.");
+
+    rootSequence += 1;
+    const rootId = `browser-session-${browserSessionId}-${rootSequence}`;
+    browserRoots.push({
+      id: rootId,
+      label: String(selection.label || (kind === "folder" ? "Selected audio folder" : "Selected audio files")).slice(0, 120),
+      path: "Selected from this device · current browser session only",
+      kind: "browser-session",
+      connected: true,
+      connectionState: "connected",
+    });
+
+    const pickedKeys = [];
+    for (const { file, relativePath } of entries) {
+      const initialPath = safeRelativePath(relativePath, file.name);
+      const dotIndex = initialPath.lastIndexOf(".");
+      const stem = dotIndex > 0 ? initialPath.slice(0, dotIndex) : initialPath;
+      const suffix = dotIndex > 0 ? initialPath.slice(dotIndex) : "";
+      let safePath = initialPath;
+      let duplicate = 2;
+      while (browserLibrary.some((item) => item.rootId === rootId && item.relativePath === safePath)) safePath = `${stem} (${duplicate++})${suffix}`;
+      const key = `${rootId}::${safePath}`;
+      const mediaUrl = mediaUrlFactory(file);
+      const metadata = await metadataReader({ file, mediaUrl });
+      const duration = Number(metadata?.duration) || 0;
+      const extension = fileExtension(file.name);
+      browserLibrary.push({
+        key,
+        rootId,
+        relativePath: safePath,
+        name: file.name,
+        extension,
+        size: Number(file.size) || 0,
+        mtimeMs: Number(file.lastModified) || Date.now(),
+        duration,
+        bitrate: duration > 0 ? Math.round((Number(file.size) || 0) * 8 / duration) : null,
+        codec: extension,
+        sampleRate: null,
+        channels: null,
+        bitDepth: null,
+        probeError: metadata?.probeError || "",
+      });
+      browserFiles.set(key, file);
+      browserMediaUrls.set(key, mediaUrl);
+      pickedKeys.push(key);
+    }
+    return libraryPayload({ cancelled: false, pickedKeys });
+  };
+
+  const mediaUrl = (key) => {
+    if (browserMediaUrls.has(key)) return browserMediaUrls.get(key);
+    const source = DEMO_SOURCES.find((item) => sourceKeyFor(item) === key);
+    return source?.previewUrl || "";
+  };
+
+  const waveform = async (key, requestedPoints = 900) => {
+    const file = allLibrary().find((item) => item.key === key);
+    if (!file) throw new Error("That audio source is not available in this browser session.");
+    const browserFile = browserFiles.get(key);
+    if (!browserFile) return syntheticWaveform(file, Math.max(0, hostedDemoLibrary.findIndex((item) => item.key === key)), requestedPoints);
+    const cacheKey = `${key}:${requestedPoints}`;
+    if (!waveformCache.has(cacheKey)) waveformCache.set(cacheKey, waveformFromBrowserFile(browserFile, file, requestedPoints));
+    return waveformCache.get(cacheKey);
+  };
+
+  const removeBrowserSource = async (sourceId) => {
+    const rootIndex = browserRoots.findIndex((root) => root.id === sourceId);
+    if (rootIndex < 0) return hostedCapabilityError();
+    browserRoots.splice(rootIndex, 1);
+    for (let index = browserLibrary.length - 1; index >= 0; index -= 1) {
+      const file = browserLibrary[index];
+      if (file.rootId !== sourceId) continue;
+      const mediaUrl = browserMediaUrls.get(file.key);
+      if (mediaUrl?.startsWith("blob:")) URL.revokeObjectURL(mediaUrl);
+      browserFiles.delete(file.key);
+      browserMediaUrls.delete(file.key);
+      browserLibrary.splice(index, 1);
+    }
+    waveformCache.clear();
+    return libraryPayload();
+  };
+
+  return {
   hostedDemo: true,
   bootstrap: async () => {
     const workspace = readWorkspace(storage);
@@ -242,7 +448,7 @@ export const createHostedDemoApi = ({ storage } = {}) => ({
       projects: publicProjects(workspace),
       activeProjectId: workspace.activeProjectId,
       recovery: { required: false },
-      supportedFormats: ["m4a"],
+      supportedFormats: [...new Set(allLibrary().map((file) => file.extension))].sort(),
       ...libraryPayload(),
     };
   },
@@ -294,7 +500,7 @@ export const createHostedDemoApi = ({ storage } = {}) => ({
   libraryStatus: async () => libraryPayload(),
   portableBundle: hostedCapabilityError,
   registerSource: hostedCapabilityError,
-  chooseSources: hostedCapabilityError,
+  chooseSources,
   chooseProjectAssets: hostedCapabilityError,
   renderAudio: hostedCapabilityError,
   startRenderJob: hostedCapabilityError,
@@ -303,6 +509,7 @@ export const createHostedDemoApi = ({ storage } = {}) => ({
   cancelRenderJob: hostedCapabilityError,
   waveform,
   technicalAnalysis: async (key) => {
+    if (browserFiles.has(key)) throw new Error("Detailed loudness analysis for device audio requires the local Project Sequencer app.");
     const index = Math.max(0, hostedDemoLibrary.findIndex((file) => file.key === key));
     return { key, measurements: { integratedLoudness: -16.4 + index * 0.8, loudnessRange: 5.2 + index * 0.7, truePeak: -2.1 + index * 0.2, dcOffset: 0, silenceBoundaries: [] }, analyzedAt: new Date().toISOString(), cached: false };
   },
@@ -310,10 +517,11 @@ export const createHostedDemoApi = ({ storage } = {}) => ({
   renderManifest: hostedCapabilityError,
   revealRender: hostedCapabilityError,
   addRoot: hostedCapabilityError,
-  removeSource: hostedCapabilityError,
-  removeRoot: hostedCapabilityError,
+  removeSource: removeBrowserSource,
+  removeRoot: removeBrowserSource,
   mediaUrl,
   assetUrl: () => "",
-});
+  };
+};
 
 export const hostedDemoApi = createHostedDemoApi();

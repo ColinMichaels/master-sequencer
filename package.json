@@ -11,9 +11,10 @@
     "start": "node server/index.mjs",
     "test": "node --test",
     "test:browser": "playwright test",
+    "test:browser:hosted": "playwright test --config=playwright.hosted.config.js",
     "test:browser:headed": "playwright test --headed",
     "check": "npm test && npm run build",
-    "check:full": "npm run check && npm run test:browser"
+    "check:full": "npm run check && npm run test:browser && npm run test:browser:hosted"
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
