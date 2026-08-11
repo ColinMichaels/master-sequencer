@@ -92,16 +92,18 @@ export const useTransport = ({ libraryMap, masterBus, liveTracks = [] }) => {
     if (graph?.context.state === "suspended") graph.context.resume().catch(() => {});
     audio.src = entry.url || api.mediaUrl(entry.file.key);
     audio.load();
-    const start = () => {
+    const applyStartPosition = () => {
       if (token !== playToken.current) return;
       audio.currentTime = Math.min(startAt, Math.max(0, (entry.file?.duration || audio.duration || 0) - 0.2));
-      audio.play().catch((error) => {
-        if (error.name === "AbortError" && audio.paused) return;
-        if (token === playToken.current) setStatus(`Playback needs a direct play gesture: ${error.message}`);
-      });
     };
-    if (audio.readyState >= 1) start();
-    else audio.addEventListener("loadedmetadata", start, { once: true });
+    if (audio.readyState >= 1) applyStartPosition();
+    else audio.addEventListener("loadedmetadata", applyStartPosition, { once: true });
+    // Start loading under the original click so a slower protected stream does
+    // not outlive the browser's transient audio-playback permission.
+    audio.play().catch((error) => {
+      if (error.name === "AbortError" && audio.paused) return;
+      if (token === playToken.current) setStatus(`Playback needs a direct play gesture: ${error.message}`);
+    });
   }, [ensureAudioGraph, updateAudioGraph]);
 
   const previewFile = useCallback((file, label = file?.name) => {
