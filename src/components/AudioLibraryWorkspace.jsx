@@ -155,10 +155,10 @@ export function AudioLibraryWorkspace({ state, activeAlbum, library, roots, form
       <aside className="library-inspector">
         <section className="source-summary">
           <h2>Audio Sources</h2>
-          <p className="watch-status"><strong>{hostedDemo ? "Protected Album 1 streams" : watching?.enabled ? "Watching connected folders" : watching?.configured ? "Watching unavailable" : "Manual incremental rescans"}</strong><span>{hostedDemo ? "No device paths or master files were uploaded" : scan ? `${scan.reusedMetadata} cached · ${scan.probedMetadata} updated` : "Scan status unavailable"}</span></p>
+          <p className="watch-status"><strong>{hostedDemo ? "Official Album 1 previews" : watching?.enabled ? "Watching connected folders" : watching?.configured ? "Watching unavailable" : "Manual incremental rescans"}</strong><span>{hostedDemo ? "No device paths or master files were uploaded" : scan ? `${scan.reusedMetadata} cached · ${scan.probedMetadata} updated` : "Scan status unavailable"}</span></p>
           <div className="source-summary-actions"><button type="button" className="text-button" disabled={hostedDemo || scanning} title={hostedDemo ? "Add device audio in the local app" : "Add audio files"} onClick={onImportFiles}><MusicIcon /> Add Files</button><button type="button" className="text-button" disabled={hostedDemo || scanning} title={hostedDemo ? "Add device folders in the local app" : "Add an audio folder"} onClick={onImportFolder}><FolderIcon /> Add Folder</button></div>
           <ul>{roots.map((root) => <li key={root.id}><span>{root.label}<small>{root.path}</small></span><strong className={root.connected ? "is-connected" : "is-offline"}>{root.connectionState === "reconnected" ? "Reconnected" : root.connected ? "Connected" : "Offline"}</strong></li>)}</ul>
-          <p>{hostedDemo ? "Playback comes from the Dreadnauts site’s protected public stream. The source masters remain in their original location." : "Audio remains in its original location."}</p>
+          <p>{hostedDemo ? "Playback uses official 30-second Apple Music previews. The source masters remain in their original location." : "Audio remains in its original location."}</p>
         </section>
         <dl className="scan-summary">
           <div><dt>{library.length}</dt><dd>Files</dd></div>

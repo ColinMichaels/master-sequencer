@@ -19,7 +19,11 @@ test("hosted tester starts with the released Dreadnauts Album 1 and persists pro
   assert.equal(boot.state.settings.project.artistName, "The Dreadnauts");
   assert.equal(boot.state.albums[0].title, "Cosmic Reggae Sessions");
   assert.equal(boot.state.albums[0].tracks.at(-1).title, "Return to Earth");
-  assert.equal(first.mediaUrl(boot.library[0].key), "/demo-audio/funky-space-reggae-vibes");
+  assert.match(first.mediaUrl(boot.library[0].key), /^https:\/\/audio-ssl\.itunes\.apple\.com\/itunes-assets\/AudioPreview/);
+  assert.equal(new Set(boot.library.map((file) => first.mediaUrl(file.key))).size, 9);
+  assert.equal(boot.library[0].extension, "m4a");
+  assert.equal(boot.library[0].duration, 30);
+  assert.deepEqual(boot.supportedFormats, ["m4a"]);
   assert.equal(boot.state.settings.project.setupComplete, true);
   assert.equal(JSON.stringify(boot).includes("/Users/"), false);
 

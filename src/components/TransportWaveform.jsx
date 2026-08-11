@@ -83,7 +83,7 @@ export function TransportWaveform({
 
   return (
     <div className="transport-player">
-      <audio ref={audioRef} preload="metadata" className="transport-audio-source" {...audioHandlers} />
+      <audio ref={audioRef} crossOrigin="anonymous" preload="metadata" className="transport-audio-source" {...audioHandlers} />
       <button type="button" className="transport-playback-toggle" onClick={toggle} aria-label={toggleLabel} data-tooltip={toggleLabel}>
         {playing ? <PauseIcon /> : <PlayIcon />}
       </button>

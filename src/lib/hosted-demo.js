@@ -1,22 +1,23 @@
 import { normalizeMasterBus } from "./mastering.js";
 
-const STORAGE_KEY = "project-sequencer-hosted-tester-v2";
-const STORAGE_VERSION = 2;
+const STORAGE_KEY = "project-sequencer-hosted-tester-v3";
+const STORAGE_VERSION = 3;
 const ROOT_ID = "dreadnauts-album-one";
 
 const DEMO_SOURCES = Object.freeze([
-  { id: "funky-space-reggae-vibes", title: "Funky Space Reggae Vibes", duration: 372.481 },
-  { id: "intergalactic-mind-traveler", title: "Intergalactic Mind Traveler", duration: 309.241 },
-  { id: "captain-of-the-cosmic-tide", title: "Captain of the Cosmic Tide", duration: 291.84 },
-  { id: "nebula-meditation", title: "Nebula Meditation", duration: 300.8 },
-  { id: "solar-wind-surfer", title: "Solar Wind Surfer", duration: 348.961 },
-  { id: "spacerock", title: "SpaceRock", duration: 277.801 },
-  { id: "black-hole-dub", title: "Black Hole Dub", duration: 374.84 },
-  { id: "one-love-across-the-universe", title: "One Love Across the Universe", duration: 277.2 },
-  { id: "return-to-earth", title: "Return to Earth", duration: 321.88 },
+  { id: "funky-space-reggae-vibes", title: "Funky Space Reggae Vibes", previewUrl: "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/2b/6d/9a/2b6d9a90-bbed-75be-e95e-c19251c8542f/mzaf_3227232006206776513.plus.aac.p.m4a" },
+  { id: "intergalactic-mind-traveler", title: "Intergalactic Mind Traveler", previewUrl: "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/13/62/77/136277a5-bb5a-57a3-69aa-bda2fd576acf/mzaf_8925188031657701637.plus.aac.p.m4a" },
+  { id: "captain-of-the-cosmic-tide", title: "Captain of the Cosmic Tide", previewUrl: "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/90/9a/5c/909a5cb1-158b-267f-53a3-92d4579a20f8/mzaf_7652213948932993798.plus.aac.p.m4a" },
+  { id: "nebula-meditation", title: "Nebula Meditation", previewUrl: "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/49/84/d8/4984d8ee-a93c-1898-b9b9-d3c401b859ad/mzaf_7246105078446485788.plus.aac.p.m4a" },
+  { id: "solar-wind-surfer", title: "Solar Wind Surfer", previewUrl: "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/95/6a/8d/956a8dbf-add9-2bd5-401d-565e8cc4d53b/mzaf_14886883486310609518.plus.aac.p.m4a" },
+  { id: "spacerock", title: "SpaceRock", previewUrl: "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/24/f2/7f/24f27f31-b77e-5de7-82d9-b2e538c014a1/mzaf_11647380238469058767.plus.aac.p.m4a" },
+  { id: "black-hole-dub", title: "Black Hole Dub", previewUrl: "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview221/v4/8b/f0/b6/8bf0b6f9-c6bf-d615-de60-337b4d8c469f/mzaf_2142279483434309567.plus.aac.p.m4a" },
+  { id: "one-love-across-the-universe", title: "One Love Across the Universe", previewUrl: "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/4b/c6/bf/4bc6bf91-ca7e-021a-9191-a011f05e8a93/mzaf_7040345245165369786.plus.aac.p.m4a" },
+  { id: "return-to-earth", title: "Return to Earth", previewUrl: "https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview211/v4/5c/20/f4/5c20f450-c55a-4fae-a921-cdd9b65796e3/mzaf_10263104242253855429.plus.aac.p.m4a" },
 ].map((source, index) => ({
   ...source,
-  fileName: `${String(index + 1).padStart(2, "0")} ${source.title}.mp3`,
+  duration: 30,
+  fileName: `${String(index + 1).padStart(2, "0")} ${source.title} — Apple Music Preview.m4a`,
 })));
 
 const sourceKeyFor = (source) => `${ROOT_ID}::${source.fileName}`;
@@ -26,12 +27,12 @@ export const hostedDemoLibrary = DEMO_SOURCES.map((source, index) => ({
   rootId: ROOT_ID,
   relativePath: source.fileName,
   name: source.fileName,
-  extension: "mp3",
-  size: Math.round(source.duration * 40_000),
+  extension: "m4a",
+  size: Math.round(source.duration * 34_000),
   mtimeMs: 1_786_329_600_000 + index,
   duration: source.duration,
-  bitrate: 320_000,
-  codec: "mp3",
+  bitrate: 256_000,
+  codec: "aac",
   sampleRate: 44_100,
   channels: 2,
   bitDepth: null,
@@ -41,7 +42,7 @@ export const hostedDemoLibrary = DEMO_SOURCES.map((source, index) => ({
 export const hostedDemoRoots = [{
   id: ROOT_ID,
   label: "The Dreadnauts — Cosmic Reggae Sessions",
-  path: "Protected public streams from dreadnauts.uk",
+  path: "Official Apple Music preview clips",
   kind: "folder",
   connected: true,
   connectionState: "connected",
@@ -108,13 +109,13 @@ export const createHostedDemoState = () => ({
       decisionStatus: "undecided",
       masterCandidateId: "",
       auditionCandidateId: `${source.id}-demo`,
-      notes: index === 0 ? "Use the MASTER controls to hear and see changes against the released Album 1 stream in real time." : "",
+      notes: index === 0 ? "Use the MASTER controls to hear and see changes against an official 30-second Album 1 preview in real time." : "",
       visualAssets: [],
       candidates: [{
         id: `${source.id}-demo`,
-        label: "Protected public album stream",
+        label: "Official Apple Music preview",
         sourceRef: { rootId: ROOT_ID, relativePath: source.fileName },
-        flags: ["Released Album 1 stream", "Hosted playback only"],
+        flags: ["Official 30-second preview", "Hosted playback only"],
         notes: "",
       }],
     })),
@@ -215,7 +216,7 @@ const hostedCapabilityError = () => Promise.reject(new Error("This action needs 
 
 const mediaUrl = (key) => {
   const source = DEMO_SOURCES.find((item) => sourceKeyFor(item) === key);
-  return source ? `/demo-audio/${encodeURIComponent(source.id)}` : "";
+  return source?.previewUrl || "";
 };
 
 const waveform = (key, requestedPoints = 900) => {
@@ -241,7 +242,7 @@ export const createHostedDemoApi = ({ storage } = {}) => ({
       projects: publicProjects(workspace),
       activeProjectId: workspace.activeProjectId,
       recovery: { required: false },
-      supportedFormats: ["mp3"],
+      supportedFormats: ["m4a"],
       ...libraryPayload(),
     };
   },
