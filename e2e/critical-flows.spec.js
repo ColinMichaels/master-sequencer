@@ -29,8 +29,25 @@ test("bootstrap renders the project and protected sources remain masked", async 
   await expect(page.getByText("[Private source file]", { exact: true }).first()).toBeVisible();
 });
 
-test("collapsed albums keep compact actions while header totals stay text-only", async ({ page }) => {
-  await expect(page.locator(".header-summary svg")).toHaveCount(0);
+test("collapsed albums keep compact actions while header stats use badge buttons", async ({ page }) => {
+  const headerStats = page.locator(".header-summary");
+  await expect(headerStats.getByRole("button")).toHaveCount(4);
+  await expect(headerStats.getByRole("button", { name: "Tracks: 2. Show album statistics" }).locator(".header-stat-badge")).toHaveText("2");
+  await headerStats.getByRole("button", { name: "Missing sources: 0. Show album statistics" }).click();
+  const statistics = page.getByRole("dialog", { name: "Album Statistics" });
+  await expect(statistics).toBeVisible();
+  await expect(statistics.getByRole("button")).toHaveCount(5);
+  await statistics.getByRole("button", { name: "Missing sources: 0. Open Audio Library" }).click();
+  await expect(page.getByRole("heading", { name: "Audio Library" })).toBeVisible();
+  await expect(statistics).toBeHidden();
+  await page.getByRole("button", { name: "Sequence", exact: true }).click();
+
+  await headerStats.getByRole("button", { name: "Tracks: 2. Show album statistics" }).click();
+  await expect(statistics).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(statistics).toBeHidden();
+  await expect(headerStats.getByRole("button", { name: "Tracks: 2. Show album statistics" })).toBeFocused();
+
   await page.getByRole("button", { name: "Hide albums panel" }).click();
 
   const compactRail = page.locator(".album-rail-compact");

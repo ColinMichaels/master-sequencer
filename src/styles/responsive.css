@@ -23,7 +23,7 @@
   .app-shell { grid-template-columns: 240px minmax(0, 1fr); }
   .app-shell.albums-collapsed { grid-template-columns: 50px minmax(0, 1fr); }
   .app-header { grid-template-columns: auto auto auto minmax(0, 1fr); }
-  .header-summary { width: min(100%, 315px); }
+  .header-summary-shell { justify-self: end; }
   .album-rail { padding-inline: 0.8rem; }
   .album-item { grid-template-columns: 58px minmax(0, 1fr) 22px; }
   .album-art { width: 58px; }
@@ -60,8 +60,8 @@
   .primary-nav button { width: 100%; min-width: 0; min-height: 36px; }
   .primary-nav button:last-child[data-tooltip]::after { right: 0; left: auto; transform: none; }
   .command-history { grid-column: 1 / -1; justify-self: end; }
-  .header-summary { grid-column: 1 / -1; width: 100%; margin: 0; border-top: 1px solid var(--line-soft); }
-  .header-summary div { min-height: 44px; }
+  .header-summary-shell { grid-column: 1 / -1; justify-self: end; }
+  .header-stats-popover { width: min(390px, calc(100vw - 0.8rem)); }
   .album-rail { display: block; padding: 0.45rem 0.5rem; border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; }
   .album-rail.is-collapsed { display: flex; min-height: 44px; align-items: center; gap: 0.45rem; }
   .album-rail.is-collapsed .album-rail-heading { width: auto; flex: 0 0 auto; }
@@ -190,9 +190,7 @@
 }
 
 @media (max-width: 430px) {
-  .header-summary { grid-template-columns: 1fr 1fr; }
-  .header-summary div:nth-child(3) { border-top: 1px solid var(--line-soft); }
-  .header-summary div:nth-child(4) { border-top: 1px solid var(--line-soft); }
+  .header-stats-popover { right: -0.05rem; }
   .workspace-heading h2 { font-size: 1.2rem; line-height: 1.2; }
   .workspace-heading select { min-width: 100%; }
   .workspace-heading-actions { display: grid; grid-template-columns: 1fr 1fr; }
