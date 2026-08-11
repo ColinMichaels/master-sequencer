@@ -47,6 +47,9 @@ export const useTransport = ({ libraryMap, masterBus, liveTracks = [] }) => {
     try {
       audioGraph.current = createLiveMasteringGraph(audioRef.current, AudioContextClass);
       meteringRef.current = audioGraph.current ? {
+        compressor: audioGraph.current.compressor,
+        limiter: audioGraph.current.limiter,
+        eqInputAnalyser: audioGraph.current.eqInputAnalyser,
         frequencyAnalyser: audioGraph.current.frequencyAnalyser,
         leftAnalyser: audioGraph.current.leftAnalyser,
         rightAnalyser: audioGraph.current.rightAnalyser,

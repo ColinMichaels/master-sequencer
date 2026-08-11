@@ -45,13 +45,14 @@ function LyricAttachment({ kind, label, description, attachment, protectedAsset,
   );
 }
 
-export function AssetWorkspace({ album, revealPrivateFilenames, picking, sourcePickingAvailable = true, onAlbumChange, onPickAssets }) {
+export function AssetWorkspace({ album, revealPrivateFilenames, picking, sourcePickingAvailable = true, onAlbumChange, onPickAssets, onTrackFocus }) {
   const [selectedTrackId, setSelectedTrackId] = useState(album.tracks[0]?.id || "");
   useEffect(() => {
     if (!album.tracks.some((track) => track.id === selectedTrackId)) setSelectedTrackId(album.tracks[0]?.id || "");
   }, [album.id, album.tracks, selectedTrackId]);
 
   const track = album.tracks.find((item) => item.id === selectedTrackId);
+  useEffect(() => { onTrackFocus?.(track?.id || ""); }, [onTrackFocus, track?.id]);
   const coverKey = referenceKey(album.coverRef);
   const albumAssets = useMemo(() => {
     const byReference = new Map();
@@ -115,7 +116,7 @@ export function AssetWorkspace({ album, revealPrivateFilenames, picking, sourceP
   return (
     <main className="assets-workspace">
       <header className="assets-heading">
-        <div><h2>Album &amp; Track Assets</h2><p>Organize visual references and candidate-specific lyric files. Every source stays in its original folder.</p></div>
+        <h2 className="sr-only">Assets</h2>
         <dl><div><dt>{albumVisualCount}</dt><dd>Album visuals</dd></div><div><dt>{trackVisualCount}</dt><dd>Track visuals</dd></div><div><dt>{lyricCount}</dt><dd>Lyric files</dd></div></dl>
       </header>
 

@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { MASTERING_LIMITS } from "../lib/mastering.js";
+import { compressorGainReductionDb, equalizerLiveImpact, equalizerResponseDbAtFrequency, MAX_LIVE_COMPRESSOR_REDUCTION_DB, MAX_LIVE_LIMITER_REDUCTION_DB } from "../lib/live-mastering.js";
 import { MasterOutputMeters } from "./MasterOutputMeters.jsx";
 import { MasteringPresetControls } from "./MasteringPresetControls.jsx";
 
@@ -94,9 +95,14 @@ const pathFromValues = (values, width, height, minimum, maximum) => values.map((
   return `${index ? "L" : "M"}${x.toFixed(2)},${y.toFixed(2)}`;
 }).join(" ");
 
-function CurveFrame({ className, label, path, horizontalLabels, verticalLabels, markerX, markerY, children }) {
+const areaFromValues = (values, width, height, minimum, maximum, baseline = 0) => {
+  const baselineY = height - ((clamp(baseline, minimum, maximum) - minimum) / (maximum - minimum)) * height;
+  return `${pathFromValues(values, width, height, minimum, maximum)} L${width},${baselineY.toFixed(2)} L0,${baselineY.toFixed(2)} Z`;
+};
+
+function CurveFrame({ className, label, path, horizontalLabels, verticalLabels, markerX, markerY, status = "Settings curve", figureProps, children }) {
   return (
-    <figure className={`settings-curve ${className || ""}`}>
+    <figure {...figureProps} className={`settings-curve ${className || ""}`}>
       <svg viewBox="0 0 200 112" role="img" aria-label={label} preserveAspectRatio="none">
         <g className="settings-curve-grid" aria-hidden="true">
           {[0, 50, 100, 150, 200].map((x) => <line key={`x-${x}`} x1={x} y1="0" x2={x} y2="112" />)}
@@ -108,25 +114,102 @@ function CurveFrame({ className, label, path, horizontalLabels, verticalLabels, 
         {markerY !== undefined && <line className="settings-curve-marker" x1="0" y1={markerY} x2="200" y2={markerY} aria-hidden="true" />}
         <path className="settings-curve-line" d={path} />
       </svg>
-      <figcaption><span>{verticalLabels}</span><strong>Settings curve</strong><span>{horizontalLabels}</span></figcaption>
+      <figcaption><span>{verticalLabels}</span><strong>{status}</strong><span>{horizontalLabels}</span></figcaption>
     </figure>
   );
 }
 
-function EqResponseGraph({ eq }) {
-  const values = Array.from({ length: 81 }, (_, index) => {
-    const frequency = 20 * (1_000 ** (index / 80));
-    const lowWeight = 1 / (1 + (frequency / eq.lowShelf.frequencyHz) ** 4);
-    const highWeight = 1 / (1 + (eq.highShelf.frequencyHz / frequency) ** 4);
-    const octaves = Math.log2(frequency / eq.midBand.frequencyHz);
-    const midWidth = 1.25 / Math.sqrt(eq.midBand.q);
-    const midWeight = Math.exp(-0.5 * (octaves / midWidth) ** 2);
-    return eq.lowShelf.gainDb * lowWeight + eq.midBand.gainDb * midWeight + eq.highShelf.gainDb * highWeight;
-  });
-  return <CurveFrame className="settings-curve--eq" label="MASTER EQ response settings curve" path={pathFromValues(values, 200, 112, -12, 12)} horizontalLabels="20 Hz — 20 kHz" verticalLabels="+12 / −12 dB" />;
+const LIVE_EFFECT_SAMPLE_MS = 80;
+const EQ_LIVE_POINT_COUNT = 81;
+const IDLE_EQ_VALUES = Object.freeze(Array.from({ length: EQ_LIVE_POINT_COUNT }, () => 0));
+const IDLE_EQ_IMPACT = Object.freeze({ values: IDLE_EQ_VALUES, activity: IDLE_EQ_VALUES, impactDb: 0 });
+
+function useLiveEqImpact({ active, meteringRef, eq }) {
+  const [impact, setImpact] = useState(() => IDLE_EQ_IMPACT);
+  const dataRef = useRef(null);
+  const signatureRef = useRef("");
+
+  useEffect(() => {
+    if (!active) {
+      dataRef.current = null;
+      signatureRef.current = "";
+      setImpact((current) => current === IDLE_EQ_IMPACT ? current : IDLE_EQ_IMPACT);
+      return undefined;
+    }
+    const sample = () => {
+      const analyser = meteringRef?.current?.eqInputAnalyser;
+      if (!analyser || typeof analyser.getFloatFrequencyData !== "function") return;
+      if (dataRef.current?.length !== analyser.frequencyBinCount) dataRef.current = new Float32Array(analyser.frequencyBinCount);
+      analyser.getFloatFrequencyData(dataRef.current);
+      const next = equalizerLiveImpact({ frequencyData: dataRef.current, sampleRate: meteringRef.current?.sampleRate, eq, pointCount: EQ_LIVE_POINT_COUNT });
+      const signature = `${next.impactDb.toFixed(2)}:${next.values.filter((_, index) => index % 8 === 0).map((value) => value.toFixed(2)).join(":")}:${next.activity.filter((_, index) => index % 8 === 0).map((value) => value.toFixed(2)).join(":")}`;
+      if (signature === signatureRef.current) return;
+      signatureRef.current = signature;
+      setImpact(next);
+    };
+    sample();
+    const interval = window.setInterval(sample, LIVE_EFFECT_SAMPLE_MS);
+    return () => window.clearInterval(interval);
+  }, [active, eq, meteringRef]);
+
+  return impact;
 }
 
-function CompressorTransferGraph({ compressor }) {
+function EqResponseGraph({ eq, meteringRef, active }) {
+  const liveImpact = useLiveEqImpact({ active, meteringRef, eq });
+  const values = useMemo(() => Array.from({ length: EQ_LIVE_POINT_COUNT }, (_, index) => {
+    const frequency = 20 * (1_000 ** (index / (EQ_LIVE_POINT_COUNT - 1)));
+    return equalizerResponseDbAtFrequency(eq, frequency);
+  }), [eq]);
+  const status = active ? `Live impact ${liveImpact.impactDb.toFixed(1)} dB` : "EQ idle";
+  return (
+    <CurveFrame
+      className={`settings-curve--eq ${active ? "is-live" : ""}`}
+      label={`MASTER EQ response settings curve. ${active ? `Live signal weighted impact ${liveImpact.impactDb.toFixed(1)} decibels` : "Live impact idle"}`}
+      path={pathFromValues(values, 200, 112, -12, 12)}
+      horizontalLabels="20 Hz — 20 kHz"
+      verticalLabels="+12 / −12 dB"
+      status={status}
+      figureProps={{
+        "data-testid": "eq-live-impact",
+        "data-live-active": active ? "true" : "false",
+        "data-impact-db": liveImpact.impactDb.toFixed(2),
+      }}
+    >
+      <path className="eq-live-spectrum-area" d={areaFromValues(liveImpact.activity || IDLE_EQ_VALUES, 200, 112, 0, 1)} aria-hidden="true" />
+      <path className="eq-live-spectrum-line" d={pathFromValues(liveImpact.activity || IDLE_EQ_VALUES, 200, 112, 0, 1)} aria-hidden="true" />
+      <path className="eq-live-impact-area" d={areaFromValues(liveImpact.values, 200, 112, -12, 12)} aria-hidden="true" />
+      <path className="eq-live-impact-line" d={pathFromValues(liveImpact.values, 200, 112, -12, 12)} aria-hidden="true" />
+    </CurveFrame>
+  );
+}
+
+function useLiveGainReduction({ active, meteringRef, nodeKey }) {
+  const [reductionDb, setReductionDb] = useState(0);
+  const displayedRef = useRef(0);
+
+  useEffect(() => {
+    if (!active) {
+      displayedRef.current = 0;
+      setReductionDb((current) => current === 0 ? current : 0);
+      return undefined;
+    }
+    const sample = () => {
+      const next = compressorGainReductionDb(meteringRef?.current?.[nodeKey]?.reduction);
+      if (Math.abs(next - displayedRef.current) < 0.05) return;
+      displayedRef.current = next;
+      setReductionDb(next);
+    };
+    sample();
+    const interval = window.setInterval(sample, LIVE_EFFECT_SAMPLE_MS);
+    return () => window.clearInterval(interval);
+  }, [active, meteringRef, nodeKey]);
+
+  return reductionDb;
+}
+
+function CompressorTransferGraph({ compressor, meteringRef, active }) {
+  const reductionDb = useLiveGainReduction({ active, meteringRef, nodeKey: "compressor" });
   const values = Array.from({ length: 61 }, (_, index) => {
     const input = -60 + index;
     const compressed = input <= compressor.thresholdDb
@@ -135,13 +218,64 @@ function CompressorTransferGraph({ compressor }) {
     return input * (1 - compressor.mix) + (compressed + compressor.makeupGainDb) * compressor.mix;
   });
   const markerX = ((compressor.thresholdDb + 60) / 60) * 200;
-  return <CurveFrame className="settings-curve--compressor" label="MASTER compressor input output settings curve" path={pathFromValues(values, 200, 112, -60, 0)} horizontalLabels="Input −60 — 0 dB" verticalLabels="Output" markerX={markerX}><path className="settings-curve-reference" d="M0,112 L200,0" /></CurveFrame>;
+  const reductionHeight = (clamp(reductionDb, 0, MAX_LIVE_COMPRESSOR_REDUCTION_DB) / MAX_LIVE_COMPRESSOR_REDUCTION_DB) * 112;
+  const reductionY = 112 - reductionHeight;
+  const status = active ? `Live GR −${reductionDb.toFixed(1)} dB` : "GR idle";
+  return (
+    <CurveFrame
+      className={`settings-curve--compressor ${active ? "is-live" : ""}`}
+      label={`MASTER compressor input output settings curve. ${active ? `Live gain reduction ${reductionDb.toFixed(1)} decibels` : "Gain reduction idle"}`}
+      path={pathFromValues(values, 200, 112, -60, 0)}
+      horizontalLabels="Input −60 — 0 dB"
+      verticalLabels="Output"
+      markerX={markerX}
+      status={status}
+      figureProps={{
+        "data-testid": "compressor-gain-reduction",
+        "data-live-active": active ? "true" : "false",
+        "data-reduction-db": reductionDb.toFixed(2),
+      }}
+    >
+      <path className="settings-curve-reference" d="M0,112 L200,0" />
+      <g className="compressor-gain-reduction" aria-hidden="true">
+        <rect className="compressor-gain-reduction-track" x="189" y="0" width="8" height="112" />
+        <rect className="compressor-gain-reduction-fill" x="189" y={reductionY} width="8" height={reductionHeight} />
+        {active ? <line className="compressor-gain-reduction-marker" x1="183" y1={reductionY} x2="200" y2={reductionY} /> : null}
+      </g>
+    </CurveFrame>
+  );
 }
 
-function LimiterTransferGraph({ limiter }) {
+function LimiterTransferGraph({ limiter, meteringRef, active }) {
+  const reductionDb = useLiveGainReduction({ active, meteringRef, nodeKey: "limiter" });
   const values = Array.from({ length: 61 }, (_, index) => Math.min(-60 + index, limiter.ceilingDbfs));
   const markerY = 112 - ((limiter.ceilingDbfs + 60) / 60) * 112;
-  return <CurveFrame className="settings-curve--limiter" label="MASTER limiter ceiling settings curve" path={pathFromValues(values, 200, 112, -60, 0)} horizontalLabels="Input −60 — 0 dBFS" verticalLabels="Output" markerY={markerY}><path className="settings-curve-reference" d="M0,112 L200,0" /></CurveFrame>;
+  const reductionHeight = (clamp(reductionDb, 0, MAX_LIVE_LIMITER_REDUCTION_DB) / MAX_LIVE_LIMITER_REDUCTION_DB) * 112;
+  const reductionY = 112 - reductionHeight;
+  const status = active ? `Live limit −${reductionDb.toFixed(1)} dB` : "Limiter idle";
+  return (
+    <CurveFrame
+      className={`settings-curve--limiter ${active ? "is-live" : ""}`}
+      label={`MASTER limiter ceiling settings curve. ${active ? `Live gain reduction ${reductionDb.toFixed(1)} decibels` : "Gain reduction idle"}`}
+      path={pathFromValues(values, 200, 112, -60, 0)}
+      horizontalLabels="Input −60 — 0 dBFS"
+      verticalLabels="Output"
+      markerY={markerY}
+      status={status}
+      figureProps={{
+        "data-testid": "limiter-gain-reduction",
+        "data-live-active": active ? "true" : "false",
+        "data-reduction-db": reductionDb.toFixed(2),
+      }}
+    >
+      <path className="settings-curve-reference" d="M0,112 L200,0" />
+      <g className="limiter-gain-reduction" aria-hidden="true">
+        <rect className="limiter-gain-reduction-track" x="189" y="0" width="8" height="112" />
+        <rect className="limiter-gain-reduction-fill" x="189" y={reductionY} width="8" height={reductionHeight} />
+        {active ? <line className="limiter-gain-reduction-marker" x1="183" y1={reductionY} x2="200" y2={reductionY} /> : null}
+      </g>
+    </CurveFrame>
+  );
 }
 
 const ManualValues = ({ children }) => (
@@ -167,7 +301,7 @@ export function TrackLevelControl({ value, onChange }) {
   );
 }
 
-export function MasterBusControls({ bus, presets = EMPTY_PRESET_LIBRARY, onChange, onReset, onSavePreset, onLoadPreset, onDeletePreset, meteringRef, meteringAvailable, playing, monitorLabel }) {
+export function MasterBusControls({ bus, presets = EMPTY_PRESET_LIBRARY, onChange, onReset, onSavePreset, onLoadPreset, onDeletePreset, meteringRef, meteringAvailable, playing, liveProcessing = false, monitorLabel }) {
   const processors = useMemo(() => [
     bus.eq.enabled && "EQ",
     bus.compressor.enabled && "Compressor",
@@ -182,6 +316,10 @@ export function MasterBusControls({ bus, presets = EMPTY_PRESET_LIBRARY, onChang
   const eqDisabled = bus.bypass || !bus.eq.enabled;
   const compressorDisabled = bus.bypass || !bus.compressor.enabled;
   const limiterDisabled = bus.bypass || !bus.limiter.enabled;
+  const meteringLive = Boolean(liveProcessing && playing && meteringAvailable !== false);
+  const eqLive = meteringLive && !eqDisabled;
+  const compressorLive = meteringLive && !compressorDisabled;
+  const limiterLive = meteringLive && !limiterDisabled;
 
   return (
     <section className={`master-bus-panel ${bus.bypass ? "is-bypassed" : ""}`} aria-labelledby="master-bus-title">
@@ -206,7 +344,7 @@ export function MasterBusControls({ bus, presets = EMPTY_PRESET_LIBRARY, onChang
         <section className={`master-module master-module--eq ${bus.eq.enabled ? "is-enabled" : ""}`}>
           <header><div><span>01</span><h4>Equalizer</h4></div><MasteringPresetControls type="eq" label="EQ" presets={presets.eq} inline onSave={onSavePreset} onLoad={onLoadPreset} onDelete={onDeletePreset} /><ModuleSwitch label="Enable MASTER EQ" checked={bus.eq.enabled} onChange={(value) => onChange(["eq", "enabled"], value)} /></header>
           <div className="analog-faceplate analog-faceplate--eq">
-            <EqResponseGraph eq={bus.eq} />
+            <EqResponseGraph eq={bus.eq} meteringRef={meteringRef} active={eqLive} />
             <div className="eq-band-bank">
               <section><strong>LF Shelf</strong><div><RotaryControl label="Low shelf frequency" value={bus.eq.lowShelf.frequencyHz} limits={MASTERING_LIMITS.lowShelfFrequencyHz} step={1} suffix="Hz" scale="log" disabled={eqDisabled} onChange={(value) => onChange(["eq", "lowShelf", "frequencyHz"], value)} /><RotaryControl label="Low shelf gain" value={bus.eq.lowShelf.gainDb} limits={MASTERING_LIMITS.eqGainDb} step={0.1} suffix="dB" precision={1} disabled={eqDisabled} onChange={(value) => onChange(["eq", "lowShelf", "gainDb"], value)} /></div></section>
               <section><strong>MF Bell</strong><div><RotaryControl label="Mid frequency" value={bus.eq.midBand.frequencyHz} limits={MASTERING_LIMITS.midBandFrequencyHz} step={1} suffix="Hz" scale="log" disabled={eqDisabled} onChange={(value) => onChange(["eq", "midBand", "frequencyHz"], value)} /><RotaryControl label="Mid gain" value={bus.eq.midBand.gainDb} limits={MASTERING_LIMITS.eqGainDb} step={0.1} suffix="dB" precision={1} disabled={eqDisabled} onChange={(value) => onChange(["eq", "midBand", "gainDb"], value)} /><RotaryControl label="Mid Q" value={bus.eq.midBand.q} limits={MASTERING_LIMITS.midBandQ} step={0.1} suffix="Q" precision={1} scale="log" disabled={eqDisabled} onChange={(value) => onChange(["eq", "midBand", "q"], value)} /></div></section>
@@ -227,7 +365,7 @@ export function MasterBusControls({ bus, presets = EMPTY_PRESET_LIBRARY, onChang
         <section className={`master-module master-module--compressor ${bus.compressor.enabled ? "is-enabled" : ""}`}>
           <header><div><span>02</span><h4>Compressor</h4></div><MasteringPresetControls type="compressor" label="Compressor" presets={presets.compressor} inline onSave={onSavePreset} onLoad={onLoadPreset} onDelete={onDeletePreset} /><ModuleSwitch label="Enable MASTER compressor" checked={bus.compressor.enabled} onChange={(value) => onChange(["compressor", "enabled"], value)} /></header>
           <div className="analog-faceplate analog-faceplate--compressor">
-            <CompressorTransferGraph compressor={bus.compressor} />
+            <CompressorTransferGraph compressor={bus.compressor} meteringRef={meteringRef} active={compressorLive} />
             <div className="rotary-control-bank rotary-control-bank--compressor">
               <RotaryControl label="Threshold" value={bus.compressor.thresholdDb} limits={MASTERING_LIMITS.compressorThresholdDb} step={0.1} suffix="dB" precision={1} disabled={compressorDisabled} onChange={(value) => onChange(["compressor", "thresholdDb"], value)} />
               <RotaryControl label="Ratio" value={bus.compressor.ratio} limits={MASTERING_LIMITS.compressorRatio} step={0.1} suffix=":1" precision={1} scale="log" disabled={compressorDisabled} onChange={(value) => onChange(["compressor", "ratio"], value)} />
@@ -265,7 +403,7 @@ export function MasterBusControls({ bus, presets = EMPTY_PRESET_LIBRARY, onChang
         <section className={`master-module master-module--limiter ${bus.limiter.enabled ? "is-enabled" : ""}`}>
           <header><div><span>04</span><h4>Limiter</h4></div><MasteringPresetControls type="limiter" label="Limiter" presets={presets.limiter} inline onSave={onSavePreset} onLoad={onLoadPreset} onDelete={onDeletePreset} /><ModuleSwitch label="Enable MASTER limiter" checked={bus.limiter.enabled} onChange={(value) => onChange(["limiter", "enabled"], value)} /></header>
           <div className="analog-faceplate analog-faceplate--limiter">
-            <LimiterTransferGraph limiter={bus.limiter} />
+            <LimiterTransferGraph limiter={bus.limiter} meteringRef={meteringRef} active={limiterLive} />
             <div className="rotary-control-bank rotary-control-bank--limiter">
               <RotaryControl compact label="Ceiling" value={bus.limiter.ceilingDbfs} limits={MASTERING_LIMITS.limiterCeilingDbfs} step={0.1} suffix="dBFS" precision={1} disabled={limiterDisabled} onChange={(value) => onChange(["limiter", "ceilingDbfs"], value)} />
               <RotaryControl compact label="Limiter attack" value={bus.limiter.attackMs} limits={MASTERING_LIMITS.limiterAttackMs} step={0.1} suffix="ms" scale="log" disabled={limiterDisabled} onChange={(value) => onChange(["limiter", "attackMs"], value)} />

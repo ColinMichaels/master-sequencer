@@ -5,7 +5,7 @@ import { toggleComparisonCandidate } from "../lib/album-decisions.js";
 import { deleteTrackRecord } from "../lib/project-commands.js";
 import { LockIcon, PlayIcon, TrashIcon, WarningIcon } from "./Icons.jsx";
 
-export function TrackReviewWorkspace({ album, libraryMap, revealPrivateFilenames, onAlbumChange, onPreviewFile, onOpenLibrary }) {
+export function TrackReviewWorkspace({ album, libraryMap, revealPrivateFilenames, onAlbumChange, onPreviewFile, onOpenLibrary, onTrackFocus }) {
   const [selectedTrackId, setSelectedTrackId] = useState(album.tracks[0]?.id || "");
   const [deleteArmed, setDeleteArmed] = useState(false);
   useEffect(() => {
@@ -18,6 +18,7 @@ export function TrackReviewWorkspace({ album, libraryMap, revealPrivateFilenames
     return () => window.clearTimeout(timer);
   }, [deleteArmed]);
   const track = album.tracks.find((item) => item.id === selectedTrackId);
+  useEffect(() => { onTrackFocus?.(track?.id || ""); }, [onTrackFocus, track?.id]);
 
   if (!track) return <main className="review-workspace"><div className="empty-state"><h2>No track selected</h2><p>Add a track from Sequence or Audio Library to begin reviewing candidates.</p></div></main>;
 
@@ -31,7 +32,7 @@ export function TrackReviewWorkspace({ album, libraryMap, revealPrivateFilenames
   return (
     <main className="review-workspace">
       <nav className="review-track-rail" aria-label={`${album.title} tracks`}>
-        <h2>{album.title}</h2>
+        <h2 className="sr-only">Track Review</h2>
         <ol>{album.tracks.map((item, index) => <li key={item.id}><button type="button" className={item.id === track.id ? "is-active" : ""} onClick={() => setSelectedTrackId(item.id)}><span>{index + 1}</span><strong>{item.title}</strong><small>{item.inSequence === false ? "Off" : item.candidates.length}</small></button></li>)}</ol>
       </nav>
       <section className="review-panel">

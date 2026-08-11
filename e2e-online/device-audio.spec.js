@@ -32,6 +32,8 @@ test.beforeEach(async ({ page }) => {
     delete globalThis.showDirectoryPicker;
   });
   await page.goto("/");
+  await expect(page.getByRole("dialog", { name: "Welcome to Project Sequencer" })).toBeVisible();
+  await page.getByRole("button", { name: "Explore the Workspace" }).click();
   await page.getByRole("button", { name: "Audio Library" }).click();
   await expect(page.getByRole("heading", { name: "Audio Library" })).toBeVisible();
 });

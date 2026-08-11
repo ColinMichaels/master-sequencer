@@ -96,7 +96,7 @@ export function AlbumDecisionsWorkspace({ album, templates, libraryMap, renderin
   return (
     <main className="decisions-workspace">
       <header className="decisions-heading">
-        <div><h2>{album.title} <span>— Album Decisions</span></h2><p>Ordering, source choices, readiness, and human approval stay separate.</p></div>
+        <h2 className="sr-only">Album Decisions</h2>
         <div className={`album-release-date is-${releaseDateStatus.kind}`}>
           <label htmlFor="album-release-date">Release date <span>(optional)</span></label>
           <div className="album-release-date-input">

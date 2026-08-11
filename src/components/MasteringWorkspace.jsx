@@ -20,7 +20,7 @@ const fileForTrack = (track, libraryMap) => {
 
 const timeLabel = (value, precise = false) => value <= 0 ? (precise ? "0:00.000" : "0:00") : formatDuration(value, precise);
 
-export function MasteringWorkspace({ album, libraryMap, presets, renderingAvailable = true, revealPrivateFilenames = false, protectedSourceKeys, activeComparison, onAlbumChange, onPreview, onReferenceCompare, previewingTrackId, onOpenExport, onTrackFocus, onPreviewChapter, onSavePreset, onLoadPreset, onDeletePreset, meteringRef, meteringAvailable, playing, monitorLabel }) {
+export function MasteringWorkspace({ album, libraryMap, presets, renderingAvailable = true, revealPrivateFilenames = false, protectedSourceKeys, activeComparison, onAlbumChange, onPreview, onReferenceCompare, previewingTrackId, onOpenExport, onTrackFocus, onPreviewChapter, onSavePreset, onLoadPreset, onDeletePreset, meteringRef, meteringAvailable, playing, liveProcessing, monitorLabel }) {
   const tracks = useMemo(() => sequenceTracks(album), [album]);
   const [selectedTrackId, setSelectedTrackId] = useState(tracks[0]?.id || "");
   const [analysisByKey, setAnalysisByKey] = useState({});
@@ -99,7 +99,7 @@ export function MasteringWorkspace({ album, libraryMap, presets, renderingAvaila
   return (
     <main className="mastering-workspace">
       <header className="mastering-heading">
-        <div><h2>{album.title} <span>— Timing &amp; Fades</span></h2><p>All edits are instructions. Indexed source audio is never changed.</p></div>
+        <h2 className="sr-only">Mastering</h2>
         <dl><div><dt>{formatDuration(programDuration(entries))}</dt><dd>Estimated program</dd></div><div><dt>{editedCount}/{tracks.length}</dt><dd>Tracks edited</dd></div><div className={missingCount ? "is-warning" : ""}><dt>{missingCount}</dt><dd>Missing audio</dd></div></dl>
         <button type="button" className="primary-button primary-button--yellow" onClick={() => onOpenExport(selectedFile ? selectedTrackId : "")} disabled={!renderingAvailable || !entries.length} title={renderingAvailable ? "Print a documented audio derivative" : "Documented audio printing is unavailable in the browser"}><ExportIcon /> {renderingAvailable ? "Print / Export Audio" : "Print Unavailable"}</button>
       </header>
@@ -123,7 +123,7 @@ export function MasteringWorkspace({ album, libraryMap, presets, renderingAvaila
         onCompare={compareReference}
       />
 
-      <MasterBusControls bus={masterBus} presets={presets} onChange={updateMasterBus} onReset={resetMasterBus} onSavePreset={onSavePreset} onLoadPreset={onLoadPreset} onDeletePreset={onDeletePreset} meteringRef={meteringRef} meteringAvailable={meteringAvailable} playing={playing} monitorLabel={monitorLabel} />
+      <MasterBusControls bus={masterBus} presets={presets} onChange={updateMasterBus} onReset={resetMasterBus} onSavePreset={onSavePreset} onLoadPreset={onLoadPreset} onDeletePreset={onDeletePreset} meteringRef={meteringRef} meteringAvailable={meteringAvailable} playing={playing} liveProcessing={liveProcessing} monitorLabel={monitorLabel} />
 
       <div className="mastering-columns">
         <nav className="mastering-track-list" aria-label={`${album.title} mastering tracks`}>

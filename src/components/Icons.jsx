@@ -27,6 +27,7 @@ export const TransitionIcon = (props) => <Icon {...props}><path d="m4 5 7 7-7 7M
 export const MoreIcon = (props) => <Icon {...props}><g fill="currentColor"><circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/></g></Icon>;
 export const TrashIcon = (props) => <Icon {...props}><path d="M5 7h14M9 7V4h6v3m2 0-1 13H8L7 7" stroke="currentColor" strokeWidth="1.6" /></Icon>;
 export const ScissorsIcon = (props) => <Icon {...props}><circle cx="6" cy="7" r="3" stroke="currentColor" strokeWidth="1.6"/><circle cx="6" cy="17" r="3" stroke="currentColor" strokeWidth="1.6"/><path d="m8.5 8.5 11 7M8.5 15.5l11-7" stroke="currentColor" strokeWidth="1.6"/></Icon>;
+export const MasteringIcon = (props) => <Icon {...props}><path d="M5 4v16M10 4v16M15 4v16M20 4v16" stroke="currentColor" strokeWidth="1.5"/><path d="M3 8h4M8 15h4M13 10h4M18 6h4" stroke="currentColor" strokeWidth="2.4"/></Icon>;
 export const DownloadIcon = (props) => <Icon {...props}><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 19h14" stroke="currentColor" strokeWidth="1.7" /></Icon>;
 export const LockIcon = (props) => <Icon {...props}><rect x="5" y="10" width="14" height="11" stroke="currentColor" strokeWidth="1.6"/><path d="M8 10V7a4 4 0 0 1 8 0v3" stroke="currentColor" strokeWidth="1.6" /></Icon>;
 export const WaveIcon = (props) => <Icon {...props}><path d="M3 12h2m2 0h1m2 0h1m2 0h1m2 0h1m2 0h2M6 8v8m3-11v14m3-9v4m3-7v10m3-13v16" stroke="currentColor" strokeWidth="1.5" /></Icon>;

@@ -1,16 +1,43 @@
 import { expect, test } from "@playwright/test";
 import { e2eProjectState } from "../tests/fixtures/e2e-project.mjs";
+import { FIRST_RUN_GUIDE_STORAGE_KEY, FIRST_RUN_GUIDE_STORAGE_VALUE } from "../src/lib/first-run.js";
 
 const origin = "http://127.0.0.1:4197";
 
-test.beforeEach(async ({ request, page }) => {
+test.beforeEach(async ({ request, page }, testInfo) => {
+  if (!testInfo.title.includes("first-time visitors")) {
+    await page.addInitScript(({ key, value }) => localStorage.setItem(key, value), {
+      key: FIRST_RUN_GUIDE_STORAGE_KEY,
+      value: FIRST_RUN_GUIDE_STORAGE_VALUE,
+    });
+  }
   const response = await request.put("/api/state", {
     data: structuredClone(e2eProjectState),
     headers: { Origin: origin },
   });
   expect(response.ok()).toBeTruthy();
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: /Fixture Album.*Working Sequence/ })).toBeVisible();
+  await expect(page.getByRole("table", { name: "Fixture Album track order" })).toBeVisible();
+});
+
+test("first-time visitors see help once and can reopen app instructions from quick settings", async ({ page }) => {
+  const welcomeGuide = page.getByRole("dialog", { name: "Welcome to Project Sequencer" });
+  await expect(welcomeGuide).toBeVisible();
+  await expect(welcomeGuide.getByRole("heading", { name: "From source files to final album" })).toBeVisible();
+  await welcomeGuide.getByRole("button", { name: "Explore the Workspace" }).click();
+  await expect(welcomeGuide).toBeHidden();
+
+  await page.reload();
+  await expect(welcomeGuide).toBeHidden();
+  await page.getByRole("button", { name: "Open settings menu" }).click();
+  const quickSettings = page.getByRole("dialog", { name: "Quick Settings" });
+  await expect(quickSettings.getByRole("button", { name: "Help & app instructions" })).toBeVisible();
+  await quickSettings.getByRole("button", { name: "Help & app instructions" }).click();
+  const helpGuide = page.getByRole("dialog", { name: "Project Sequencer Help & Instructions" });
+  await expect(helpGuide).toBeVisible();
+  await expect(helpGuide.getByText("Your source audio stays untouched.")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(helpGuide).toBeHidden();
 });
 
 test("bootstrap renders the project and protected sources remain masked", async ({ page, request }) => {
@@ -24,12 +51,12 @@ test("bootstrap renders the project and protected sources remain masked", async 
   await expect(page.getByLabel("Audition source for [SIGNAL SOURCE WITHHELD]").locator("option:checked")).toHaveText("Private candidate A");
   await expect(page.getByText("Hidden Coda.wav", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Audio Library" }).click();
-  await expect(page.getByRole("heading", { name: "Audio Library" })).toBeVisible();
+  await expect(page.getByRole("table", { name: "Audio files" })).toBeVisible();
   await expect(page.getByText("Hidden Coda.wav", { exact: true })).toHaveCount(0);
   await expect(page.getByText("[Private source file]", { exact: true }).first()).toBeVisible();
 });
 
-test("collapsed albums keep compact actions while header stats use badge buttons", async ({ page }) => {
+test("albums default to the compact rail while header stats use badge buttons", async ({ page }) => {
   const headerMeter = page.getByTestId("header-master-meter");
   await expect(headerMeter).toBeVisible();
   await expect(headerMeter).toHaveAttribute("data-meter-routing", "raw");
@@ -57,7 +84,7 @@ test("collapsed albums keep compact actions while header stats use badge buttons
   await expect(statistics).toBeVisible();
   await expect(statistics.getByRole("button")).toHaveCount(5);
   await statistics.getByRole("button", { name: "Missing sources: 0. Open Audio Library" }).click();
-  await expect(page.getByRole("heading", { name: "Audio Library" })).toBeVisible();
+  await expect(page.getByRole("table", { name: "Audio files" })).toBeVisible();
   await expect(statistics).toBeHidden();
   await page.getByRole("button", { name: "Sequence", exact: true }).click();
 
@@ -67,10 +94,9 @@ test("collapsed albums keep compact actions while header stats use badge buttons
   await expect(statistics).toBeHidden();
   await expect(headerStats.getByRole("button", { name: "Tracks: 2. Show album statistics" })).toBeFocused();
 
-  await page.getByRole("button", { name: "Hide albums panel" }).click();
-
   const compactRail = page.locator(".album-rail-compact");
   await expect(compactRail).toBeVisible();
+  await expect(page.getByRole("button", { name: "Show albums panel" })).toBeVisible();
   await expect(compactRail.getByRole("button", { name: /Open saved projects for/ })).toBeVisible();
   await expect(compactRail.getByRole("button", { name: "Open album Fixture Album" })).toHaveAttribute("aria-current", "true");
   await expect(compactRail.getByRole("button", { name: "Add Album" })).toBeVisible();
@@ -79,22 +105,59 @@ test("collapsed albums keep compact actions while header stats use badge buttons
   await compactRail.getByRole("button", { name: "Add Album" }).click();
   await expect(page.getByRole("dialog", { name: "Add Album" })).toBeVisible();
   await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Show albums panel" }).click();
+  await expect(compactRail).toBeHidden();
+  await expect(page.getByRole("button", { name: "Hide albums panel" })).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(1);
-  await page.getByRole("button", { name: "Show albums panel" }).click();
-  await expect(compactRail).toBeHidden();
 });
 
-test("numeric keypad shortcuts switch primary views without hijacking editing or dialogs", async ({ page }) => {
+test("primary workspaces keep repeated tab headings visually compact", async ({ page }) => {
+  const surfaces = [
+    ["Sequence", ".workspace-heading > h2"],
+    ["Track Review", ".review-track-rail > h2"],
+    ["Album Decisions", ".decisions-heading > h2"],
+    ["Mastering", ".mastering-heading > h2"],
+    ["Assets", ".assets-heading > h2"],
+    ["Audio Library", ".library-heading > h2"],
+    ["Settings", ".settings-workspace > h2"],
+  ];
+  for (const [view, headingSelector] of surfaces) {
+    await page.getByRole("button", { name: view, exact: true }).click();
+    await expect(page.locator(headingSelector)).toHaveClass(/sr-only/);
+  }
+});
+
+test("page title follows the active tab, album, track, and saved project", async ({ page }) => {
+  await expect(page).toHaveTitle("Sequence | Fixture Album | Fixture Artist — Fixture Album");
+
+  await page.getByRole("button", { name: "Mastering", exact: true }).click();
+  await expect(page).toHaveTitle("Mastering | Fixture Album | Alpha Tone | Fixture Artist — Fixture Album");
+  await page.getByRole("navigation", { name: "Fixture Album mastering tracks" }).getByRole("button", { name: /\[SIGNAL SOURCE WITHHELD\]/ }).click();
+  await expect(page).toHaveTitle("Mastering | Fixture Album | [SIGNAL SOURCE WITHHELD] | Fixture Artist — Fixture Album");
+
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(page).toHaveTitle("Settings | Fixture Album | Fixture Artist — Fixture Album");
+
+  await page.getByRole("button", { name: "Add Album" }).click();
+  await page.getByLabel("Album title").fill("Next Album");
+  await page.getByRole("button", { name: "Add Album", exact: true }).last().click();
+  await expect(page).toHaveTitle("Sequence | Next Album | Fixture Artist — Fixture Album");
+});
+
+test("number row and numeric keypad shortcuts switch primary views without hijacking editing or dialogs", async ({ page }) => {
   const navigation = page.getByRole("navigation", { name: "Project views" });
   const sequence = navigation.getByRole("button", { name: "Sequence", exact: true });
   const review = navigation.getByRole("button", { name: "Track Review", exact: true });
   const mastering = navigation.getByRole("button", { name: "Mastering", exact: true });
   const settings = navigation.getByRole("button", { name: "Settings", exact: true });
 
-  await expect(sequence).toHaveAttribute("data-tooltip", "Sequence · Numpad 1");
-  await page.keyboard.press("Numpad2");
+  await expect(sequence).toHaveAttribute("data-tooltip", "Sequence · 1");
+  await expect(mastering).toHaveAttribute("data-tooltip", "Mastering · 2");
+  await page.keyboard.press("2");
+  await expect(mastering).toHaveAttribute("aria-current", "page");
+  await page.keyboard.press("Numpad3");
   await expect(review).toHaveAttribute("aria-current", "page");
   await page.keyboard.press("Numpad7");
   await expect(settings).toHaveAttribute("aria-current", "page");
@@ -108,7 +171,7 @@ test("numeric keypad shortcuts switch primary views without hijacking editing or
   await page.getByRole("button", { name: "Add Album" }).click();
   const dialog = page.getByRole("dialog", { name: "Add Album" });
   await expect(dialog).toBeVisible();
-  await page.keyboard.press("Numpad4");
+  await page.keyboard.press("2");
   await expect(dialog).toBeVisible();
   await expect(mastering).not.toHaveAttribute("aria-current", "page");
 });
@@ -190,7 +253,7 @@ test("project import rejects future schemas and modal focus returns to its opene
   });
   await expect(page.getByRole("alert")).toContainText("newer than this application supports");
   await page.getByRole("button", { name: "Sequence", exact: true }).click();
-  await expect(page.getByRole("heading", { name: /Fixture Album.*Working Sequence/ })).toBeVisible();
+  await expect(page.getByRole("table", { name: "Fixture Album track order" })).toBeVisible();
 });
 
 test("project setup owns the artist used by new albums", async ({ page, request }) => {
@@ -229,19 +292,19 @@ test("saved projects can be loaded and safely removed while album deletion remai
   await fresh.getByLabel("Album era").selectOption("current");
   await fresh.getByRole("button", { name: "Start Fresh Project" }).click();
 
-  await expect(page.getByRole("heading", { name: /Clean Slate.*Working Sequence/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open album Clean Slate" })).toHaveAttribute("aria-current", "true");
   await expect(page.getByText("This album is ready for its first track.")).toBeVisible();
   await expect(page.locator(".status-strip [role='status']")).toContainText("New project created");
 
-  await page.getByRole("button", { name: /Current project Fresh Project QA/ }).click();
+  await page.getByRole("button", { name: "Open saved projects for Fresh Project QA" }).click();
   const saved = page.getByRole("dialog", { name: "Saved Projects" });
   const oldProject = saved.locator(".saved-project-list li").filter({ hasText: "Fixture Artist — Fixture Album" });
   await expect(oldProject).toContainText("1 album");
   await oldProject.getByRole("button", { name: "Load Project" }).click();
-  await expect(page.getByRole("heading", { name: /Fixture Album.*Working Sequence/ })).toBeVisible();
+  await expect(page.getByRole("table", { name: "Fixture Album track order" })).toBeVisible();
   await expect(page.getByText("Alpha Tone", { exact: true }).first()).toBeVisible();
 
-  await page.getByRole("button", { name: /Current project Fixture Artist.*Fixture Album/ }).click();
+  await page.getByRole("button", { name: "Open saved projects for Fixture Artist — Fixture Album" }).click();
   const reopenedSaved = page.getByRole("dialog", { name: "Saved Projects" });
   const freshProject = reopenedSaved.locator(".saved-project-list li").filter({ hasText: "Fresh Project QA" });
   await freshProject.getByRole("button", { name: "Remove project Fresh Project QA" }).click();
@@ -258,11 +321,12 @@ test("saved projects can be loaded and safely removed while album deletion remai
   await page.getByRole("button", { name: "Add Album" }).click();
   await page.getByLabel("Album title").fill("Delete Me");
   await page.getByRole("button", { name: "Add Album", exact: true }).last().click();
+  await page.getByRole("button", { name: "Show albums panel" }).click();
   await page.getByRole("button", { name: "Delete Delete Me" }).click();
   const deleteDialog = page.getByRole("dialog", { name: "Delete Album" });
   await expect(deleteDialog).toContainText("Indexed audio, artwork, lyric files, and rendered exports stay exactly where they are");
   await deleteDialog.getByRole("button", { name: "Delete Album" }).click();
-  await expect(page.getByRole("heading", { name: /Fixture Album.*Working Sequence/ })).toBeVisible();
+  await expect(page.getByRole("table", { name: "Fixture Album track order" })).toBeVisible();
   await expect(page.getByText("Delete Me", { exact: true })).toHaveCount(0);
   await expect(page.locator(".status-strip [role='status']")).toContainText("Saved locally");
 });
@@ -346,7 +410,6 @@ test("audio rows drag onto albums as new tracks or matching-title candidates", a
   expect(matchingTrack.decisionStatus).toBe("undecided");
   expect(matchingTrack.candidates[0].sourceRef.relativePath).toBe("Loose Sketch.mp3");
 
-  await page.getByRole("button", { name: "Hide albums panel" }).click();
   await expect(page.locator(".album-rail")).toHaveClass(/is-collapsed/);
   const alphaTone = page.locator(".audio-row").filter({ hasText: "Alpha Tone.wav" });
   await alphaTone.dragTo(dropTarget);
@@ -508,7 +571,8 @@ test("album decisions persist versions, transition notes, explicit approval, and
   await templateSelect.selectOption({ label: "Two-track structure" });
   await page.getByLabel("New album title").fill("Next Fixture");
   await page.getByRole("button", { name: "Create Empty Album" }).click();
-  await expect(page.getByRole("heading", { name: /Next Fixture.*Album Decisions/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open album Next Fixture" })).toHaveAttribute("aria-current", "true");
+  await expect(page.locator(".decisions-heading > h2")).toHaveText("Album Decisions");
   await expect(page.locator(".status-strip [role='status']")).toContainText("Saved locally");
 
   bootstrap = await (await request.get("/api/bootstrap")).json();
@@ -546,9 +610,82 @@ test("mastering analysis, chapter cues, and delivery authority remain explicit",
   await page.getByLabel("Enable MASTER limiter").check();
   await page.getByRole("slider", { name: "Ceiling graphical control" }).fill("-1");
   await expect(page.getByRole("spinbutton", { name: "Ceiling" })).toHaveValue("-1");
+  const eqImpact = page.getByTestId("eq-live-impact");
+  const compressorReduction = page.getByTestId("compressor-gain-reduction");
+  const limiterReduction = page.getByTestId("limiter-gain-reduction");
+  await expect(eqImpact).toHaveAttribute("data-live-active", "false");
+  await expect(eqImpact).toHaveAttribute("data-impact-db", "0.00");
+  await expect(compressorReduction).toHaveAttribute("data-live-active", "false");
+  await expect(compressorReduction).toHaveAttribute("data-reduction-db", "0.00");
+  await expect(limiterReduction).toHaveAttribute("data-live-active", "false");
+  await expect(limiterReduction).toHaveAttribute("data-reduction-db", "0.00");
+  const transportToggle = page.locator(".transport-playback-toggle");
+  await transportToggle.click();
+  await expect(eqImpact).toHaveAttribute("data-live-active", "true");
+  await expect.poll(async () => Number(await eqImpact.getAttribute("data-impact-db")), { timeout: 2_000 }).toBeGreaterThan(0);
+  await expect(compressorReduction).toHaveAttribute("data-live-active", "true");
+  await expect.poll(async () => Number(await compressorReduction.getAttribute("data-reduction-db")), { timeout: 2_000 }).toBeGreaterThan(0);
+  await expect(limiterReduction).toHaveAttribute("data-live-active", "true");
+  await commitNumber(/MASTER output gain/, 12);
+  await expect.poll(async () => Number(await limiterReduction.getAttribute("data-reduction-db")), { timeout: 2_000 }).toBeGreaterThan(0);
+  await page.getByLabel("Enable MASTER limiter").uncheck();
+  await expect(limiterReduction).toHaveAttribute("data-live-active", "false");
+  await expect(limiterReduction).toHaveAttribute("data-reduction-db", "0.00");
+  await page.getByLabel("Enable MASTER limiter").check();
+  await expect(limiterReduction).toHaveAttribute("data-live-active", "true");
+  await expect.poll(async () => Number(await limiterReduction.getAttribute("data-reduction-db")), { timeout: 2_000 }).toBeGreaterThan(0);
+  await commitNumber(/MASTER output gain/, -1);
+  await page.getByLabel("Enable MASTER EQ").uncheck();
+  await expect(eqImpact).toHaveAttribute("data-live-active", "false");
+  await expect(eqImpact).toHaveAttribute("data-impact-db", "0.00");
+  await page.getByLabel("Enable MASTER EQ").check();
+  await expect(eqImpact).toHaveAttribute("data-live-active", "true");
+  await expect.poll(async () => Number(await eqImpact.getAttribute("data-impact-db")), { timeout: 2_000 }).toBeGreaterThan(0);
+  await page.getByLabel("Enable MASTER compressor").uncheck();
+  await expect(compressorReduction).toHaveAttribute("data-live-active", "false");
+  await expect(compressorReduction).toHaveAttribute("data-reduction-db", "0.00");
+  await page.getByLabel("Enable MASTER compressor").check();
+  await expect(compressorReduction).toHaveAttribute("data-live-active", "true");
+  await expect.poll(async () => Number(await compressorReduction.getAttribute("data-reduction-db")), { timeout: 2_000 }).toBeGreaterThan(0);
+  await page.getByLabel("Bypass MASTER").check();
+  await expect(eqImpact).toHaveAttribute("data-live-active", "false");
+  await expect(eqImpact).toHaveAttribute("data-impact-db", "0.00");
+  await expect(compressorReduction).toHaveAttribute("data-live-active", "false");
+  await expect(compressorReduction).toHaveAttribute("data-reduction-db", "0.00");
+  await expect(limiterReduction).toHaveAttribute("data-live-active", "false");
+  await expect(limiterReduction).toHaveAttribute("data-reduction-db", "0.00");
+  await page.getByLabel("Bypass MASTER").uncheck();
+  await expect(eqImpact).toHaveAttribute("data-live-active", "true");
+  await expect.poll(async () => Number(await eqImpact.getAttribute("data-impact-db")), { timeout: 2_000 }).toBeGreaterThan(0);
+  await expect(compressorReduction).toHaveAttribute("data-live-active", "true");
+  await expect.poll(async () => Number(await compressorReduction.getAttribute("data-reduction-db")), { timeout: 2_000 }).toBeGreaterThan(0);
+  await expect(limiterReduction).toHaveAttribute("data-live-active", "true");
+  await transportToggle.click();
+  await expect(eqImpact).toHaveAttribute("data-live-active", "false");
+  await expect(eqImpact).toHaveAttribute("data-impact-db", "0.00");
+  await expect(compressorReduction).toHaveAttribute("data-live-active", "false");
+  await expect(compressorReduction).toHaveAttribute("data-reduction-db", "0.00");
+  await expect(limiterReduction).toHaveAttribute("data-live-active", "false");
+  await expect(limiterReduction).toHaveAttribute("data-reduction-db", "0.00");
+  const headerMeter = page.getByTestId("header-master-meter");
+  await expect(headerMeter).toHaveAttribute("data-meter-routing", "mastering");
+  await expect(headerMeter).toHaveAttribute("data-routing-label", "MASTER");
+  await expect(headerMeter).toHaveAttribute("aria-label", /Mastering enabled/);
+  await expect.poll(() => headerMeter.evaluate((element) => getComputedStyle(element).borderColor)).toBe("rgb(168, 201, 47)");
+  await page.getByLabel("Bypass MASTER").check();
+  await expect(headerMeter).toHaveAttribute("data-meter-routing", "raw");
+  await expect.poll(() => headerMeter.evaluate((element) => getComputedStyle(element).borderColor)).toBe("rgba(0, 0, 0, 0)");
+  await page.getByLabel("Bypass MASTER").uncheck();
+  await expect(headerMeter).toHaveAttribute("data-meter-routing", "mastering");
+  await expect.poll(() => headerMeter.evaluate((element) => getComputedStyle(element).borderColor)).toBe("rgb(168, 201, 47)");
   await page.getByLabel("Reference audio track").selectOption("test-root::Alternate Mix.mp3");
   await page.getByRole("button", { name: /B Clean reference/ }).click();
-  const headerMeter = page.getByTestId("header-master-meter");
+  await expect(eqImpact).toHaveAttribute("data-live-active", "false");
+  await expect(eqImpact).toHaveAttribute("data-impact-db", "0.00");
+  await expect(compressorReduction).toHaveAttribute("data-live-active", "false");
+  await expect(compressorReduction).toHaveAttribute("data-reduction-db", "0.00");
+  await expect(limiterReduction).toHaveAttribute("data-live-active", "false");
+  await expect(limiterReduction).toHaveAttribute("data-reduction-db", "0.00");
   await expect(headerMeter).toHaveAttribute("data-meter-routing", "reference");
   await expect(headerMeter).toHaveAttribute("data-routing-label", "REF");
   await expect(headerMeter).toHaveAttribute("aria-label", /Clean reference; mastering bypassed/);

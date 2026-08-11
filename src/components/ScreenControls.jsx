@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
-import { GearIcon, MoonIcon, PaletteIcon, SunIcon } from "./Icons.jsx";
+import { DocumentIcon, GearIcon, MoonIcon, PaletteIcon, SunIcon } from "./Icons.jsx";
 import { adjustTextScale, TEXT_SCALES, textScaleLabel } from "../lib/appearance.js";
 
-export function ScreenControls({ appearance, resolvedMode, onChange, onOpenSettings }) {
+export function ScreenControls({ appearance, resolvedMode, onChange, onOpenSettings, onOpenHelp }) {
   const [open, setOpen] = useState(false);
   const shellRef = useRef(null);
   const triggerRef = useRef(null);
@@ -34,6 +34,11 @@ export function ScreenControls({ appearance, resolvedMode, onChange, onOpenSetti
     onOpenSettings();
   };
 
+  const openHelp = () => {
+    setOpen(false);
+    onOpenHelp?.();
+  };
+
   return (
     <div className="screen-settings-shell" ref={shellRef}>
       <button ref={triggerRef} type="button" className={`screen-settings-trigger ${open ? "is-open" : ""}`} onClick={() => setOpen((current) => !current)} aria-label={`${open ? "Close" : "Open"} settings menu`} aria-expanded={open} aria-controls="screen-settings-menu" aria-haspopup="dialog" data-tooltip="Quick settings"><GearIcon size={21} /></button>
@@ -50,6 +55,11 @@ export function ScreenControls({ appearance, resolvedMode, onChange, onOpenSetti
         <button type="button" className="screen-settings-option" onClick={() => onChange({ mode: lightTarget ? "light" : "dark" })} aria-label={`Use ${lightTarget ? "light" : "dark"} mode`}>
           {lightTarget ? <SunIcon /> : <MoonIcon />}
           <span><strong>{lightTarget ? "Light" : "Dark"} mode</strong><small>Currently showing {resolvedMode} mode</small></span>
+        </button>
+        <button type="button" className="screen-settings-option" onClick={openHelp}>
+          <DocumentIcon />
+          <span><strong>Help &amp; app instructions</strong><small>Open the complete album workflow guide</small></span>
+          <em>?</em>
         </button>
         <button type="button" className="screen-settings-option" onClick={openFullSettings}>
           <PaletteIcon />

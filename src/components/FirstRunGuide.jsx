@@ -53,6 +53,7 @@ const workflow = [
 ];
 
 export function FirstRunGuide({
+  title = "Welcome to Project Sequencer",
   artistName,
   setupComplete,
   scanning,
@@ -63,7 +64,7 @@ export function FirstRunGuide({
 }) {
   return (
     <Modal
-      title="Welcome to Project Sequencer"
+      title={title}
       className="modal--first-run"
       dismissible={setupComplete}
       onClose={onExplore}

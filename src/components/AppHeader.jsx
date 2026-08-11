@@ -1,21 +1,21 @@
 import React, { useEffect, useRef, useState } from "react";
-import { CheckIcon, ImageIcon, MusicIcon, ReviewIcon, ScissorsIcon, SequenceIcon, SettingsIcon, WarningIcon, WaveIcon } from "./Icons.jsx";
+import { CheckIcon, ImageIcon, MasteringIcon, MusicIcon, ReviewIcon, SequenceIcon, SettingsIcon, WarningIcon, WaveIcon } from "./Icons.jsx";
 import { MasterOutputMeters } from "./MasterOutputMeters.jsx";
 import { ScreenControls } from "./ScreenControls.jsx";
 
 const navItems = [
   ["sequence", "Sequence", SequenceIcon],
+  ["mastering", "Mastering", MasteringIcon],
   ["review", "Track Review", ReviewIcon],
   ["decisions", "Album Decisions", CheckIcon],
-  ["mastering", "Mastering", ScissorsIcon],
   ["assets", "Assets", ImageIcon],
   ["library", "Audio Library", MusicIcon],
   ["settings", "Settings", SettingsIcon],
 ];
 
-const numpadViewIndex = (event) => {
+const numericShortcutIndex = (event) => {
   if (event.repeat || event.isComposing || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return -1;
-  if (!/^Numpad[1-7]$/.test(event.code)) return -1;
+  if (!/^(?:Digit|Numpad)[1-7]$/.test(event.code)) return -1;
   return Number(event.code.slice(-1)) - 1;
 };
 
@@ -29,7 +29,7 @@ const summaryDefinitions = [
   { id: "approvals", label: "Track approvals", Icon: CheckIcon, view: "review", action: "Open Track Review", detail: "Tracks with an approved master candidate" },
 ];
 
-export function AppHeader({ activeView, onViewChange, album, playableCount, approvalCount, appearance, resolvedMode, onAppearanceChange, onOpenAppearance, commandHistory, meteringRef, meteringAvailable, playing, monitorLabel, monitorRouting }) {
+export function AppHeader({ activeView, onViewChange, album, playableCount, approvalCount, appearance, resolvedMode, onAppearanceChange, onOpenAppearance, onOpenHelp, commandHistory, meteringRef, meteringAvailable, playing, monitorLabel, monitorRouting }) {
   const [expandedStat, setExpandedStat] = useState("");
   const summaryRef = useRef(null);
   const trackCount = album?.tracks.length || 0;
@@ -60,15 +60,15 @@ export function AppHeader({ activeView, onViewChange, album, playableCount, appr
   }, [expandedStat]);
 
   useEffect(() => {
-    const switchViewFromNumpad = (event) => {
-      const index = numpadViewIndex(event);
+    const switchViewFromNumberKey = (event) => {
+      const index = numericShortcutIndex(event);
       if (index < 0 || isEditingTarget(event.target) || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       event.preventDefault();
       setExpandedStat("");
       onViewChange(navItems[index][0]);
     };
-    window.addEventListener("keydown", switchViewFromNumpad);
-    return () => window.removeEventListener("keydown", switchViewFromNumpad);
+    window.addEventListener("keydown", switchViewFromNumberKey);
+    return () => window.removeEventListener("keydown", switchViewFromNumberKey);
   }, [onViewChange]);
 
   const openView = (view) => {
@@ -81,10 +81,10 @@ export function AppHeader({ activeView, onViewChange, album, playableCount, appr
       <h1 className="sr-only">Project Sequencer</h1>
       <nav className="primary-nav" aria-label="Project views" style={{ "--nav-count": navItems.length }}>
         {navItems.map(([id, label, NavIcon], index) => (
-          <button key={id} type="button" className={activeView === id ? "is-active" : ""} onClick={() => onViewChange(id)} aria-current={activeView === id ? "page" : undefined} aria-label={label} aria-describedby={`nav-shortcut-${id}`} data-tooltip={`${label} · Numpad ${index + 1}`}>
+          <button key={id} type="button" className={activeView === id ? "is-active" : ""} onClick={() => onViewChange(id)} aria-current={activeView === id ? "page" : undefined} aria-label={label} aria-describedby={`nav-shortcut-${id}`} data-tooltip={`${label} · ${index + 1}`}>
             <NavIcon size={20} />
             <span className="sr-only">{label}</span>
-            <span id={`nav-shortcut-${id}`} className="sr-only">Keyboard shortcut: numeric keypad {index + 1}</span>
+            <span id={`nav-shortcut-${id}`} className="sr-only">Keyboard shortcut: number {index + 1} on the number row or numeric keypad</span>
           </button>
         ))}
       </nav>
@@ -117,7 +117,7 @@ export function AppHeader({ activeView, onViewChange, album, playableCount, appr
           </div>
         </section>}
       </div>
-      <ScreenControls appearance={appearance} resolvedMode={resolvedMode} onChange={onAppearanceChange} onOpenSettings={onOpenAppearance} />
+      <ScreenControls appearance={appearance} resolvedMode={resolvedMode} onChange={onAppearanceChange} onOpenSettings={onOpenAppearance} onOpenHelp={onOpenHelp} />
     </header>
   );
 }

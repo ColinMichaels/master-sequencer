@@ -2,6 +2,55 @@ import { normalizeMasterBus } from "./mastering.js";
 
 const clamp = (value, minimum, maximum) => Math.min(maximum, Math.max(minimum, value));
 
+export const MAX_LIVE_COMPRESSOR_REDUCTION_DB = 24;
+export const MAX_LIVE_LIMITER_REDUCTION_DB = 12;
+
+const EQ_LIVE_POINT_COUNT = 81;
+
+export const compressorGainReductionDb = (reduction) => {
+  const value = Number(reduction);
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, -value);
+};
+
+export const equalizerResponseDbAtFrequency = (eq, frequency) => {
+  const safeFrequency = Math.max(1, Number(frequency) || 1);
+  const lowWeight = 1 / (1 + (safeFrequency / eq.lowShelf.frequencyHz) ** 4);
+  const highWeight = 1 / (1 + (eq.highShelf.frequencyHz / safeFrequency) ** 4);
+  const octaves = Math.log2(safeFrequency / eq.midBand.frequencyHz);
+  const midWidth = 1.25 / Math.sqrt(eq.midBand.q);
+  const midWeight = Math.exp(-0.5 * (octaves / midWidth) ** 2);
+  return eq.lowShelf.gainDb * lowWeight + eq.midBand.gainDb * midWeight + eq.highShelf.gainDb * highWeight;
+};
+
+export const equalizerLiveImpact = ({ frequencyData, sampleRate, eq, pointCount = EQ_LIVE_POINT_COUNT } = {}) => {
+  const safePointCount = Math.max(2, Math.round(Number(pointCount) || EQ_LIVE_POINT_COUNT));
+  const silent = {
+    values: Array.from({ length: safePointCount }, () => 0),
+    activity: Array.from({ length: safePointCount }, () => 0),
+    impactDb: 0,
+  };
+  if (!frequencyData?.length || !Number.isFinite(Number(sampleRate)) || Number(sampleRate) <= 0 || !eq) return silent;
+
+  let activeWeight = 0;
+  let weightedImpact = 0;
+  const nyquist = Number(sampleRate) / 2;
+  const activityValues = [];
+  const values = Array.from({ length: safePointCount }, (_, index) => {
+    const frequency = 20 * (1_000 ** (index / (safePointCount - 1)));
+    const bin = clamp(Math.round((frequency / nyquist) * (frequencyData.length - 1)), 0, frequencyData.length - 1);
+    const levelDb = Number(frequencyData[bin]);
+    const activity = Number.isFinite(levelDb) ? clamp((levelDb + 72) / 54, 0, 1) : 0;
+    const responseDb = equalizerResponseDbAtFrequency(eq, frequency);
+    activityValues.push(activity);
+    activeWeight += activity;
+    weightedImpact += Math.abs(responseDb) * activity;
+    return responseDb * activity;
+  });
+
+  return { values, activity: activityValues, impactDb: activeWeight > 0 ? weightedImpact / activeWeight : 0 };
+};
+
 export const decibelsToGain = (decibels) => 10 ** (Number(decibels || 0) / 20);
 
 const setParam = (param, value) => {
@@ -31,6 +80,7 @@ export const playbackBypassesMastering = (entry) => !entry?.track || Boolean(ent
 export const masterMonitorRouting = ({ entry, masterBus, meteringAvailable } = {}) => {
   if (entry?.referenceTrack) return "reference";
   if (entry?.renderedPreview) return "mastering";
+  if (!entry && meteringAvailable !== false && activeMasteringProcessors(masterBus).length) return "mastering";
   if (!entry?.track || meteringAvailable === false || normalizeMasterBus(masterBus).bypass) return "raw";
   return "mastering";
 };
@@ -94,6 +144,7 @@ export const createLiveMasteringGraph = (audio, AudioContextClass) => {
   const directGain = context.createGain();
   const trackGain = context.createGain();
   const bypassGain = context.createGain();
+  const eqInputAnalyser = context.createAnalyser();
   const lowShelf = context.createBiquadFilter();
   const midBand = context.createBiquadFilter();
   const highShelf = context.createBiquadFilter();
@@ -113,13 +164,14 @@ export const createLiveMasteringGraph = (audio, AudioContextClass) => {
   const channelMerger = context.createChannelMerger(2);
 
   configureAnalyser(frequencyAnalyser, { fftSize: 2_048, smoothingTimeConstant: 0.76 });
+  configureAnalyser(eqInputAnalyser, { fftSize: 2_048, smoothingTimeConstant: 0.76 });
   configureAnalyser(leftAnalyser, { fftSize: 2_048 });
   configureAnalyser(rightAnalyser, { fftSize: 2_048 });
 
   source.connect(directGain).connect(masterOutput);
   source.connect(trackGain);
   trackGain.connect(bypassGain).connect(masterOutput);
-  trackGain.connect(lowShelf).connect(midBand).connect(highShelf);
+  trackGain.connect(eqInputAnalyser).connect(lowShelf).connect(midBand).connect(highShelf);
   highShelf.connect(compressorDry).connect(compressorSum);
   highShelf.connect(compressor).connect(makeupGain).connect(compressorWet).connect(compressorSum);
   compressorSum.connect(outputGain).connect(limiter).connect(processedGain).connect(masterOutput);
@@ -136,6 +188,7 @@ export const createLiveMasteringGraph = (audio, AudioContextClass) => {
     directGain,
     trackGain,
     bypassGain,
+    eqInputAnalyser,
     lowShelf,
     midBand,
     highShelf,

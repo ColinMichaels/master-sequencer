@@ -39,7 +39,7 @@ export function SettingsWorkspace({ state, roots, scan, watching, scanning, onli
 
   return (
     <main className="settings-workspace">
-      <header className="settings-heading"><h2>Settings</h2><p>Set project identity, adjust the screen, configure audio paths, and manage local project data. Source files always stay in place.</p></header>
+      <h2 className="sr-only">Settings</h2>
       <section className="settings-section project-settings" id="project-settings">
         <div className="settings-section-heading">
           <div><h3>Project</h3><p>The artist is a project-wide identity, separate from album and audio-source decisions.</p></div>

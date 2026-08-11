@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { activeMasteringProcessors, applyLiveMasteringSettings, comparisonPlaybackStart, createLiveMasteringGraph, decibelsToGain, masterMonitorRouting, playbackBypassesMastering } from "../src/lib/live-mastering.js";
+import { activeMasteringProcessors, applyLiveMasteringSettings, comparisonPlaybackStart, compressorGainReductionDb, createLiveMasteringGraph, decibelsToGain, equalizerLiveImpact, masterMonitorRouting, playbackBypassesMastering } from "../src/lib/live-mastering.js";
 
 const parameter = () => ({ value: 0 });
 const filter = () => ({ type: "", frequency: parameter(), gain: parameter(), Q: parameter() });
@@ -82,7 +82,33 @@ test("reference playback is explicitly classified for the clean direct output", 
   assert.equal(playbackBypassesMastering({ track: { id: "current" } }), false);
 });
 
+test("live compressor reduction converts the Web Audio reduction value to a positive decibel reading", () => {
+  assert.equal(compressorGainReductionDb(0), 0);
+  assert.equal(compressorGainReductionDb(-6.25), 6.25);
+  assert.equal(compressorGainReductionDb(-40), 40);
+  assert.equal(compressorGainReductionDb(2), 0);
+  assert.equal(compressorGainReductionDb(undefined), 0);
+});
+
+test("live EQ impact weights the configured response by active spectrum energy", () => {
+  const activeSpectrum = new Float32Array(1_024).fill(-30);
+  const active = equalizerLiveImpact({ frequencyData: activeSpectrum, sampleRate: 48_000, eq: enabledMaster.eq });
+  const silent = equalizerLiveImpact({ frequencyData: new Float32Array(1_024).fill(-96), sampleRate: 48_000, eq: enabledMaster.eq });
+
+  assert.equal(active.values.length, 81);
+  assert.equal(active.activity.length, 81);
+  assert.ok(active.impactDb > 0);
+  assert.ok(active.activity.some((value) => value > 0));
+  assert.ok(active.values.some((value) => Math.abs(value) > 0));
+  assert.equal(silent.impactDb, 0);
+  assert.ok(silent.activity.every((value) => value === 0));
+  assert.ok(silent.values.every((value) => value === 0));
+});
+
 test("header monitor routing distinguishes mastering, clean references, and raw audio", () => {
+  assert.equal(masterMonitorRouting({ masterBus: enabledMaster, meteringAvailable: true }), "mastering");
+  assert.equal(masterMonitorRouting({ masterBus: { ...enabledMaster, bypass: true }, meteringAvailable: true }), "raw");
+  assert.equal(masterMonitorRouting({ masterBus: {}, meteringAvailable: true }), "raw");
   assert.equal(masterMonitorRouting({ entry: { track: { id: "current" } }, masterBus: enabledMaster, meteringAvailable: true }), "mastering");
   assert.equal(masterMonitorRouting({ entry: { track: { id: "current" }, referenceTrack: true }, masterBus: enabledMaster, meteringAvailable: true }), "reference");
   assert.equal(masterMonitorRouting({ entry: { renderedPreview: true }, masterBus: enabledMaster, meteringAvailable: false }), "mastering");
@@ -128,6 +154,8 @@ test("the live graph connects one media source to direct, bypass, and processed 
   assert.equal(graph.directGain.connections[0].node, graph.masterOutput);
   assert.equal(graph.trackGain.connections.length, 2);
   assert.equal(graph.bypassGain.connections[0].node, graph.masterOutput);
+  assert.equal(graph.trackGain.connections[1].node, graph.eqInputAnalyser);
+  assert.equal(graph.eqInputAnalyser.connections[0].node, graph.lowShelf);
   assert.equal(graph.processedGain.connections[0].node, graph.masterOutput);
   assert.equal(graph.masterOutput.connections[0].node, graph.frequencyAnalyser);
   assert.equal(graph.frequencyAnalyser.connections[0].node, graph.channelSplitter);
@@ -135,4 +163,6 @@ test("the live graph connects one media source to direct, bypass, and processed 
   assert.deepEqual(graph.channelMerger.connections, [{ node: graph.context.destination, output: 0, input: 0 }]);
   assert.equal(graph.frequencyAnalyser.fftSize, 2_048);
   assert.equal(graph.frequencyAnalyser.smoothingTimeConstant, 0.76);
+  assert.equal(graph.eqInputAnalyser.fftSize, 2_048);
+  assert.equal(graph.eqInputAnalyser.smoothingTimeConstant, 0.76);
 });

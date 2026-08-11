@@ -128,7 +128,7 @@ export function AudioLibraryWorkspace({ state, activeAlbum, library, roots, form
   return (
     <main className="library-workspace">
       <section className="library-main">
-        <div className="library-heading"><div><h2>Audio Library</h2><small id="audio-library-drag-help">Drag a file onto an album at left. Matching track titles become candidates.</small></div><p>{filtered.length} of {library.length} discovered files</p></div>
+        <div className="library-heading"><h2 className="sr-only">Audio Library</h2><small id="audio-library-drag-help">Drag a file onto an album rail target. Matching track titles become candidates.</small><p>{filtered.length} of {library.length} discovered files</p></div>
         <div className="library-filters">
           <label className="search-field"><SearchIcon /><span className="sr-only">Search files</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search files" /></label>
           <select aria-label="Filter by format" value={format} onChange={(event) => setFormat(event.target.value)}><option value="all">All formats</option>{formats.map((item) => <option key={item} value={item}>{item.toUpperCase()}</option>)}</select>

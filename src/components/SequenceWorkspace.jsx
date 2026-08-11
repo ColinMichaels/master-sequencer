@@ -67,13 +67,11 @@ export function SequenceWorkspace({ album, libraryMap, revealPrivateFilenames, t
     <main className="sequence-workspace">
       <section className="sequence-main" aria-labelledby="sequence-title">
         <div className="workspace-heading">
-          <div>
-            <h2 id="sequence-title">{album.title} <span>— Working Sequence</span></h2>
-            <select aria-label="Album order approval" value={album.orderApproved ? "approved" : "working"} onChange={(event) => onAlbumChange((draft) => { draft.orderApproved = event.target.value === "approved"; })}>
-              <option value="working">Working order — not approved</option>
-              <option value="approved">Order approved</option>
-            </select>
-          </div>
+          <h2 id="sequence-title" className="sr-only">Sequence</h2>
+          <select aria-label="Album order approval" value={album.orderApproved ? "approved" : "working"} onChange={(event) => onAlbumChange((draft) => { draft.orderApproved = event.target.value === "approved"; })}>
+            <option value="working">Working order — not approved</option>
+            <option value="approved">Order approved</option>
+          </select>
           <div className="workspace-heading-actions">
             <button type="button" className="text-button" onClick={onAddTracks}><PlusIcon /> Add Tracks</button>
             <button type="button" className="text-button text-button--warn" onClick={onExport}><ExportIcon /> Export</button>
