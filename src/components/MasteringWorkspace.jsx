@@ -101,7 +101,7 @@ export function MasteringWorkspace({ album, libraryMap, presets, renderingAvaila
       <header className="mastering-heading">
         <div><h2>{album.title} <span>— Timing &amp; Fades</span></h2><p>All edits are instructions. Indexed source audio is never changed.</p></div>
         <dl><div><dt>{formatDuration(programDuration(entries))}</dt><dd>Estimated program</dd></div><div><dt>{editedCount}/{tracks.length}</dt><dd>Tracks edited</dd></div><div className={missingCount ? "is-warning" : ""}><dt>{missingCount}</dt><dd>Missing audio</dd></div></dl>
-        <button type="button" className="primary-button primary-button--yellow" onClick={() => onOpenExport(selectedFile ? selectedTrackId : "")} disabled={!renderingAvailable || !entries.length} title={renderingAvailable ? "Print a documented audio derivative" : "FFmpeg audio printing stays in the local app"}><ExportIcon /> {renderingAvailable ? "Print / Export Audio" : "Local Print Only"}</button>
+        <button type="button" className="primary-button primary-button--yellow" onClick={() => onOpenExport(selectedFile ? selectedTrackId : "")} disabled={!renderingAvailable || !entries.length} title={renderingAvailable ? "Print a documented audio derivative" : "Documented audio printing is unavailable in the browser"}><ExportIcon /> {renderingAvailable ? "Print / Export Audio" : "Print Unavailable"}</button>
       </header>
 
       <section className="delivery-profile-panel" aria-labelledby="delivery-profile-title">
@@ -171,7 +171,7 @@ export function MasteringWorkspace({ album, libraryMap, presets, renderingAvaila
                   <NumberField label="End at" value={settings.trimEnd.toFixed(3)} minimum={settings.trimStart + 0.1} maximum={selectedFile.duration} step={0.01} onCommit={(value) => updateMastering("trimEnd", value)} />
                   <NumberField label="Fade in" value={settings.fadeIn.toFixed(2)} maximum={settings.duration - 0.05} step={0.1} onCommit={(value) => updateMastering("fadeIn", value)} />
                 </div>
-                <button type="button" className="text-button preview-edit-button" disabled={!renderingAvailable || previewingTrackId === selectedTrack.id} title={renderingAvailable ? "Print a short edited-start preview" : "Rendered edit previews require the local app"} onClick={() => onPreview(selectedTrack.id, "start")}><PlayIcon /> {previewingTrackId === selectedTrack.id ? "Printing Preview…" : renderingAvailable ? "Preview Edited Start" : "Local Preview Only"}</button>
+                <button type="button" className="text-button preview-edit-button" disabled={!renderingAvailable || previewingTrackId === selectedTrack.id} title={renderingAvailable ? "Print a short edited-start preview" : "Rendered edit previews are unavailable in the browser"} onClick={() => onPreview(selectedTrack.id, "start")}><PlayIcon /> {previewingTrackId === selectedTrack.id ? "Printing Preview…" : renderingAvailable ? "Preview Edited Start" : "Preview Unavailable"}</button>
               </section>
 
               <section className="mastering-control-section mastering-ending-section">
@@ -189,7 +189,7 @@ export function MasteringWorkspace({ album, libraryMap, presets, renderingAvaila
                   <NumberField label="Silence after" value={settings.gapAfter.toFixed(2)} maximum={30} step={0.1} disabled={settings.endMode === "crossfade" || !hasNextPlayable} onCommit={(value) => updateMastering("gapAfter", value)} />
                   <div className="ending-result"><span>Result</span><strong>{masteringSummary(settings)}</strong></div>
                 </div>
-                <button type="button" className="primary-button preview-ending-button" disabled={!renderingAvailable || previewingTrackId === selectedTrack.id} title={renderingAvailable ? "Print a short edited-ending preview" : "Rendered edit previews require the local app"} onClick={() => onPreview(selectedTrack.id, "end")}><PlayIcon /> {previewingTrackId === selectedTrack.id ? "Printing Preview…" : renderingAvailable ? "Preview Edited Ending" : "Local Preview Only"}</button>
+                <button type="button" className="primary-button preview-ending-button" disabled={!renderingAvailable || previewingTrackId === selectedTrack.id} title={renderingAvailable ? "Print a short edited-ending preview" : "Rendered edit previews are unavailable in the browser"} onClick={() => onPreview(selectedTrack.id, "end")}><PlayIcon /> {previewingTrackId === selectedTrack.id ? "Printing Preview…" : renderingAvailable ? "Preview Edited Ending" : "Preview Unavailable"}</button>
               </section>
             </>
           )}

@@ -32,7 +32,7 @@ function TransitionVariant({ name, value, busy, renderingAvailable, onChange, on
       <label>Ending<select value={value.endMode} onChange={(event) => onChange("endMode", event.target.value)}><option value="natural">Natural</option><option value="cut">Hard cut</option><option value="fade">Fade</option><option value="crossfade">Crossfade</option></select></label>
       <label>Duration<input type="number" min="0" max="30" step="0.1" value={value.duration} onChange={(event) => onChange("duration", Number(event.target.value))} /></label>
       <label>Gap after<input type="number" min="0" max="30" step="0.1" value={value.gapAfter} disabled={value.endMode === "crossfade"} onChange={(event) => onChange("gapAfter", Number(event.target.value))} /></label>
-      <button type="button" className="text-button" disabled={!renderingAvailable || busy} title={renderingAvailable ? `Render transition variant ${name}` : "Rendered transition previews require the local app"} onClick={onPreview}><PlayIcon /> {busy ? "Preparing…" : renderingAvailable ? `Preview ${name}` : "Local Preview Only"}</button>
+      <button type="button" className="text-button" disabled={!renderingAvailable || busy} title={renderingAvailable ? `Render transition variant ${name}` : "Rendered transition previews are unavailable in the browser"} onClick={onPreview}><PlayIcon /> {busy ? "Preparing…" : renderingAvailable ? `Preview ${name}` : "Preview Unavailable"}</button>
     </fieldset>
   );
 }
@@ -119,7 +119,7 @@ export function AlbumDecisionsWorkspace({ album, templates, libraryMap, renderin
 
       <section className="decision-module comparison-queue" aria-labelledby="comparison-title">
         <header><div><h3 id="comparison-title">Candidate Comparison Queue</h3><p>Loudness matching creates temporary labeled previews only. Originals and master decisions do not change.</p></div></header>
-        {queued.length ? <ol>{queued.map(({ track, candidate }) => <li key={`${track.id}-${candidate.id}`}><div><strong>{track.title}</strong><small>{candidate.label} · original indexed source</small></div><button type="button" className="text-button" disabled={!renderingAvailable || Boolean(previewingDecision)} title={renderingAvailable ? "Create and play a loudness-matched derivative" : "Matched derivatives require the local app"} onClick={() => onPreviewComparison(track, candidate)}><PlayIcon /> {previewingDecision === `${track.id}-${candidate.id}` ? "Matching…" : renderingAvailable ? "Play Matched Derivative" : "Local Preview Only"}</button></li>)}</ol> : <p className="module-empty">Add candidates from Track Review. Nothing is selected automatically.</p>}
+        {queued.length ? <ol>{queued.map(({ track, candidate }) => <li key={`${track.id}-${candidate.id}`}><div><strong>{track.title}</strong><small>{candidate.label} · original indexed source</small></div><button type="button" className="text-button" disabled={!renderingAvailable || Boolean(previewingDecision)} title={renderingAvailable ? "Create and play a loudness-matched derivative" : "Matched derivatives are unavailable in the browser"} onClick={() => onPreviewComparison(track, candidate)}><PlayIcon /> {previewingDecision === `${track.id}-${candidate.id}` ? "Matching…" : renderingAvailable ? "Play Matched Derivative" : "Preview Unavailable"}</button></li>)}</ol> : <p className="module-empty">Add candidates from Track Review. Nothing is selected automatically.</p>}
       </section>
 
       <section className="decision-module album-templates" aria-labelledby="templates-title">

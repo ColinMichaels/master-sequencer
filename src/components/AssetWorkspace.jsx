@@ -36,11 +36,11 @@ function LyricAttachment({ kind, label, description, attachment, protectedAsset,
           <span><strong>{protectedAsset ? "Protected lyric file" : fileName(attachment)}</strong><small>{protectedAsset ? "Filename masked" : attachment.relativePath}</small></span>
           <div>
             {!protectedAsset ? <a className="text-button" href={api.assetUrl(attachment)} target="_blank" rel="noreferrer">Open</a> : null}
-            <button type="button" className="text-button" disabled={!sourcePickingAvailable || picking} title={sourcePickingAvailable ? "Replace this attachment" : "Device asset picking requires the local app"} onClick={() => onAttach(kind)}>Replace</button>
+            <button type="button" className="text-button" disabled={!sourcePickingAvailable || picking} title={sourcePickingAvailable ? "Replace this attachment" : "Asset attachment is unavailable in this browser session"} onClick={() => onAttach(kind)}>Replace</button>
             <button type="button" className="icon-button" onClick={() => onRemove(kind)} aria-label={`Remove ${label}`}><TrashIcon /></button>
           </div>
         </div>
-      ) : <button type="button" className="asset-add-button" disabled={!sourcePickingAvailable || picking} title={sourcePickingAvailable ? `Attach ${label}` : "Device asset picking requires the local app"} onClick={() => onAttach(kind)}><PlusIcon /> Attach {label}</button>}
+      ) : <button type="button" className="asset-add-button" disabled={!sourcePickingAvailable || picking} title={sourcePickingAvailable ? `Attach ${label}` : "Asset attachment is unavailable in this browser session"} onClick={() => onAttach(kind)}><PlusIcon /> Attach {label}</button>}
     </section>
   );
 }
@@ -121,7 +121,7 @@ export function AssetWorkspace({ album, revealPrivateFilenames, picking, sourceP
 
       <div className="assets-columns">
         <section className="asset-pane album-assets-pane" aria-labelledby="album-assets-title">
-          <header><div><h3 id="album-assets-title">Album Visuals</h3><p>Cover art, back-cover ideas, campaign art, and layout references.</p></div><button type="button" className="primary-button" disabled={!sourcePickingAvailable || picking} title={sourcePickingAvailable ? "Attach existing visual files" : "Device asset picking requires the local app"} onClick={() => addVisuals("album")}><ImageIcon /> {picking ? "Waiting…" : sourcePickingAvailable ? "Add Visuals" : "Local Assets Only"}</button></header>
+          <header><div><h3 id="album-assets-title">Album Visuals</h3><p>Cover art, back-cover ideas, campaign art, and layout references.</p></div><button type="button" className="primary-button" disabled={!sourcePickingAvailable || picking} title={sourcePickingAvailable ? "Attach existing visual files" : "Asset attachment is unavailable in this browser session"} onClick={() => addVisuals("album")}><ImageIcon /> {picking ? "Waiting…" : sourcePickingAvailable ? "Add Visuals" : "Attach Unavailable"}</button></header>
           <div className="visual-asset-list">
             {albumAssets.map((asset) => <VisualAssetCard key={referenceKey(asset)} asset={asset} cover={referenceKey(asset) === coverKey} onUseAsCover={() => setCover(asset)} onRemove={() => removeAlbumVisual(asset)} />)}
             {!albumAssets.length ? <div className="asset-empty"><ImageIcon size={28}/><strong>No album visuals attached</strong><span>Add existing artwork without copying it.</span></div> : null}
@@ -136,7 +136,7 @@ export function AssetWorkspace({ album, revealPrivateFilenames, picking, sourceP
 
           {!track ? <div className="asset-empty asset-empty--large"><strong>Add a track before attaching assets.</strong></div> : <>
             <section className="track-visuals-section">
-              <div className="subsection-heading"><div><h3>Track Visuals</h3><p>Concept art, storyboards, thumbnails, and social artwork.</p></div><button type="button" className="text-button" disabled={!sourcePickingAvailable || picking} title={sourcePickingAvailable ? "Attach existing visual files" : "Device asset picking requires the local app"} onClick={() => addVisuals("track")}><PlusIcon /> {sourcePickingAvailable ? "Add Track Visuals" : "Local Assets Only"}</button></div>
+              <div className="subsection-heading"><div><h3>Track Visuals</h3><p>Concept art, storyboards, thumbnails, and social artwork.</p></div><button type="button" className="text-button" disabled={!sourcePickingAvailable || picking} title={sourcePickingAvailable ? "Attach existing visual files" : "Asset attachment is unavailable in this browser session"} onClick={() => addVisuals("track")}><PlusIcon /> {sourcePickingAvailable ? "Add Track Visuals" : "Attach Unavailable"}</button></div>
               <div className="visual-asset-list visual-asset-list--track">
                 {(track.visualAssets || []).map((asset) => <VisualAssetCard key={referenceKey(asset)} asset={asset} protectedAsset={trackProtected} onRemove={() => removeTrackVisual(asset)} />)}
                 {!track.visualAssets?.length ? <div className="asset-empty"><ImageIcon size={24}/><strong>No track visuals</strong><span>Attach visual references for {track.title}.</span></div> : null}

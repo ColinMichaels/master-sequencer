@@ -60,7 +60,7 @@ test("online app supports separate browser-local projects and rejects local serv
   const created = await api.createProject({ name: "Second Project", artistName: "Artist", firstAlbumTitle: "New Album", era: "future" });
   assert.equal(created.state.albums[0].title, "New Album");
   assert.equal(created.projects.length, 2);
-  await assert.rejects(api.registerSource({ path: "/device/audio" }), /local Project Sequencer server/);
+  await assert.rejects(api.registerSource({ path: "/device/audio" }), /not available in the browser/);
   await assert.rejects(api.startRenderJob({}), /browser-session access/);
 });
 

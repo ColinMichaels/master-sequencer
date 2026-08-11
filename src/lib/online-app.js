@@ -226,7 +226,7 @@ const writeWorkspace = (storage, workspace) => {
   resolveStorage(storage).setItem(STORAGE_KEY, JSON.stringify(workspace));
 };
 
-const onlineCapabilityError = () => Promise.reject(new Error("This action needs the local Project Sequencer server. The online app can use only browser-session access to files you explicitly choose; it cannot use system paths or FFmpeg."));
+const onlineCapabilityError = () => Promise.reject(new Error("This action is not available in the browser. Project Sequencer can use only browser-session access to files you explicitly choose; it cannot use system paths or FFmpeg."));
 
 const safeRelativePath = (value, fallback) => {
   const parts = String(value || fallback || "audio").replaceAll("\\", "/").split("/").filter((part) => part && part !== "." && part !== "..");
