@@ -6,6 +6,7 @@ import {
   normalizeNativeAudioDeviceConfiguration,
   validateNativeAudioEngineHandshake,
   validateNativeAudioHardwareProbe,
+  validateNativeSilentStreamReport,
 } from "../src/lib/native-audio-engine-contract.js";
 
 test("native device requests normalize to bounded explicit configurations", () => {
@@ -138,4 +139,64 @@ test("query-only native hardware reports can represent no current output device"
   assert.equal(report.defaultOutput, null);
   assert.equal(report.reasonCode, "no-output-device");
   assert.throws(() => validateNativeAudioHardwareProbe({ ...report, reasonCode: "unknown" }), /reason/);
+});
+
+test("silent native stream reports prove stopped ownership, silence, callbacks, and recovery", () => {
+  const report = validateNativeSilentStreamReport({
+    schemaVersion: 1,
+    capturedAt: "2026-08-12T12:00:00.000Z",
+    mode: "silent-output-lab",
+    available: true,
+    reasonCode: null,
+    handshake: {
+      protocolVersion: 1,
+      dspContractVersion: 2,
+      engineVersion: "0.3.0",
+      engineInstanceId: "engine-abcd1234",
+      implementationFingerprint: "1234567890abcdef1234567890abcdef",
+      capabilities: { offlineRender: true, realTimeOutput: true, deviceNotifications: true, maximumChannels: 2, supportedSampleRates: [48_000] },
+    },
+    isolation: { audioContent: "silence-only", inputAccess: false, sourceMediaAccess: false, productionPlaybackConnected: false },
+    lifecycle: { startRequests: 2, starts: 2, stopRequests: 2, stops: 2, recoveryRequests: 1, recoveries: 1, invalidTransitions: 0, finalState: "stopped" },
+    recovery: { defaultDeviceListener: true, processorOverloadListener: true, simulatedDeviceChange: true, deviceChangesObserved: 1 },
+    stream: { sampleRate: 48_000, channels: 2, maximumFramesPerSlice: 512, requestedDurationMs: 750, observedDurationMs: 760, callbacks: 70, renderedFrames: 35_840, frameMismatches: 0, deadlineMisses: 0, timingGapXruns: 0, renderErrors: 0, processorOverloads: 0, longestCallbackMs: 0.04, lockFreeTelemetry: true },
+  });
+  assert.equal(report.stream.callbacks, 70);
+  assert.equal(report.lifecycle.finalState, "stopped");
+  assert.equal(report.isolation.productionPlaybackConnected, false);
+});
+
+test("silent native stream reports fail closed on production routing, paths, or incomplete recovery", () => {
+  const base = {
+    schemaVersion: 1,
+    capturedAt: "2026-08-12T12:00:00.000Z",
+    mode: "silent-output-lab",
+    available: true,
+    reasonCode: null,
+    handshake: { protocolVersion: 1, dspContractVersion: 2, engineVersion: "0.3.0", engineInstanceId: "engine-abcd1234", implementationFingerprint: "1234567890abcdef1234567890abcdef", capabilities: { offlineRender: true, realTimeOutput: true, deviceNotifications: true, maximumChannels: 2, supportedSampleRates: [48_000] } },
+    isolation: { audioContent: "silence-only", inputAccess: false, sourceMediaAccess: false, productionPlaybackConnected: false },
+    lifecycle: { startRequests: 2, starts: 2, stopRequests: 2, stops: 2, recoveryRequests: 1, recoveries: 1, invalidTransitions: 0, finalState: "stopped" },
+    recovery: { defaultDeviceListener: true, processorOverloadListener: true, simulatedDeviceChange: true, deviceChangesObserved: 1 },
+    stream: { sampleRate: 48_000, channels: 2, maximumFramesPerSlice: 512, requestedDurationMs: 750, observedDurationMs: 760, callbacks: 70, renderedFrames: 35_840, frameMismatches: 0, deadlineMisses: 0, timingGapXruns: 0, renderErrors: 0, processorOverloads: 0, longestCallbackMs: 0.04, lockFreeTelemetry: true },
+  };
+  assert.throws(() => validateNativeSilentStreamReport({ ...base, isolation: { ...base.isolation, productionPlaybackConnected: true } }), /isolation/);
+  assert.throws(() => validateNativeSilentStreamReport({ ...base, debug: "/Users/private/device" }), /local path/);
+  assert.throws(() => validateNativeSilentStreamReport({ ...base, lifecycle: { ...base.lifecycle, recoveries: 0 } }), /ownership|recovery/);
+});
+
+test("silent native stream reports can safely represent a machine with no output", () => {
+  const report = validateNativeSilentStreamReport({
+    schemaVersion: 1,
+    capturedAt: "2026-08-12T12:00:00.000Z",
+    mode: "silent-output-lab",
+    available: false,
+    reasonCode: "no-output-device",
+    handshake: { protocolVersion: 1, dspContractVersion: 2, engineVersion: "0.3.0", engineInstanceId: "engine-abcd1234", implementationFingerprint: "1234567890abcdef1234567890abcdef", capabilities: { offlineRender: true, realTimeOutput: true, deviceNotifications: true, maximumChannels: 2, supportedSampleRates: [] } },
+    isolation: { audioContent: "silence-only", inputAccess: false, sourceMediaAccess: false, productionPlaybackConnected: false },
+    lifecycle: { startRequests: 0, starts: 0, stopRequests: 0, stops: 0, recoveryRequests: 0, recoveries: 0, invalidTransitions: 0, finalState: "stopped" },
+    recovery: { defaultDeviceListener: false, processorOverloadListener: false, simulatedDeviceChange: false, deviceChangesObserved: 0 },
+    stream: null,
+  });
+  assert.equal(report.available, false);
+  assert.equal(report.reasonCode, "no-output-device");
 });

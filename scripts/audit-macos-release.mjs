@@ -41,7 +41,7 @@ const collectNestedCode = async (directory, relative = "") => {
         continue;
       }
       results.push(...await collectNestedCode(absolutePath, relativePath));
-    } else if (/\.(dylib|node)$/.test(entry.name) || relativePath.startsWith(path.join("Contents", "MacOS")) || relativePath === path.join("Contents", "Resources", "native", "shared-dsp-device-probe")) {
+    } else if (/\.(dylib|node)$/.test(entry.name) || relativePath.startsWith(path.join("Contents", "MacOS")) || ["shared-dsp-device-probe", "shared-dsp-silent-stream"].some((name) => relativePath === path.join("Contents", "Resources", "native", name))) {
       results.push(relativePath);
     }
   }
@@ -63,22 +63,30 @@ for (const name of ["ffmpeg", "ffprobe"]) {
   }
 }
 
-let nativeAudioProbe = { present: false, executable: false, signed: false, manifest: false, fingerprintMatch: false };
+let nativeAudio = { manifest: false, binaries: {} };
 try {
-  const probePath = path.join(resourcesPath, "native", "shared-dsp-device-probe");
-  const details = await stat(probePath);
-  const signatureCheck = run("codesign", ["--verify", "--strict", probePath]);
   const manifest = JSON.parse(await readFile(path.join(resourcesPath, "native-audio-runtime-manifest.json"), "utf8"));
-  const fingerprint = createHash("sha256").update(await readFile(probePath)).digest("hex");
-  nativeAudioProbe = {
-    present: details.isFile(),
-    executable: Boolean(details.mode & 0o111),
-    signed: signatureCheck.ok,
-    manifest: manifest?.binary === "native/shared-dsp-device-probe" && manifest?.capability === "query-only-default-output-probe",
-    fingerprintMatch: manifest?.sha256 === fingerprint,
+  const expectedBinaries = {
+    deviceProbe: { name: "shared-dsp-device-probe", capability: "query-only-default-output-probe" },
+    silentStream: { name: "shared-dsp-silent-stream", capability: "silence-only-realtime-output-lab" },
   };
+  const binaries = {};
+  for (const [key, expected] of Object.entries(expectedBinaries)) {
+    const binaryPath = path.join(resourcesPath, "native", expected.name);
+    const details = await stat(binaryPath);
+    const entry = manifest?.binaries?.[key];
+    const fingerprint = createHash("sha256").update(await readFile(binaryPath)).digest("hex");
+    binaries[key] = {
+      present: details.isFile(),
+      executable: Boolean(details.mode & 0o111),
+      codeValid: run("codesign", ["--verify", "--strict", binaryPath]).ok,
+      manifest: entry?.path === `native/${expected.name}` && entry?.capability === expected.capability,
+      fingerprintMatch: entry?.sha256 === fingerprint,
+    };
+  }
+  nativeAudio = { manifest: manifest?.schemaVersion === 2 && manifest?.protocolVersion === 1 && manifest?.dspContractVersion === 2, binaries };
 } catch {
-  nativeAudioProbe = { present: false, executable: false, signed: false, manifest: false, fingerprintMatch: false };
+  nativeAudio = { manifest: false, binaries: {} };
 }
 
 let ffmpegManifest = null;
@@ -121,7 +129,7 @@ const report = {
   gatekeeper: { accepted: gatekeeper.ok, detail: gatekeeper.output.split("\n").at(-1) || "" },
   notarization: { stapledTicket: stapler.ok, detail: stapler.output.split("\n").at(-1) || "" },
   ffmpeg: { tools: bundledTools, manifest: ffmpegManifest ? { approvalReference: ffmpegManifest.approvalReference, licenseSpdx: ffmpegManifest.licenseSpdx } : null, licenseNotices },
-  nativeAudio: nativeAudioProbe,
+  nativeAudio,
 };
 process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 if (requireDistribution && !assessment.distributionReady) process.exitCode = 1;

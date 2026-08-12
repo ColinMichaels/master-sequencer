@@ -28,25 +28,26 @@ npm run desktop:audit
 The audit inspects the outer signature, hardened-runtime flag, nested Electron
 helpers/frameworks/native modules, stapled ticket, Gatekeeper result, bundled
 FFmpeg executables, portable approval manifest, license directory, and the
-optional native-audio probe. The
+optional native-audio executables. The
 normal audit returns a report even when local-only. Add
 `-- --require-distribution` to make any release blocker fail the command.
 
 The local POC may use explicitly configured or installed FFmpeg. That is not a
 distribution mechanism.
 
-The optional query-only native-audio POC is staged with:
+The optional query-only and silence-only native-audio POC is staged with:
 
 ```bash
 npm run native:stage
 ```
 
 This command compiles the Swift package, passes the self-test and all 16 golden
-comparisons, queries or gracefully reports absence of the current default
-output, verifies the binary fingerprint handshake, and writes only an ignored
-binary plus sanitized manifest. A distribution build that includes it must sign
-that nested executable with the same Developer ID team; the strict release
-audit rejects missing or invalid nested signatures.
+comparisons, verifies the query-only hardware handshake, runs three explicit
+silence-only real-time/recovery trials, and writes only two ignored executables
+plus a sanitized schema-2 manifest. A distribution build that includes them
+must sign both nested executables with the same Developer ID team; the strict
+release audit checks each fingerprint and rejects missing or invalid nested
+code.
 
 ## Approve and stage FFmpeg
 
@@ -128,6 +129,8 @@ Intel/Apple Silicon testing remain separate product-release gates.
 - Packaged three-launch media lifecycle: passed.
 - Optional Swift hardware probe: packaged; fingerprint handshake and path-free
   bootstrap status passed across all three launches.
+- Optional silent-stream laboratory: three hardware trials passed before
+  staging; packaged but never auto-started by the app.
 - Valid Developer ID identities on this Mac: zero.
 - Signature: ad-hoc/linker only; not Developer ID.
 - Hardened-runtime proof on a Developer ID signature: absent.

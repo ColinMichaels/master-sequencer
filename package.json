@@ -26,7 +26,8 @@
     "dsp:golden": "node --test tests/shared-dsp.test.mjs tests/shared-dsp-golden.test.mjs",
     "dsp:native:verify": "node scripts/verify-native-dsp.mjs",
     "native:devices:verify": "node scripts/verify-native-dsp.mjs --devices",
-    "native:stage": "node scripts/verify-native-dsp.mjs --devices --stage",
+    "native:realtime:verify": "node scripts/verify-native-dsp.mjs --realtime",
+    "native:stage": "node scripts/verify-native-dsp.mjs --devices --realtime --stage",
     "check": "npm test && npm run build",
     "check:full": "npm run check && npm run test:browser && npm run test:browser:online"
   },

@@ -123,6 +123,103 @@ export const validateNativeAudioHardwareProbe = (report) => {
   };
 };
 
+const cleanNonnegativeInteger = (value, label, maximum = Number.MAX_SAFE_INTEGER) => {
+  if (!Number.isSafeInteger(value) || value < 0 || value > maximum) throw new Error(`Native silent-stream ${label} is invalid.`);
+  return value;
+};
+
+const cleanNonnegativeNumber = (value, label, maximum) => {
+  if (!Number.isFinite(value) || value < 0 || value > maximum) throw new Error(`Native silent-stream ${label} is invalid.`);
+  return Number(value);
+};
+
+export const validateNativeSilentStreamReport = (report) => {
+  if (!report || typeof report !== "object" || report.schemaVersion !== 1) throw new Error("Native silent-stream report is invalid.");
+  const serialized = JSON.stringify(report);
+  if (/(?:\/Users\/|\/private\/|\/var\/folders\/|[A-Za-z]:[\\/])/.test(serialized)) throw new Error("Native silent-stream report contains a local path.");
+  const capturedAt = typeof report.capturedAt === "string" && Number.isFinite(Date.parse(report.capturedAt)) ? new Date(report.capturedAt).toISOString() : "";
+  if (!capturedAt) throw new Error("Native silent-stream capture time is invalid.");
+  if (report.mode !== "silent-output-lab") throw new Error("Native silent-stream mode is invalid.");
+  const handshake = validateNativeAudioEngineHandshake(report.handshake);
+  if (!handshake.capabilities.realTimeOutput || !handshake.capabilities.deviceNotifications) throw new Error("Native silent-stream capabilities are incomplete.");
+  const isolation = report.isolation;
+  if (!isolation || isolation.audioContent !== "silence-only" || isolation.inputAccess !== false || isolation.sourceMediaAccess !== false || isolation.productionPlaybackConnected !== false) {
+    throw new Error("Native silent-stream isolation boundary is invalid.");
+  }
+  const lifecycle = report.lifecycle;
+  if (!lifecycle || lifecycle.finalState !== "stopped") throw new Error("Native silent-stream lifecycle did not stop cleanly.");
+  const normalizedLifecycle = {
+    startRequests: cleanNonnegativeInteger(lifecycle.startRequests, "start-request count", 100),
+    starts: cleanNonnegativeInteger(lifecycle.starts, "start count", 100),
+    stopRequests: cleanNonnegativeInteger(lifecycle.stopRequests, "stop-request count", 100),
+    stops: cleanNonnegativeInteger(lifecycle.stops, "stop count", 100),
+    recoveryRequests: cleanNonnegativeInteger(lifecycle.recoveryRequests, "recovery-request count", 100),
+    recoveries: cleanNonnegativeInteger(lifecycle.recoveries, "recovery count", 100),
+    invalidTransitions: cleanNonnegativeInteger(lifecycle.invalidTransitions, "invalid-transition count", 100),
+    finalState: "stopped",
+  };
+  if (normalizedLifecycle.invalidTransitions !== 0 || normalizedLifecycle.startRequests !== normalizedLifecycle.starts || normalizedLifecycle.stopRequests !== normalizedLifecycle.stops || normalizedLifecycle.recoveryRequests !== normalizedLifecycle.recoveries) {
+    throw new Error("Native silent-stream lifecycle ownership is inconsistent.");
+  }
+  const recovery = report.recovery;
+  if (!recovery || typeof recovery.defaultDeviceListener !== "boolean" || typeof recovery.processorOverloadListener !== "boolean" || typeof recovery.simulatedDeviceChange !== "boolean") {
+    throw new Error("Native silent-stream recovery evidence is invalid.");
+  }
+  const normalizedRecovery = {
+    defaultDeviceListener: recovery.defaultDeviceListener,
+    processorOverloadListener: recovery.processorOverloadListener,
+    simulatedDeviceChange: recovery.simulatedDeviceChange,
+    deviceChangesObserved: cleanNonnegativeInteger(recovery.deviceChangesObserved, "device-change count", 100),
+  };
+
+  if (report.available === false) {
+    if (report.reasonCode !== "no-output-device" || report.stream != null) throw new Error("Native silent-stream unavailable state is invalid.");
+    if (normalizedRecovery.defaultDeviceListener || normalizedRecovery.processorOverloadListener || normalizedRecovery.simulatedDeviceChange || normalizedRecovery.deviceChangesObserved !== 0 || Object.values(normalizedLifecycle).some((value) => typeof value === "number" && value !== 0)) throw new Error("Native silent-stream unavailable lifecycle is invalid.");
+    return { schemaVersion: 1, capturedAt, mode: "silent-output-lab", available: false, reasonCode: "no-output-device", handshake, isolation: { ...isolation }, lifecycle: normalizedLifecycle, recovery: normalizedRecovery, stream: null };
+  }
+  if (!normalizedRecovery.defaultDeviceListener || !normalizedRecovery.processorOverloadListener) throw new Error("Native silent-stream recovery listeners were not active.");
+  if (normalizedRecovery.simulatedDeviceChange && (normalizedRecovery.deviceChangesObserved < 1 || normalizedLifecycle.recoveries < 1)) throw new Error("Native silent-stream simulated recovery did not complete.");
+  if (report.available !== true || report.reasonCode != null) throw new Error("Native silent-stream availability is invalid.");
+  const stream = report.stream;
+  if (!stream || typeof stream !== "object") throw new Error("Native silent-stream metrics are missing.");
+  const sampleRate = cleanNonnegativeNumber(stream.sampleRate, "sample rate", 384_000);
+  const channels = cleanNonnegativeInteger(stream.channels, "channel count", 32);
+  const maximumFramesPerSlice = cleanNonnegativeInteger(stream.maximumFramesPerSlice, "maximum frame count", 1_000_000);
+  const requestedDurationMs = cleanNonnegativeNumber(stream.requestedDurationMs, "requested duration", 10_000);
+  const observedDurationMs = cleanNonnegativeNumber(stream.observedDurationMs, "observed duration", 30_000);
+  const callbacks = cleanNonnegativeInteger(stream.callbacks, "callback count");
+  const renderedFrames = cleanNonnegativeInteger(stream.renderedFrames, "rendered-frame count");
+  if (sampleRate < 8_000 || channels < 1 || maximumFramesPerSlice < 1 || requestedDurationMs < 100 || observedDurationMs < 50 || callbacks < 1 || renderedFrames < callbacks) throw new Error("Native silent-stream did not produce credible callback evidence.");
+  if (stream.lockFreeTelemetry !== true) throw new Error("Native silent-stream telemetry is not lock-free on this architecture.");
+  return {
+    schemaVersion: 1,
+    capturedAt,
+    mode: "silent-output-lab",
+    available: true,
+    reasonCode: null,
+    handshake,
+    isolation: { audioContent: "silence-only", inputAccess: false, sourceMediaAccess: false, productionPlaybackConnected: false },
+    lifecycle: normalizedLifecycle,
+    recovery: normalizedRecovery,
+    stream: {
+      sampleRate,
+      channels,
+      maximumFramesPerSlice,
+      requestedDurationMs,
+      observedDurationMs,
+      callbacks,
+      renderedFrames,
+      frameMismatches: cleanNonnegativeInteger(stream.frameMismatches, "frame-mismatch count"),
+      deadlineMisses: cleanNonnegativeInteger(stream.deadlineMisses, "deadline-miss count"),
+      timingGapXruns: cleanNonnegativeInteger(stream.timingGapXruns, "timing-gap xrun count"),
+      renderErrors: cleanNonnegativeInteger(stream.renderErrors, "render-error count"),
+      processorOverloads: cleanNonnegativeInteger(stream.processorOverloads, "processor-overload count"),
+      longestCallbackMs: cleanNonnegativeNumber(stream.longestCallbackMs, "longest callback", 10_000),
+      lockFreeTelemetry: stream.lockFreeTelemetry === true,
+    },
+  };
+};
+
 const TRANSITIONS = Object.freeze({
   stopped: new Set(["starting"]),
   starting: new Set(["running", "failed", "stopped"]),

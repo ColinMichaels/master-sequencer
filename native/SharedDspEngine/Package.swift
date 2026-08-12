@@ -9,6 +9,7 @@ let package = Package(
         .executable(name: "shared-dsp-golden-runner", targets: ["SharedDspGoldenRunner"]),
         .executable(name: "shared-dsp-self-test", targets: ["SharedDspSelfTest"]),
         .executable(name: "shared-dsp-device-probe", targets: ["SharedDspDeviceProbe"]),
+        .executable(name: "shared-dsp-silent-stream", targets: ["SharedDspSilentStream"]),
     ],
     targets: [
         .target(name: "SharedDspEngine"),
@@ -18,6 +19,22 @@ let package = Package(
             name: "SharedDspDeviceProbe",
             dependencies: ["SharedDspEngine"],
             linkerSettings: [.linkedFramework("CoreAudio")]
+        ),
+        .target(
+            name: "SharedDspRealtimeSupport",
+            publicHeadersPath: "include",
+            linkerSettings: [
+                .linkedFramework("AudioToolbox"),
+                .linkedFramework("CoreAudio"),
+            ]
+        ),
+        .executableTarget(
+            name: "SharedDspSilentStream",
+            dependencies: ["SharedDspEngine", "SharedDspRealtimeSupport"],
+            linkerSettings: [
+                .linkedFramework("AudioToolbox"),
+                .linkedFramework("CoreAudio"),
+            ]
         ),
     ]
 )

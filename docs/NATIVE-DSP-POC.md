@@ -129,6 +129,32 @@ than a claim of working production login or synchronization. See
 This gate proves discovery, packaging, authentication, UI status, and graceful
 absence. It still does not claim real-time native playback.
 
+### Gate 8 — isolated silence-only real-time output: passed 2026-08-12
+
+- A fifth Swift executable owns a default-output AudioUnit through explicit
+  start, simulated recovery, restart, and final stop transitions. It never
+  requests input, reads source media, or connects to production playback.
+- A small C callback boundary zero-fills host-owned buffers and records frame,
+  deadline, timing-gap, render-error, overload, and longest-callback evidence
+  through atomics verified lock-free on the current architecture. The callback
+  performs no allocation, locking, file/network access, logging, or Swift
+  collection work.
+- Real default-device and processor-overload listeners are registered. The test
+  increments the same device-change signal without changing the user's selected
+  output, then proves an owned stop/dispose/recreate/start cycle. Physical
+  hot-plug remains a separate hardware test.
+- Three 750 ms hardware trials ran at 48 kHz stereo. They produced 34–47
+  callbacks and 17,408–24,064 silent frames, completed one recovery each, and
+  ended stopped. Across all trials there were zero frame-bound violations,
+  deadline misses, timing-gap xruns, render errors, and processor overloads; the
+  longest callback was below 0.005 ms.
+- `npm run native:stage` now requires both native gates, clears stale staging
+  first, and writes a schema-2 manifest with independent hashes and capabilities
+  for both executables.
+
+This proves a narrow real-time host boundary, not a Pro playback engine. Web
+Audio remains live audition authority and FFmpeg remains print authority.
+
 ## Decision
 
 Build this as a branch of Project Sequencer, not a separate product fork.
@@ -168,7 +194,9 @@ Embedded local engine process (existing Node server, 127.0.0.1 only)
   |-- read-only access to explicitly registered audio
   |-- system FFmpeg + ffprobe
   |-- app-data exports/ derivatives
-  `-- optional fingerprinted Swift hardware probe (query-only)
+  `-- optional fingerprinted Swift hardware tools
+      |-- query-only default-output probe
+      `-- explicit silence-only callback lab (never auto-started)
 
 Shared DSP contract v2
   |-- AudioWorklet adapter for browser experiments
@@ -209,6 +237,9 @@ after the engine protocol, file lifecycle, and packaging risks are proven.
   fingerprinted handshake, publishes a path-free `/api/native-audio/status`,
   and includes the same status in bootstrap. Settings labels this as a DSP lab
   and states that established playback remains authoritative.
+- The staged silent-stream executable is not launched by bootstrap, the local
+  API, Settings, or transport. It runs only through the explicit verification
+  command and remains disconnected from indexed media and shared DSP playback.
 - Unit and smoke checks cover tool-path injection, parameter bounds, exact
   bypass, block-size determinism, ceiling behavior, and the two-channel host.
 
@@ -227,6 +258,7 @@ Useful verification commands:
 ```bash
 npm run dsp:smoke
 npm run native:devices:verify
+npm run native:realtime:verify
 npm run native:stage
 npm run desktop:smoke
 npm run desktop:pack
@@ -257,7 +289,7 @@ this checkpoint.
 - An approved staged FFmpeg artifact, valid Developer ID identity, notarized
   installer, custom production icon, updater, and release-channel infrastructure
 - A true-peak oversampled limiter, loudness engine, final shared EQ/compressor,
-  production-grade dynamics fixtures, or native audio-device callback
+  production-grade dynamics fixtures, or project-audio native callback routing
 - Security-scoped bookmarks required by a future Mac App Store sandboxed build
 - VST3/AU scanning, SDK integration, plug-in isolation, latency compensation,
   state chunks, crash recovery, or quarantine
@@ -277,19 +309,20 @@ this checkpoint.
 4. **Complete for JavaScript hosts:** expand shared DSP behind an opt-in
    laboratory flag, add golden audio fixtures, and compare AudioWorklet and
    Node/offline output. Native parity remains Gate 5.
-5. **Native kernel and host contract complete; real-time I/O remaining:** the
+5. **Native kernel and host contract complete:** the
    Swift implementation passes the current goldens, and dropout/latency/recovery
-   contracts are tested. Core Audio callbacks, hot-plug tests, WASM, and
-   production offline rendering remain promotion work.
+   contracts are tested. Production routing remains gated.
 6. **Pipeline prepared; distribution blocked:** stage an approved FFmpeg build,
    supply Developer ID and notarization credentials, pass the strict audit on
    DMG/ZIP artifacts, then add update/rollback infrastructure. Only after those
    gates should work begin on an isolated third-party plug-in host.
-7. **Query-only hardware boundary complete; streaming remaining:** package the
-   fingerprinted Core Audio probe and publish only sanitized status. The next
-   promotion gate is a silent output callback with allocation/deadline telemetry,
-   explicit start/stop ownership, device-change recovery, and no connection to
-   production playback until those tests pass.
+7. **Complete:** package the fingerprinted query-only Core Audio probe and
+   publish only sanitized status.
+8. **Silence-only callback complete; production routing remains gated:** next,
+   exercise shared DSP in muted shadow mode using generated in-memory samples,
+   verify its callback checksum against reviewed goldens, and keep hardware
+   output zeroed. Only after long-duration profiling and physical device-loss
+   tests should user-selected project audio enter this path.
 
 The promotion gate for shared DSP is measurable parity and recovery—not its UI
 appearance. It must survive buffer-size changes, sample-rate changes, device
