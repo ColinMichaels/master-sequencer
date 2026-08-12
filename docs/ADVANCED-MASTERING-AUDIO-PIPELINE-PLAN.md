@@ -86,10 +86,12 @@ Native/DSP POC checkpoint on `codex/native-dsp-poc`:
   loopback port.
 - All current FFmpeg/ffprobe call sites accept an executable supplied by the
   desktop host, which is the first step toward a bundled media-tool runtime.
-- Shared DSP contract v1 runs the same JavaScript kernel through an
-  AudioWorklet adapter and a Node host adapter. It currently proves gain,
-  smoothing, exact bypass, block-size determinism, and sample-peak guarding
-  only. It is not connected to the production transport or print path.
+- Shared DSP contract v2 runs the same JavaScript kernel through an
+  AudioWorklet adapter and a Node host adapter. It proves gain, smoothing,
+  exact bypass, sample-peak guarding, optional DC blocking, sample-rate reset,
+  non-finite recovery, and versioned golden parity across multiple block sizes
+  and sample rates. It is lab-gated and is not connected to the production
+  transport or print path.
 - Packaging remains unsigned and uses installed FFmpeg. Google login, paid
   entitlements, native device I/O, true-peak DSP, and external plug-in hosting
   remain outside this checkpoint. See

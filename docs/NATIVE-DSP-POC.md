@@ -62,6 +62,19 @@ than a claim of working production login or synchronization. See
   reconnect, removal, fallback behavior, the production build, and rendered
   online file/folder selection and playback.
 
+### Gate 4 — opt-in shared DSP and golden parity: passed 2026-08-12
+
+- Contract v2 adds an optional DC blocker, explicit sample-rate reset, and
+  non-finite-sample recovery telemetry without connecting to production audio.
+- Browser node creation requires a lab-enabled build and a separate
+  device-local opt-in. Normal free-web and native POC operation stays on the
+  established Web Audio and FFmpeg paths.
+- Four versioned golden fixtures compare the core, Node/offline host, and
+  AudioWorklet sample-for-sample at four block sizes and three sample rates.
+- Exact bypass, gain smoothing, ceiling behavior, DC recovery, and NaN/Infinity
+  containment are covered. True peak, dynamics, analog modeling, and production
+  promotion remain later gates.
+
 ## Decision
 
 Build this as a branch of Project Sequencer, not a separate product fork.
@@ -102,7 +115,7 @@ Embedded local engine process (existing Node server, 127.0.0.1 only)
   |-- system FFmpeg + ffprobe
   `-- app-data exports/ derivatives
 
-Shared DSP contract v1
+Shared DSP contract v2
   |-- AudioWorklet adapter for browser experiments
   `-- Node host adapter as the seam for a future native/WASM core
 ```
@@ -134,7 +147,8 @@ after the engine protocol, file lifecycle, and packaging risks are proven.
   compatible when native authentication is not configured.
 - `src/dsp/shared-dsp-core.js` supplies a versioned, allocation-free processing
   loop for gain, smoothing, exact bypass, and a prototype sample-peak guard.
-  The browser AudioWorklet and Node host both use that source contract.
+  Contract v2 also covers optional DC blocking, sample-rate reset, and recovery
+  telemetry. The browser AudioWorklet and Node host use that same contract.
 - Unit and smoke checks cover tool-path injection, parameter bounds, exact
   bypass, block-size determinism, ceiling behavior, and the two-channel host.
 
@@ -181,7 +195,7 @@ this checkpoint.
 - Bundled FFmpeg binaries, license notices, updater, signing, notarization, or
   release installers
 - A true-peak oversampled limiter, loudness engine, final shared EQ/compressor,
-  offline parity fixtures, or native audio-device callback
+  production-grade dynamics fixtures, or native audio-device callback
 - Security-scoped bookmarks required by a future Mac App Store sandboxed build
 - VST3/AU scanning, SDK integration, plug-in isolation, latency compensation,
   state chunks, crash recovery, or quarantine
@@ -198,8 +212,9 @@ this checkpoint.
 3. **Complete:** add the free browser file-handle registry and a clear
    **Reconnect folder** flow. A lost permission is recoverable state, not lost
    project data; fallback pickers remain session-only.
-4. Expand shared DSP v1 behind an opt-in laboratory flag, add golden audio
-   fixtures, and compare AudioWorklet, Node/offline, and later native output.
+4. **Complete for JavaScript hosts:** expand shared DSP behind an opt-in
+   laboratory flag, add golden audio fixtures, and compare AudioWorklet and
+   Node/offline output. Native parity remains Gate 5.
 5. Move the proven kernel to a memory-safe native/WASM implementation, then add
    device I/O, drop-out telemetry, latency accounting, and offline render.
 6. Bundle approved FFmpeg builds, sign/notarize the app, add updates, and only
