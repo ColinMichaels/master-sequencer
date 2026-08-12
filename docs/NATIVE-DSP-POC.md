@@ -45,6 +45,23 @@ client credentials are configured, so this is architectural readiness rather
 than a claim of working production login or synchronization. See
 [CLOUD-PROJECT-SYNC-CONTRACT.md](./CLOUD-PROJECT-SYNC-CONTRACT.md).
 
+### Gate 3 — browser media permission recovery: passed 2026-08-12
+
+- The online edition stores revocable File System Access handles in IndexedDB
+  when the browser supports them. Audio bytes and absolute paths are not stored
+  in project documents or uploaded.
+- Reopen performs only a silent permission query. It never opens a permission
+  prompt during bootstrap. An expired grant becomes an explicit
+  `permission-required` root and reconnect is available only from a user action.
+- A successfully reconnected folder keeps the same stable root ID, so project
+  source references survive reload. Forgetting the source removes its saved
+  handle but never modifies the underlying files.
+- File-input fallback remains session-only on browsers without File System
+  Access or IndexedDB support.
+- Verification covers persistent folder restore, denied/prompt state, explicit
+  reconnect, removal, fallback behavior, the production build, and rendered
+  online file/folder selection and playback.
+
 ## Decision
 
 Build this as a branch of Project Sequencer, not a separate product fork.
@@ -161,7 +178,6 @@ this checkpoint.
 
 - Google login, cloud project-document storage, subscriptions, entitlement
   checks, usage limits, or account recovery
-- Browser folder-handle persistence and its reconnect experience
 - Bundled FFmpeg binaries, license notices, updater, signing, notarization, or
   release installers
 - A true-peak oversampled limiter, loudness engine, final shared EQ/compressor,
@@ -179,8 +195,9 @@ this checkpoint.
 2. **Contract complete; provider deployment gated:** define the cloud project
    schema, local-only exclusions, conflict rules, and Google-auth seam. A live
    login/backend still requires approved provider credentials and deployment.
-3. Add the free browser file-handle registry and a clear **Reconnect folder**
-   flow. Treat a lost permission as recoverable state, not lost project data.
+3. **Complete:** add the free browser file-handle registry and a clear
+   **Reconnect folder** flow. A lost permission is recoverable state, not lost
+   project data; fallback pickers remain session-only.
 4. Expand shared DSP v1 behind an opt-in laboratory flag, add golden audio
    fixtures, and compare AudioWorklet, Node/offline, and later native output.
 5. Move the proven kernel to a memory-safe native/WASM implementation, then add

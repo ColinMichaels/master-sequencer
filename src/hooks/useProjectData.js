@@ -212,6 +212,20 @@ export const useProjectData = () => {
     }
   }, [applyLibraryPayload]);
 
+  const reconnectRoot = useCallback(async (rootId) => {
+    setScanning(true);
+    setError("");
+    try {
+      applyLibraryPayload(await api.reconnectSource(rootId));
+      return true;
+    } catch (reason) {
+      setError(reason.message);
+      return false;
+    } finally {
+      setScanning(false);
+    }
+  }, [applyLibraryPayload]);
+
   const chooseProjectAssets = useCallback(async (kind) => {
     setPickingAssets(true);
     setError("");
@@ -388,5 +402,6 @@ export const useProjectData = () => {
     chooseProjectAssets,
     addRoot,
     removeRoot,
+    reconnectRoot,
   };
 };

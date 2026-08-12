@@ -53,7 +53,7 @@ test("selected device audio joins the session library and plays without upload",
   await expect(page.getByRole("status").filter({ hasText: "1 audio file added and shown below" })).toBeVisible();
   await expect(page.getByPlaceholder("Search files")).toHaveValue("");
   await expect(page.getByRole("row", { name: /Reference Tone\.wav/ })).toBeVisible();
-  await expect(page.getByText("1 device file in this session · never uploaded")).toBeVisible();
+  await expect(page.getByText("1 device file connected · never uploaded")).toBeVisible();
   await page.getByRole("button", { name: "Preview Reference Tone.wav" }).click();
   await expect.poll(() => page.locator("audio").evaluate((audio) => audio.currentTime)).toBeGreaterThan(0);
   const playback = await page.locator("audio").evaluate((audio) => ({ currentTime: audio.currentTime, source: audio.currentSrc }));

@@ -3,7 +3,7 @@ import { FolderIcon, LockIcon, MusicIcon, PlusIcon, RefreshIcon, TrashIcon } fro
 import { AppearanceSettings } from "./AppearanceSettings.jsx";
 import { ProjectIdentityForm } from "./ProjectIdentityForm.jsx";
 
-export function SettingsWorkspace({ state, roots, scan, watching, scanning, onlineApp = false, projectArtistName, currentProject, projects, projectBusy, revealPrivateFilenames, appearance, resolvedMode, onProjectIdentityChange, onAppearanceChange, onTogglePrivate, onAddRoot, onRemoveRoot, onChooseSources, onRescan, onImportState, onOpenProjects, onNewProject, onExportBundle }) {
+export function SettingsWorkspace({ state, roots, scan, watching, scanning, onlineApp = false, projectArtistName, currentProject, projects, projectBusy, revealPrivateFilenames, appearance, resolvedMode, onProjectIdentityChange, onAppearanceChange, onTogglePrivate, onAddRoot, onRemoveRoot, onReconnectRoot, onChooseSources, onRescan, onImportState, onOpenProjects, onNewProject, onExportBundle }) {
   const [folderPath, setFolderPath] = useState("");
   const [folderLabel, setFolderLabel] = useState("");
   const [importError, setImportError] = useState("");
@@ -53,8 +53,8 @@ export function SettingsWorkspace({ state, roots, scan, watching, scanning, onli
       <AppearanceSettings appearance={appearance} resolvedMode={resolvedMode} onChange={onAppearanceChange} />
       <div className="settings-columns">
         <section className="settings-section">
-          <div className="settings-section-heading"><h3>{onlineApp ? "Browser Audio" : "Audio Paths"}</h3><button type="button" className="text-button" disabled={scanning} title={onlineApp ? "Refresh the current browser-session library" : "Rescan every configured source"} onClick={onRescan}><RefreshIcon /> {scanning ? "Scanning…" : onlineApp ? "Refresh" : "Rescan All"}</button></div>
-          {onlineApp && <p className="online-privacy-note"><strong>Browser privacy:</strong> project decisions stay in this browser. The app can read only audio you explicitly choose for the current session; absolute device paths and audio bytes are never stored or uploaded.</p>}
+          <div className="settings-section-heading"><h3>{onlineApp ? "Browser Audio" : "Audio Paths"}</h3><button type="button" className="text-button" disabled={scanning} title={onlineApp ? "Refresh device audio whose browser permission is still active" : "Rescan every configured source"} onClick={onRescan}><RefreshIcon /> {scanning ? "Scanning…" : onlineApp ? "Refresh" : "Rescan All"}</button></div>
+          {onlineApp && <p className="online-privacy-note"><strong>Browser privacy:</strong> project decisions stay in this browser. Supported browsers can remember revocable file permissions on this device; absolute paths and audio bytes are never stored in project data or uploaded.</p>}
           {!onlineApp && <>
           <div className="native-path-grid">
             <button type="button" className="native-path-field" disabled={scanning} onClick={() => onChooseSources("files")}><MusicIcon /><span><strong>Audio file path</strong><small>{scanning ? "Waiting for the system picker…" : "Click to choose one or more audio files"}</small></span><em>Browse</em></button>
@@ -71,7 +71,7 @@ export function SettingsWorkspace({ state, roots, scan, watching, scanning, onli
             </form>
           </details>
           </>}
-          {onlineApp && <ul className="root-list">{roots.map((root) => <li key={root.id}><MusicIcon size={28}/><span><strong>{root.label}</strong><small>{root.path}</small></span><em className="is-connected">Ready</em></li>)}</ul>}
+          {onlineApp && <ul className="root-list">{roots.map((root) => <li key={root.id}>{root.kind === "browser-persistent" ? <FolderIcon size={28}/> : <MusicIcon size={28}/>}<span><strong>{root.label}</strong><small>{root.path}</small></span><em className={root.connected ? "is-connected" : "is-offline"}>{root.connectionState === "permission-required" ? "Permission required" : root.connectionState === "reconnected" ? "Reconnected" : root.connected ? "Ready" : "Offline"}</em>{root.kind === "browser-persistent" && !root.connected && <button type="button" className="text-button" disabled={scanning} onClick={() => onReconnectRoot(root.id)}>Reconnect</button>}{root.id !== "dreadnauts-album-one" && <button type="button" className="icon-button" onClick={() => onRemoveRoot(root.id)} aria-label={`Forget ${root.label}`}><TrashIcon /></button>}</li>)}</ul>}
         </section>
 
         <section className="settings-section">
@@ -80,7 +80,7 @@ export function SettingsWorkspace({ state, roots, scan, watching, scanning, onli
           <div className="data-actions"><button type="button" className="primary-button" onClick={exportProject}>Export Project JSON</button>{!onlineApp && <button type="button" className="primary-button" onClick={onExportBundle}>Export Portable Checksums</button>}<button type="button" className="primary-button primary-button--yellow" onClick={() => fileInput.current?.click()}>Import Project JSON</button><input ref={fileInput} type="file" accept="application/json,.json" hidden onChange={importProject}/></div>
           <p className="settings-note"><strong>{onlineApp ? "Browser project export:" : "Portable checksum bundle:"}</strong> {onlineApp ? "downloads project decisions only. Album previews and selected device audio are not included." : "exports project JSON plus SHA-256 records for currently indexed sources. It contains no media bytes and does not copy audio."}</p>
           {importError && <p className="render-error" role="alert">{importError}</p>}
-          <dl className="data-locations">{onlineApp ? <><div><dt>Open project</dt><dd>Browser local storage</dd></div><div><dt>Saved projects</dt><dd>This browser only</dd></div><div><dt>Included audio</dt><dd>Official Apple Music previews</dd></div><div><dt>Device paths</dt><dd>Never stored or uploaded</dd></div></> : <><div><dt>Open project</dt><dd>data/sequencer-state.json</dd></div><div><dt>Saved projects</dt><dd>data/projects/</dd></div><div><dt>Audio metadata cache</dt><dd>data/audio-index-cache.json</dd></div><div><dt>File and folder paths</dt><dd>config/sequencer.local.json</dd></div></>}</dl>
+          <dl className="data-locations">{onlineApp ? <><div><dt>Open project</dt><dd>Browser local storage</dd></div><div><dt>Saved projects</dt><dd>This browser only</dd></div><div><dt>Included audio</dt><dd>Official Apple Music previews</dd></div><div><dt>Device media</dt><dd>Revocable browser handles; never uploaded</dd></div></> : <><div><dt>Open project</dt><dd>data/sequencer-state.json</dd></div><div><dt>Saved projects</dt><dd>data/projects/</dd></div><div><dt>Audio metadata cache</dt><dd>data/audio-index-cache.json</dd></div><div><dt>File and folder paths</dt><dd>config/sequencer.local.json</dd></div></>}</dl>
           <p className="settings-note"><strong>{onlineApp ? "Browser project storage:" : "Local project storage:"}</strong> {onlineApp ? "notes, sequence order, audition choices, presets, and approvals remain in this browser until its site data is cleared." : "paths, notes, sequence order, audition choices, and approvals are stored in ignored JSON files on this device. Audio bytes are never stored in the project."}</p>
           {!onlineApp && <p className="settings-note">Removing a path never deletes audio. It only disconnects that folder from this index. Existing album references remain and return when the path is connected again.</p>}
         </section>

@@ -61,7 +61,7 @@ test("online app supports separate browser-local projects and rejects local serv
   assert.equal(created.state.albums[0].title, "New Album");
   assert.equal(created.projects.length, 2);
   await assert.rejects(api.registerSource({ path: "/device/audio" }), /not available in the browser/);
-  await assert.rejects(api.startRenderJob({}), /browser-session access/);
+  await assert.rejects(api.startRenderJob({}), /browser-granted access/);
 });
 
 test("online app removes only a saved project record and switches away from an active removal", async () => {
@@ -170,4 +170,83 @@ test("online app probes selected audio in parallel and keeps files whose metadat
   assert.equal(result.library.length, onlineAppLibrary.length + 3);
   assert.equal(result.library.find((file) => file.name === "Unreadable.wav").duration, 0);
   assert.match(result.library.find((file) => file.name === "Unreadable.wav").probeError, /Metadata unavailable/);
+});
+
+test("online app restores a persisted browser folder without prompting and requires a user action when permission expires", async () => {
+  const records = new Map();
+  const mediaRegistry = {
+    list: async () => [...records.values()],
+    save: async (record) => {
+      records.set(record.id, record);
+      return record;
+    },
+    delete: async (id) => records.delete(id),
+  };
+  const file = { name: "Remembered Mix.wav", size: 384_000, lastModified: 1_786_329_600_000 };
+  let permission = "granted";
+  let queryCount = 0;
+  let requestCount = 0;
+  const fileHandle = { kind: "file", name: file.name, getFile: async () => file };
+  const handle = {
+    kind: "directory",
+    name: "Remembered folder",
+    getFile: async () => file,
+    values: async function* values() {
+      yield fileHandle;
+    },
+    queryPermission: async () => {
+      queryCount += 1;
+      return permission;
+    },
+    requestPermission: async () => {
+      requestCount += 1;
+      permission = "granted";
+      return permission;
+    },
+  };
+  const options = {
+    storage: memoryStorage(),
+    mediaRegistry,
+    mediaUrlFactory: (picked) => `blob:device/${encodeURIComponent(picked.name)}`,
+    metadataReader: async () => ({ duration: 8, probeError: "" }),
+  };
+  const first = createOnlineAppApi({
+    ...options,
+    sourcePicker: async () => ({
+      cancelled: false,
+      persistent: true,
+      kind: "folder",
+      label: "Remembered folder",
+      handle,
+      entries: [{ file, relativePath: file.name }],
+    }),
+  });
+  const selected = await first.chooseSources("folder");
+  const persistentRoot = selected.roots.at(-1);
+  assert.equal(persistentRoot.kind, "browser-persistent");
+  assert.match(persistentRoot.path, /Permission retained/);
+  assert.equal(records.size, 1);
+
+  const restored = await createOnlineAppApi(options).bootstrap();
+  assert.equal(restored.library.length, onlineAppLibrary.length + 1);
+  assert.equal(restored.roots.at(-1).id, persistentRoot.id);
+  assert.equal(restored.roots.at(-1).connected, true);
+  assert.equal(requestCount, 0, "bootstrap must never open a browser permission prompt");
+  assert.ok(queryCount > 0);
+
+  permission = "prompt";
+  const needsPermissionApi = createOnlineAppApi(options);
+  const needsPermission = await needsPermissionApi.bootstrap();
+  assert.equal(needsPermission.library.length, onlineAppLibrary.length);
+  assert.equal(needsPermission.roots.at(-1).connectionState, "permission-required");
+  assert.equal(requestCount, 0, "permission remains user-initiated");
+
+  const reconnected = await needsPermissionApi.reconnectSource(persistentRoot.id);
+  assert.equal(requestCount, 1);
+  assert.equal(reconnected.library.length, onlineAppLibrary.length + 1);
+  assert.equal(reconnected.roots.at(-1).connectionState, "reconnected");
+  assert.equal(JSON.stringify(reconnected).includes("/Users/"), false);
+
+  await needsPermissionApi.removeSource(persistentRoot.id);
+  assert.equal(records.size, 0);
 });
