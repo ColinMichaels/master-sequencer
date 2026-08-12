@@ -177,8 +177,38 @@ Audio remains live audition authority and FFmpeg remains print authority.
   before writing the two binaries and path-free schema-3 manifest.
 
 This advances the shared kernel into the real callback without making it audible
-or granting it access to user media. Callback allocation instrumentation,
-long-duration runs, and physical device changes remain promotion gates.
+or granting it access to user media. Gate 10 adds callback allocation evidence,
+longer stress runs, and parameter handoff below; physical device changes remain
+a promotion gate.
+
+### Gate 10 — atomic parameter handoff and muted stress: passed 2026-08-12
+
+- The control thread now publishes one release/acquire atomic 64-bit mailbox
+  word containing a monotonic generation and bounded Float32 output gain. The
+  callback performs one coherent load; reports fail unless publish/apply counts,
+  final generation, and final value reconcile exactly.
+- Each stress trial publishes three generations, changes gain twice around one
+  simulated AudioUnit recovery, restores the initial value, and verifies that
+  the post-stop default output device and nominal sample rate match their
+  before-run samples. The report exposes only that boolean comparison, not the device ID. User media, input
+  devices, production playback, and nonzero hardware output remain excluded.
+- The final three optimized-release trials ran for 10.028–10.081 seconds at 48
+  kHz stereo, processed 911–912 callbacks and 466,432–466,944 frames, and had a
+  worst callback below 0.073 ms. Every trial matched the reviewed golden and
+  reported zero frame, deadline, timing-gap, render, overload, or shadow
+  failures.
+- Native staging now verifies query, silence, shadow, and stress gates against
+  optimized release binaries and writes an ignored path-free schema-4 manifest.
+- Malloc stack logging against the exact staged binary identified one 32-byte
+  Swift exclusivity TLS allocation on the first audio callback. This was not
+  hidden or “fixed” by disabling exclusivity checks across the shared library.
+  Strict allocation-free promotion therefore remains open even though there is
+  no recurring per-block allocation call in the kernel.
+
+Gate 10 proves the parameter-mailbox and muted stress scope, not production
+readiness. Gate 11 is physical default-device loss/sample-rate recovery plus a
+reviewed way to remove the first-callback runtime allocation. Project audio
+remains prohibited until both are proven.
 
 ## Decision
 
@@ -345,12 +375,14 @@ this checkpoint.
    publish only sanitized status.
 8. **Complete:** the silence-only callback owns start, stop, recovery, and
    lock-free timing telemetry without production playback.
-9. **Muted shadow complete; user audio remains gated:** the real callback runs
-   generated samples through the Swift kernel, matches the reviewed golden, and
-   still emits only zeros. Next require allocation instrumentation, longer
-   stress runs, physical device-loss/sample-rate tests, and a reviewed
-   control-thread parameter handoff before any user-selected audio enters this
-   path.
+9. **Complete:** the real callback runs generated samples through the Swift
+   kernel, matches the reviewed golden, and still emits only zeros.
+10. **Atomic handoff/stress complete; production promotion remains gated:**
+    three coherent parameter generations survive recovery in each 10-second
+    release trial. Stack logging found one first-callback Swift TLS allocation.
+    Next eliminate that allocation without weakening exclusivity and run
+    physical device-loss/sample-rate tests before any user-selected audio enters
+    this path.
 
 The promotion gate for shared DSP is measurable parity and recovery—not its UI
 appearance. It must survive buffer-size changes, sample-rate changes, device

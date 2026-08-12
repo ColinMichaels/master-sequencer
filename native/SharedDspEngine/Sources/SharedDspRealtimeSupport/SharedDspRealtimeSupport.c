@@ -17,6 +17,8 @@ struct PSRealtimeMetrics {
     _Atomic uint64_t shadowCallbacks;
     _Atomic uint64_t shadowFrames;
     _Atomic uint64_t shadowFailures;
+    _Atomic uint64_t shadowParameterWord;
+    _Atomic uint64_t shadowParameterPublishes;
     _Atomic uint64_t longestCallbackTicks;
     _Atomic uint64_t previousOutputHostTime;
     _Atomic uint64_t deadlineTicks;
@@ -25,7 +27,7 @@ struct PSRealtimeMetrics {
     void *shadowContext;
 };
 
-extern int32_t ps_shared_dsp_shadow_process(void *context, uint32_t frameCount);
+extern int32_t ps_shared_dsp_shadow_process(void *context, uint32_t frameCount, uint64_t parameterWord);
 
 static uint64_t ps_seconds_to_host_ticks(double seconds) {
     mach_timebase_info_data_t info;
@@ -75,6 +77,15 @@ void ps_realtime_metrics_configure_shadow(PSRealtimeMetrics *metrics, void *shad
     metrics->shadowContext = shadowContext;
 }
 
+void ps_realtime_publish_shadow_output_gain(PSRealtimeMetrics *metrics, uint32_t generation, float outputGainDb) {
+    if (!metrics || generation == 0) return;
+    uint32_t gainBits = 0;
+    memcpy(&gainBits, &outputGainDb, sizeof(gainBits));
+    uint64_t word = ((uint64_t)generation << 32) | gainBits;
+    atomic_store_explicit(&metrics->shadowParameterWord, word, memory_order_release);
+    atomic_fetch_add_explicit(&metrics->shadowParameterPublishes, 1, memory_order_relaxed);
+}
+
 void ps_realtime_metrics_reset_timing(PSRealtimeMetrics *metrics) {
     if (!metrics) return;
     atomic_store_explicit(&metrics->previousOutputHostTime, 0, memory_order_relaxed);
@@ -101,6 +112,8 @@ PS_GETTER(ps_realtime_device_changes, deviceChanges)
 PS_GETTER(ps_realtime_shadow_callbacks, shadowCallbacks)
 PS_GETTER(ps_realtime_shadow_frames, shadowFrames)
 PS_GETTER(ps_realtime_shadow_failures, shadowFailures)
+PS_GETTER(ps_realtime_shadow_parameter_word, shadowParameterWord)
+PS_GETTER(ps_realtime_shadow_parameter_publishes, shadowParameterPublishes)
 
 double ps_realtime_longest_callback_ms(const PSRealtimeMetrics *metrics) {
     return metrics ? ps_host_ticks_to_milliseconds(atomic_load_explicit(&metrics->longestCallbackTicks, memory_order_relaxed)) : 0;
@@ -113,6 +126,10 @@ int ps_realtime_metrics_are_lock_free(const PSRealtimeMetrics *metrics) {
         && atomic_is_lock_free(&metrics->shadowCallbacks)
         && atomic_is_lock_free(&metrics->longestCallbackTicks)
         && atomic_is_lock_free(&metrics->expectedFrames);
+}
+
+int ps_realtime_shadow_parameter_word_is_lock_free(const PSRealtimeMetrics *metrics) {
+    return metrics && atomic_is_lock_free(&metrics->shadowParameterWord);
 }
 
 OSStatus ps_silence_render_callback(
@@ -129,7 +146,8 @@ OSStatus ps_silence_render_callback(
     uint64_t startedAt = mach_absolute_time();
 
     if (metrics->shadowContext) {
-        int32_t shadowStatus = ps_shared_dsp_shadow_process(metrics->shadowContext, inNumberFrames);
+        uint64_t parameterWord = atomic_load_explicit(&metrics->shadowParameterWord, memory_order_acquire);
+        int32_t shadowStatus = ps_shared_dsp_shadow_process(metrics->shadowContext, inNumberFrames, parameterWord);
         if (shadowStatus == 0) {
             atomic_fetch_add_explicit(&metrics->shadowCallbacks, 1, memory_order_relaxed);
             atomic_fetch_add_explicit(&metrics->shadowFrames, inNumberFrames, memory_order_relaxed);

@@ -81,6 +81,27 @@ private struct ShadowEvidence: Encodable {
     let recoveredSamples: Int
     let failures: UInt64
     let hardwareOutputZeroFilledAfterShadow: Bool
+    let parameterHandoff: ParameterHandoffEvidence
+}
+
+private struct ParameterHandoffEvidence: Encodable {
+    let mailbox = "atomic-u64-generation-float32"
+    let lockFree: Bool
+    let publishedUpdates: UInt64
+    let appliedUpdates: Int
+    let lastPublishedGeneration: UInt32
+    let lastAppliedGeneration: UInt32
+    let lastPublishedOutputGainDb: Double
+    let lastAppliedOutputGainDb: Double
+    let coherent: Bool
+}
+
+private struct StressEvidence: Encodable {
+    let targetDurationMs: Double
+    let parameterChangesRequested: Int
+    let parameterChangesCompleted: Int
+    let simulatedRecoveryAtMs: Double
+    let systemAudioConfigurationChanged: Bool
 }
 
 private struct SilentStreamReport: Encodable {
@@ -95,6 +116,7 @@ private struct SilentStreamReport: Encodable {
     let recovery: Recovery
     let stream: StreamMetrics?
     let shadow: ShadowEvidence?
+    let stress: StressEvidence?
 }
 
 private enum EngineState: String {
@@ -157,6 +179,7 @@ private final class GoldenShadowProcessor {
     static let fixtureSampleRate = 48_000
     static let fixtureFrames = 4_096
     static let maximumCallbackFrames = 4_096
+    static let initialOutputGainDb: Float = -0.75
     static let expectedSha256 = "74d25b2c630082715417bc8f213357752cfc56f439d6f930ac2dd7fdbde9b995"
 
     private let fixtureInput: [[Float]]
@@ -166,6 +189,9 @@ private final class GoldenShadowProcessor {
     private let kernel: SharedDspKernel
     private var fixtureCursor = 0
     private(set) var capturedFrames = 0
+    private(set) var appliedUpdates = 0
+    private(set) var lastAppliedGeneration: UInt32 = 0
+    private(set) var lastAppliedOutputGainDb = Double(GoldenShadowProcessor.initialOutputGainDb)
 
     init() {
         var left = [Float](repeating: 0, count: Self.fixtureFrames)
@@ -177,13 +203,34 @@ private final class GoldenShadowProcessor {
         fixtureInput = [left, right]
         kernel = SharedDspKernel(
             sampleRate: Double(Self.fixtureSampleRate),
-            settings: SharedDspSettings(inputGainDb: 3.5, outputGainDb: -0.75, peakGuardEnabled: false, smoothingMs: 0)
+            settings: Self.settings(outputGainDb: Double(Self.initialOutputGainDb))
         )
+        // Force any lazy Swift/Array setup onto the control thread before the
+        // AudioUnit owns this processor. Reset is also control-thread-only.
+        scratchInput[0][0] = fixtureInput[0][0]
+        scratchInput[1][0] = fixtureInput[1][0]
+        kernel.process(inputChannels: scratchInput, outputChannels: &scratchOutput, startFrame: 0, frameCount: 1)
+        kernel.reset()
     }
 
-    func process(frameCount: UInt32) -> Bool {
+    func process(frameCount: UInt32, parameterWord: UInt64) -> Bool {
         let count = Int(frameCount)
-        guard count > 0, count <= Self.maximumCallbackFrames else { return false }
+        let generation = UInt32(parameterWord >> 32)
+        let outputGainDb = Float(bitPattern: UInt32(parameterWord & 0xffff_ffff))
+        guard count > 0,
+              count <= Self.maximumCallbackFrames,
+              generation > 0,
+              outputGainDb.isFinite,
+              outputGainDb >= -48,
+              outputGainDb <= 12,
+              generation >= lastAppliedGeneration else { return false }
+
+        if generation > lastAppliedGeneration {
+            kernel.setSettings(Self.settings(outputGainDb: Double(outputGainDb)))
+            lastAppliedGeneration = generation
+            lastAppliedOutputGainDb = Double(outputGainDb)
+            appliedUpdates += 1
+        }
 
         for frame in 0..<count {
             scratchInput[0][frame] = fixtureInput[0][fixtureCursor]
@@ -219,6 +266,10 @@ private final class GoldenShadowProcessor {
     var processedFrames: Int { kernel.metrics.processedFrames }
     var recoveredSamples: Int { kernel.metrics.recoveredSamples }
 
+    private static func settings(outputGainDb: Double) -> SharedDspSettings {
+        SharedDspSettings(inputGainDb: 3.5, outputGainDb: outputGainDb, peakGuardEnabled: false, smoothingMs: 0)
+    }
+
     private func appendLittleEndian(_ value: UInt32, to bytes: inout [UInt8]) {
         bytes.append(UInt8(value & 0xff))
         bytes.append(UInt8((value >> 8) & 0xff))
@@ -228,10 +279,10 @@ private final class GoldenShadowProcessor {
 }
 
 @_cdecl("ps_shared_dsp_shadow_process")
-func psSharedDspShadowProcess(_ context: UnsafeMutableRawPointer?, _ frameCount: UInt32) -> Int32 {
+func psSharedDspShadowProcess(_ context: UnsafeMutableRawPointer?, _ frameCount: UInt32, _ parameterWord: UInt64) -> Int32 {
     guard let context else { return 1 }
     let processor = Unmanaged<GoldenShadowProcessor>.fromOpaque(context).takeUnretainedValue()
-    return processor.process(frameCount: frameCount) ? 0 : 1
+    return processor.process(frameCount: frameCount, parameterWord: parameterWord) ? 0 : 1
 }
 
 private final class SilentOutputEngine {
@@ -248,6 +299,8 @@ private final class SilentOutputEngine {
     private(set) var sampleRate = 0.0
     private(set) var channels = 0
     private(set) var maximumFramesPerSlice: UInt32 = 0
+    private(set) var lastPublishedGeneration: UInt32 = 0
+    private(set) var lastPublishedOutputGainDb = Double(GoldenShadowProcessor.initialOutputGainDb)
 
     let metrics: OpaquePointer
     let shadowProcessor: GoldenShadowProcessor?
@@ -261,6 +314,21 @@ private final class SilentOutputEngine {
         shadowProcessor = shadowEnabled ? GoldenShadowProcessor() : nil
         let context = shadowProcessor.map { Unmanaged.passUnretained($0).toOpaque() }
         ps_realtime_metrics_configure_shadow(metrics, context)
+        if shadowProcessor != nil {
+            lastPublishedGeneration = 1
+            ps_realtime_publish_shadow_output_gain(metrics, lastPublishedGeneration, GoldenShadowProcessor.initialOutputGainDb)
+        }
+    }
+
+    func publishShadowOutputGain(generation: UInt32, outputGainDb: Float) throws {
+        guard shadowProcessor != nil else { throw EngineError.invalidArgument("shadow parameter mailbox is disabled") }
+        guard state == .running else { throw EngineError.invalidTransition(state, "publish shadow parameter") }
+        guard generation > lastPublishedGeneration, outputGainDb.isFinite, outputGainDb >= -48, outputGainDb <= 12 else {
+            throw EngineError.invalidArgument("shadow parameter update is invalid")
+        }
+        ps_realtime_publish_shadow_output_gain(metrics, generation, outputGainDb)
+        lastPublishedGeneration = generation
+        lastPublishedOutputGainDb = Double(outputGainDb)
     }
 
     private func reject(_ operation: String) throws -> Never {
@@ -449,20 +517,26 @@ do {
     guard fingerprint.range(of: "^[0-9a-fA-F]{16,128}$", options: .regularExpression) != nil else {
         throw EngineError.invalidArgument("PROJECT_SEQUENCER_ENGINE_FINGERPRINT is missing or invalid")
     }
-    let durationMs = try boundedMilliseconds("--duration-ms", default: 750, minimum: 100, maximum: 5_000)
-    let simulateAtMs = try boundedMilliseconds("--simulate-device-change-ms", default: 250, minimum: 50, maximum: 4_000)
-    let shadowEnabled = CommandLine.arguments.contains("--shadow")
-    let reportMode = shadowEnabled ? "muted-shadow-output-lab" : "silent-output-lab"
+    let stressEnabled = CommandLine.arguments.contains("--stress")
+    let durationMs = try boundedMilliseconds("--duration-ms", default: stressEnabled ? 10_000 : 750, minimum: 100, maximum: 60_000)
+    let simulateAtMs = try boundedMilliseconds("--simulate-device-change-ms", default: stressEnabled ? 5_000 : 250, minimum: 50, maximum: 59_000)
+    let shadowEnabled = CommandLine.arguments.contains("--shadow") || stressEnabled
+    let reportMode = stressEnabled ? "muted-shadow-stress-lab" : shadowEnabled ? "muted-shadow-output-lab" : "silent-output-lab"
     let isolation = Isolation(shadowInput: shadowEnabled ? "generated-golden-only" : "disabled")
     guard simulateAtMs < durationMs - 50 else { throw EngineError.invalidArgument("simulated device change must leave at least 50 milliseconds for recovery") }
+    let firstParameterChangeAtMs = durationMs * 0.3
+    let secondParameterChangeAtMs = durationMs * 0.7
 
+    let startingDefaultOutput: AudioObjectID
+    let startingNominalSampleRate: Double
     do {
-        _ = try defaultOutputDevice()
+        startingDefaultOutput = try defaultOutputDevice()
+        startingNominalSampleRate = try nominalSampleRate(for: startingDefaultOutput)
     } catch EngineError.noOutputDevice {
         let handshake = Handshake(
             protocolVersion: 1,
             dspContractVersion: sharedDspContractVersion,
-            engineVersion: "0.4.0",
+            engineVersion: "0.5.0",
             engineInstanceId: UUID().uuidString.lowercased(),
             implementationFingerprint: fingerprint.lowercased(),
             capabilities: Capabilities(offlineRender: true, realTimeOutput: true, deviceNotifications: true, maximumChannels: 2, supportedSampleRates: [])
@@ -477,7 +551,8 @@ do {
             lifecycle: Lifecycle(startRequests: 0, starts: 0, stopRequests: 0, stops: 0, recoveryRequests: 0, recoveries: 0, invalidTransitions: 0, finalState: "stopped"),
             recovery: Recovery(defaultDeviceListener: false, processorOverloadListener: false, simulatedDeviceChange: false, deviceChangesObserved: 0),
             stream: nil,
-            shadow: nil
+            shadow: nil,
+            stress: stressEnabled ? StressEvidence(targetDurationMs: durationMs, parameterChangesRequested: 2, parameterChangesCompleted: 0, simulatedRecoveryAtMs: simulateAtMs, systemAudioConfigurationChanged: false) : nil
         ))
         exit(0)
     }
@@ -489,11 +564,16 @@ do {
     let startedAt = Date()
     var simulated = false
     var handledDeviceChanges: UInt64 = 0
+    var parameterChangesCompleted = 0
 
     try engine.start()
 
     while Date().timeIntervalSince(startedAt) * 1_000 < durationMs {
         let elapsedMs = Date().timeIntervalSince(startedAt) * 1_000
+        if stressEnabled && parameterChangesCompleted == 0 && elapsedMs >= firstParameterChangeAtMs {
+            try engine.publishShadowOutputGain(generation: 2, outputGainDb: -6)
+            parameterChangesCompleted = 1
+        }
         if !simulated && elapsedMs >= simulateAtMs {
             ps_realtime_metrics_record_device_change(metrics)
             simulated = true
@@ -504,9 +584,22 @@ do {
             try engine.recover()
             handledDeviceChanges = ps_realtime_device_changes(metrics)
         }
+        if stressEnabled && parameterChangesCompleted == 1 && elapsedMs >= secondParameterChangeAtMs {
+            try engine.publishShadowOutputGain(generation: 3, outputGainDb: GoldenShadowProcessor.initialOutputGainDb)
+            parameterChangesCompleted = 2
+        }
         Thread.sleep(forTimeInterval: 0.005)
     }
     try engine.stop()
+    let systemAudioConfigurationChanged: Bool
+    if stressEnabled {
+        let endingDefaultOutput = try defaultOutputDevice()
+        let endingNominalSampleRate = try nominalSampleRate(for: endingDefaultOutput)
+        systemAudioConfigurationChanged = endingDefaultOutput != startingDefaultOutput
+            || endingNominalSampleRate != startingNominalSampleRate
+    } else {
+        systemAudioConfigurationChanged = false
+    }
 
     let observedDurationMs = Date().timeIntervalSince(startedAt) * 1_000
     let roundedRate = Int(engine.sampleRate.rounded())
@@ -514,7 +607,7 @@ do {
     let handshake = Handshake(
         protocolVersion: 1,
         dspContractVersion: sharedDspContractVersion,
-        engineVersion: "0.4.0",
+        engineVersion: "0.5.0",
         engineInstanceId: UUID().uuidString.lowercased(),
         implementationFingerprint: fingerprint.lowercased(),
         capabilities: Capabilities(
@@ -528,6 +621,14 @@ do {
     let shadowEvidence: ShadowEvidence?
     if let processor = engine.shadowProcessor {
         let actualSha256 = processor.sha256()
+        let parameterWord = ps_realtime_shadow_parameter_word(metrics)
+        let publishedGeneration = UInt32(parameterWord >> 32)
+        let publishedOutputGainDb = Double(Float(bitPattern: UInt32(parameterWord & 0xffff_ffff)))
+        let parameterCoherent = publishedGeneration == engine.lastPublishedGeneration
+            && publishedGeneration == processor.lastAppliedGeneration
+            && publishedOutputGainDb == engine.lastPublishedOutputGainDb
+            && publishedOutputGainDb == processor.lastAppliedOutputGainDb
+            && ps_realtime_shadow_parameter_publishes(metrics) == UInt64(processor.appliedUpdates)
         shadowEvidence = ShadowEvidence(
             fixtureId: GoldenShadowProcessor.fixtureId,
             fixtureSampleRate: GoldenShadowProcessor.fixtureSampleRate,
@@ -543,7 +644,17 @@ do {
             capturedFrames: processor.capturedFrames,
             recoveredSamples: processor.recoveredSamples,
             failures: ps_realtime_shadow_failures(metrics),
-            hardwareOutputZeroFilledAfterShadow: true
+            hardwareOutputZeroFilledAfterShadow: true,
+            parameterHandoff: ParameterHandoffEvidence(
+                lockFree: ps_realtime_shadow_parameter_word_is_lock_free(metrics) == 1,
+                publishedUpdates: ps_realtime_shadow_parameter_publishes(metrics),
+                appliedUpdates: processor.appliedUpdates,
+                lastPublishedGeneration: publishedGeneration,
+                lastAppliedGeneration: processor.lastAppliedGeneration,
+                lastPublishedOutputGainDb: publishedOutputGainDb,
+                lastAppliedOutputGainDb: processor.lastAppliedOutputGainDb,
+                coherent: parameterCoherent
+            )
         )
     } else {
         shadowEvidence = nil
@@ -587,7 +698,14 @@ do {
             longestCallbackMs: ps_realtime_longest_callback_ms(metrics),
             lockFreeTelemetry: ps_realtime_metrics_are_lock_free(metrics) == 1
         ),
-        shadow: shadowEvidence
+        shadow: shadowEvidence,
+        stress: stressEnabled ? StressEvidence(
+            targetDurationMs: durationMs,
+            parameterChangesRequested: 2,
+            parameterChangesCompleted: parameterChangesCompleted,
+            simulatedRecoveryAtMs: simulateAtMs,
+            systemAudioConfigurationChanged: systemAudioConfigurationChanged
+        ) : nil
     ))
 } catch {
     FileHandle.standardError.write(Data("shared-dsp-silent-stream: \(error)\n".utf8))

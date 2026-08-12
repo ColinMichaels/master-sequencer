@@ -43,9 +43,10 @@ npm run native:stage
 
 This command compiles the Swift package, passes the self-test and all 16 golden
 comparisons, verifies the query-only hardware handshake, runs three explicit
-silence-only trials plus three generated shared-DSP shadow/recovery trials, and
-writes only two ignored executables plus a sanitized schema-3 manifest. A
-distribution build that includes them
+silence-only trials, three generated shared-DSP shadow/recovery trials, and
+three 10-second atomic-parameter stress trials. It stages only optimized release
+executables and writes two ignored binaries plus a sanitized schema-4 manifest.
+A distribution build that includes them
 must sign both nested executables with the same Developer ID team; the strict
 release audit checks each fingerprint and rejects missing or invalid nested
 code.
@@ -130,9 +131,11 @@ Intel/Apple Silicon testing remain separate product-release gates.
 - Packaged three-launch media lifecycle: passed.
 - Optional Swift hardware probe: packaged; fingerprint handshake and path-free
   bootstrap status passed across all three launches.
-- Optional silent/shadow laboratory: three muted hardware trials matched the
-  reviewed DSP golden before staging; packaged but never auto-started by the
-  app.
+- Optional silent/shadow/stress laboratory: short muted hardware trials and
+  three 10-second parameter/recovery trials matched the reviewed DSP golden
+  before staging; packaged but never auto-started by the app. Allocation stack
+  logging found one first-callback Swift TLS allocation, so it is not production
+  playback authority.
 - Valid Developer ID identities on this Mac: zero.
 - Signature: ad-hoc/linker only; not Developer ID.
 - Hardened-runtime proof on a Developer ID signature: absent.

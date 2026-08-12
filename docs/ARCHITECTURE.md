@@ -120,7 +120,7 @@ baseline order references before disk state changes.
 | `src/lib/library-search.js` | Build the in-memory catalog index and define portable saved-filter records |
 | `src/lib/*.js` | Pure import, sequence, formatting, appearance, and mastering rules |
 | `src/dsp/*` | Opt-in shared processing contract and AudioWorklet adapter; not production authority yet |
-| `native/SharedDspEngine/*` | Swift contract-v2 kernel, golden tools, query-only probe, and isolated muted-shadow AudioUnit laboratory; not production device authority |
+| `native/SharedDspEngine/*` | Swift contract-v2 kernel, golden tools, query-only probe, and isolated muted-shadow/stress AudioUnit laboratory with atomic parameter handoff; not production device authority |
 | `desktop-resources/staged/*` | Ignored FFmpeg artifacts and optional verified native-audio executables copied into desktop builds |
 | `src/styles/*.css` | Tokens/base rules, shell chrome, workspace features, and responsive/motion rules |
 
@@ -180,7 +180,11 @@ host-buffer pointers and lock-free atomics. In muted-shadow mode the callback
 runs only pre-generated golden samples through the memory-safe Swift kernel,
 then C zeroes the hardware buffers. Swift never receives `AudioBufferList`, and
 the executable still has no source-media, local API, Settings, or transport
-connection.
+connection. Stress mode carries a generation plus one bounded Float32 value in
+a single release/acquire 64-bit mailbox word and proves two parameter changes
+across recovery. Staging builds optimized release executables. Current stack
+logging still finds one first-callback Swift exclusivity TLS allocation, so this
+laboratory cannot be promoted to production playback yet.
 
 Audio delivery supports single HTTP byte ranges, including suffix ranges used
 by media clients. Malformed, multiple, reversed, and out-of-bounds ranges return

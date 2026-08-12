@@ -1,7 +1,7 @@
 # Native audio engine contract
 
-Status: compiled memory-safe DSP/offline proof plus muted real-time shadow
-processing; not a production audio engine
+Status: compiled memory-safe DSP/offline proof plus muted real-time shadow,
+atomic parameter handoff, and stress evidence; not a production audio engine
 
 ## Compiled Swift package
 
@@ -19,7 +19,10 @@ The processing method performs no file, network, UI, logging, or explicit
 allocation work. Hosts own the input/output buffers. Reset and sample-rate
 reconfiguration are control-thread operations and may replace state arrays.
 The implementation uses checked Swift arrays and contains no unsafe pointer or
-foreign-memory code.
+foreign-memory code. Release-mode stack logging nevertheless found one 32-byte
+Swift exclusivity TLS allocation on the first hardware callback. That runtime
+allocation is a known promotion blocker even though the kernel contains no
+per-block allocation call.
 
 Run:
 
@@ -44,15 +47,17 @@ Run the hardware boundary separately:
 npm run native:devices:verify
 npm run native:realtime:verify
 npm run native:shadow:verify
+npm run native:stress:verify
 npm run native:stage
 ```
 
 The first command verifies the same compiled parity authority, fingerprints the
 probe binary, executes it, and requires an exact protocol/DSP/fingerprint
 handshake. The real-time command runs three short silence-only trials, and the
-shadow command runs three muted shared-DSP trials against a reviewed golden.
-Staging requires all three gates before copying two verified executables and a
-path-free schema-3 manifest into ignored desktop staging. It never stages audio.
+shadow command runs three muted shared-DSP trials against a reviewed golden,
+and the stress command runs three 10-second parameter/recovery trials. Staging
+requires all four gates before copying two optimized release executables and a
+path-free schema-4 manifest into ignored desktop staging. It never stages audio.
 Staging clears any older native probe first, so a failed build or handshake
 cannot leave a stale executable for a later package command to pick up.
 
@@ -105,9 +110,9 @@ xruns, render errors, and processor-overload notifications. The C atomics must
 also report lock-free on the running architecture.
 
 On the final 2026-08-12 Apple Silicon staging run, all trials used a hardware-
-aligned 48 kHz stereo client format, produced 45–46 callbacks and 23,040–23,552
-silent frames, completed one recovery apiece, and had a worst callback below
-0.007 ms. These short POC measurements on one machine are not broad performance
+aligned 48 kHz stereo client format, produced 43–46 callbacks and
+22,016–23,552 silent frames, completed one recovery apiece, and had a worst
+callback below 0.0027 ms. These short POC measurements on one machine are not broad performance
 certification.
 
 ## Muted shared-DSP shadow boundary
@@ -127,14 +132,41 @@ closed unless every hardware callback has matching shadow work, the kernel and
 C frame counts reconcile, the SHA-256 equals the versioned golden, recovery
 completed, and the hardware-output declaration remains `silence-only`.
 
-Three 750 ms Apple Silicon trials passed this boundary at 48 kHz stereo, with
-46–47 callbacks and 23,552–24,064 processed frames per trial. Each completed one
-simulated recovery with exact golden parity and no shadow failures, callback
-errors, deadline misses, timing-gap xruns, or processor overloads. The slowest
-observed callback was below 1.7 ms against the current
+Three 750 ms optimized-release Apple Silicon trials passed this boundary at 48
+kHz stereo, with 46 callbacks and 23,552 processed frames per trial.
+Each completed one simulated recovery with exact golden parity and no shadow
+failures, callback errors, deadline misses, timing-gap xruns, or processor
+overloads. The slowest observed callback was below 0.072 ms against the current
 10.67 ms 512-frame period. This proves generated shadow processing on one
-machine; it is not allocation instrumentation, long-duration profiling, or
-permission to route user audio.
+machine; it is not permission to route user audio.
+
+## Atomic parameter and stress boundary
+
+The control thread publishes one coherent 64-bit word containing a monotonically
+increasing generation and one bounded Float32 output-gain value. The C callback
+loads that word once with acquire ordering. Swift applies a generation at most
+once; reports reconcile C publishes with Swift applies and reject stale,
+malformed, torn, or missing state. This avoids a callback lock and prevents a
+generation from being paired with a value from another update.
+
+`npm run native:stress:verify` runs three 10-second optimized-release trials.
+Each publishes the initial setting plus two control-thread changes, performs one
+simulated stop/dispose/recreate/start recovery, restores the original setting,
+and requires the default output device plus nominal sample rate after stop to
+match their before-run samples without reporting the device ID. The final staging trials
+ran for 10.028–10.081 seconds and processed 911–912 callbacks and
+466,432–466,944 frames each. All three reconciled
+three publishes with three applies at generation 3, matched the reviewed golden,
+emitted hardware silence, and reported zero callback, deadline, timing-gap,
+render, overload, or shadow failures. The worst callback was below 0.073 ms.
+
+Malloc stack logging against the exact staged release fingerprint
+`5b48b8f1...d9429c4b` attributed one 32-byte allocation to Swift exclusivity TLS
+initialization on the first callback. Control-thread construction/reset
+allocations were separate. Disabling runtime exclusivity across the shared DSP
+library was rejected as the wrong safety tradeoff. A production callback must
+move this boundary to an allocation-free implementation or otherwise remove the
+runtime allocation without weakening exclusivity checks.
 
 ## Latency authority
 
@@ -178,7 +210,7 @@ buffers. It also does not provide full device enumeration, aggregate-device
 support, physical hot-plug tests, WASM, a background service, production stream
 IPC, or native offline printing. The golden runner remains a test bridge. The
 query-only and laboratory binaries can be packaged into the POC, but promotion
-still requires long-duration and representative-device profiling, callback
-allocation instrumentation, real device-loss tests, measured loopback latency,
-Developer ID signing/notarization, and the existing source-safe rendered-audio
-checks.
+still requires elimination of the first-callback Swift runtime allocation,
+representative long-duration/device profiling, physical device-loss and
+sample-rate tests, measured loopback latency, Developer ID signing/notarization,
+and the existing source-safe rendered-audio checks.

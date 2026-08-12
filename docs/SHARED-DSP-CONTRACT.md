@@ -80,6 +80,8 @@ version and review the fixtures; tests must never rewrite the expected hashes.
 The Swift native implementation passes the current goldens but is not yet a
 production replacement. WASM must independently pass them. Promotion also
 requires frequency response, dynamics envelopes, channel linking, automation
-ramps, denormal handling, and device-loss recovery. Each authoritative print
-must record the DSP contract version and implementation fingerprint in its
-manifest.
+ramps, denormal handling, allocation-free hardware callbacks, and physical
+device-loss recovery. The current release-mode muted laboratory has a coherent
+atomic parameter mailbox but stack logging identifies one 32-byte Swift TLS
+allocation on its first callback. Each authoritative print must record the DSP
+contract version and implementation fingerprint in its manifest.

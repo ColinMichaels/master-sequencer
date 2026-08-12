@@ -8,6 +8,7 @@ import {
   validateNativeAudioHardwareProbe,
   validateNativeShadowStreamReport,
   validateNativeSilentStreamReport,
+  validateNativeStressStreamReport,
 } from "../src/lib/native-audio-engine-contract.js";
 
 test("native device requests normalize to bounded explicit configurations", () => {
@@ -214,7 +215,7 @@ test("muted native shadow reports bind every callback to the reviewed generated 
     lifecycle: { startRequests: 2, starts: 2, stopRequests: 2, stops: 2, recoveryRequests: 1, recoveries: 1, invalidTransitions: 0, finalState: "stopped" },
     recovery: { defaultDeviceListener: true, processorOverloadListener: true, simulatedDeviceChange: true, deviceChangesObserved: 1 },
     stream: { sampleRate: 48_000, channels: 2, maximumFramesPerSlice: 512, requestedDurationMs: 750, observedDurationMs: 760, callbacks: 70, renderedFrames: 35_840, frameMismatches: 0, deadlineMisses: 0, timingGapXruns: 0, renderErrors: 0, processorOverloads: 0, longestCallbackMs: 0.09, lockFreeTelemetry: true },
-    shadow: { fixtureId: "dual-tone-gain", fixtureSampleRate: 48_000, fixtureFrames: 4_096, generatedInput: true, checksumAlgorithm: "sha256-float32le-v1", expectedSha256: "74d25b2c630082715417bc8f213357752cfc56f439d6f930ac2dd7fdbde9b995", actualSha256: "74d25b2c630082715417bc8f213357752cfc56f439d6f930ac2dd7fdbde9b995", checksumMatch: true, processedCallbacks: 70, processedFrames: 35_840, kernelProcessedFrames: 35_840, capturedFrames: 4_096, recoveredSamples: 0, failures: 0, hardwareOutputZeroFilledAfterShadow: true },
+    shadow: { fixtureId: "dual-tone-gain", fixtureSampleRate: 48_000, fixtureFrames: 4_096, generatedInput: true, checksumAlgorithm: "sha256-float32le-v1", expectedSha256: "74d25b2c630082715417bc8f213357752cfc56f439d6f930ac2dd7fdbde9b995", actualSha256: "74d25b2c630082715417bc8f213357752cfc56f439d6f930ac2dd7fdbde9b995", checksumMatch: true, processedCallbacks: 70, processedFrames: 35_840, kernelProcessedFrames: 35_840, capturedFrames: 4_096, recoveredSamples: 0, failures: 0, hardwareOutputZeroFilledAfterShadow: true, parameterHandoff: { mailbox: "atomic-u64-generation-float32", lockFree: true, publishedUpdates: 1, appliedUpdates: 1, lastPublishedGeneration: 1, lastAppliedGeneration: 1, lastPublishedOutputGainDb: -0.75, lastAppliedOutputGainDb: -0.75, coherent: true } },
   });
   assert.equal(report.shadow.checksumMatch, true);
   assert.equal(report.shadow.processedFrames, report.stream.renderedFrames);
@@ -233,7 +234,7 @@ test("muted native shadow reports reject checksum drift, missing callback work, 
     lifecycle: { startRequests: 2, starts: 2, stopRequests: 2, stops: 2, recoveryRequests: 1, recoveries: 1, invalidTransitions: 0, finalState: "stopped" },
     recovery: { defaultDeviceListener: true, processorOverloadListener: true, simulatedDeviceChange: true, deviceChangesObserved: 1 },
     stream: { sampleRate: 48_000, channels: 2, maximumFramesPerSlice: 512, requestedDurationMs: 750, observedDurationMs: 760, callbacks: 70, renderedFrames: 35_840, frameMismatches: 0, deadlineMisses: 0, timingGapXruns: 0, renderErrors: 0, processorOverloads: 0, longestCallbackMs: 0.09, lockFreeTelemetry: true },
-    shadow: { fixtureId: "dual-tone-gain", fixtureSampleRate: 48_000, fixtureFrames: 4_096, generatedInput: true, checksumAlgorithm: "sha256-float32le-v1", expectedSha256: "74d25b2c630082715417bc8f213357752cfc56f439d6f930ac2dd7fdbde9b995", actualSha256: "74d25b2c630082715417bc8f213357752cfc56f439d6f930ac2dd7fdbde9b995", checksumMatch: true, processedCallbacks: 70, processedFrames: 35_840, kernelProcessedFrames: 35_840, capturedFrames: 4_096, recoveredSamples: 0, failures: 0, hardwareOutputZeroFilledAfterShadow: true },
+    shadow: { fixtureId: "dual-tone-gain", fixtureSampleRate: 48_000, fixtureFrames: 4_096, generatedInput: true, checksumAlgorithm: "sha256-float32le-v1", expectedSha256: "74d25b2c630082715417bc8f213357752cfc56f439d6f930ac2dd7fdbde9b995", actualSha256: "74d25b2c630082715417bc8f213357752cfc56f439d6f930ac2dd7fdbde9b995", checksumMatch: true, processedCallbacks: 70, processedFrames: 35_840, kernelProcessedFrames: 35_840, capturedFrames: 4_096, recoveredSamples: 0, failures: 0, hardwareOutputZeroFilledAfterShadow: true, parameterHandoff: { mailbox: "atomic-u64-generation-float32", lockFree: true, publishedUpdates: 1, appliedUpdates: 1, lastPublishedGeneration: 1, lastAppliedGeneration: 1, lastPublishedOutputGainDb: -0.75, lastAppliedOutputGainDb: -0.75, coherent: true } },
   };
   assert.throws(() => validateNativeShadowStreamReport({ ...valid, shadow: { ...valid.shadow, actualSha256: "0".repeat(64) } }), /checksum/);
   assert.throws(() => validateNativeShadowStreamReport({ ...valid, shadow: { ...valid.shadow, processedCallbacks: 69 } }), /inconsistent/);
@@ -257,4 +258,26 @@ test("muted native shadow reports preserve a path-free no-output-device state", 
   assert.equal(report.available, false);
   assert.equal(report.shadow, null);
   assert.equal(report.isolation.shadowInput, "generated-golden-only");
+});
+
+test("muted native stress reports require long callback coverage and a coherent three-generation parameter sequence", () => {
+  const stressReport = {
+    schemaVersion: 1,
+    capturedAt: "2026-08-12T12:00:00.000Z",
+    mode: "muted-shadow-stress-lab",
+    available: true,
+    reasonCode: null,
+    handshake: { protocolVersion: 1, dspContractVersion: 2, engineVersion: "0.5.0", engineInstanceId: "engine-abcd1234", implementationFingerprint: "1234567890abcdef1234567890abcdef", capabilities: { offlineRender: true, realTimeOutput: true, deviceNotifications: true, maximumChannels: 2, supportedSampleRates: [48_000] } },
+    isolation: { audioContent: "silence-only", inputAccess: false, sourceMediaAccess: false, productionPlaybackConnected: false, shadowInput: "generated-golden-only" },
+    lifecycle: { startRequests: 2, starts: 2, stopRequests: 2, stops: 2, recoveryRequests: 1, recoveries: 1, invalidTransitions: 0, finalState: "stopped" },
+    recovery: { defaultDeviceListener: true, processorOverloadListener: true, simulatedDeviceChange: true, deviceChangesObserved: 1 },
+    stream: { sampleRate: 48_000, channels: 2, maximumFramesPerSlice: 512, requestedDurationMs: 10_000, observedDurationMs: 10_010, callbacks: 900, renderedFrames: 460_800, frameMismatches: 0, deadlineMisses: 0, timingGapXruns: 0, renderErrors: 0, processorOverloads: 0, longestCallbackMs: 1.8, lockFreeTelemetry: true },
+    shadow: { fixtureId: "dual-tone-gain", fixtureSampleRate: 48_000, fixtureFrames: 4_096, generatedInput: true, checksumAlgorithm: "sha256-float32le-v1", expectedSha256: "74d25b2c630082715417bc8f213357752cfc56f439d6f930ac2dd7fdbde9b995", actualSha256: "74d25b2c630082715417bc8f213357752cfc56f439d6f930ac2dd7fdbde9b995", checksumMatch: true, processedCallbacks: 900, processedFrames: 460_800, kernelProcessedFrames: 460_800, capturedFrames: 4_096, recoveredSamples: 0, failures: 0, hardwareOutputZeroFilledAfterShadow: true, parameterHandoff: { mailbox: "atomic-u64-generation-float32", lockFree: true, publishedUpdates: 3, appliedUpdates: 3, lastPublishedGeneration: 3, lastAppliedGeneration: 3, lastPublishedOutputGainDb: -0.75, lastAppliedOutputGainDb: -0.75, coherent: true } },
+    stress: { targetDurationMs: 10_000, parameterChangesRequested: 2, parameterChangesCompleted: 2, simulatedRecoveryAtMs: 5_000, systemAudioConfigurationChanged: false },
+  };
+  const report = validateNativeStressStreamReport(stressReport);
+  assert.equal(report.shadow.parameterHandoff.lastAppliedGeneration, 3);
+  assert.equal(report.stress.systemAudioConfigurationChanged, false);
+  assert.throws(() => validateNativeStressStreamReport({ ...stressReport, shadow: { ...stressReport.shadow, parameterHandoff: { ...stressReport.shadow.parameterHandoff, appliedUpdates: 2 } } }), /handoff|sequence/);
+  assert.throws(() => validateNativeStressStreamReport({ ...stressReport, stream: { ...stressReport.stream, callbacks: 400, renderedFrames: 204_800 }, shadow: { ...stressReport.shadow, processedCallbacks: 400, processedFrames: 204_800, kernelProcessedFrames: 204_800 } }), /duration/);
 });

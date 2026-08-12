@@ -222,12 +222,13 @@ export const validateNativeSilentStreamReport = (report) => {
 };
 
 export const validateNativeShadowStreamReport = (report) => {
-  if (!report || report.mode !== "muted-shadow-output-lab") throw new Error("Native muted-shadow mode is invalid.");
+  const mode = report?.mode;
+  if (!report || !["muted-shadow-output-lab", "muted-shadow-stress-lab"].includes(mode)) throw new Error("Native muted-shadow mode is invalid.");
   const streamReport = validateNativeSilentStreamReport({ ...report, mode: "silent-output-lab" });
   if (report.isolation?.shadowInput !== "generated-golden-only") throw new Error("Native muted-shadow input isolation is invalid.");
   if (!streamReport.available) {
     if (report.shadow != null) throw new Error("Native muted-shadow unavailable state is invalid.");
-    return { ...streamReport, mode: "muted-shadow-output-lab", isolation: { ...streamReport.isolation, shadowInput: "generated-golden-only" }, shadow: null };
+    return { ...streamReport, mode, isolation: { ...streamReport.isolation, shadowInput: "generated-golden-only" }, shadow: null };
   }
 
   const shadow = report.shadow;
@@ -248,9 +249,20 @@ export const validateNativeShadowStreamReport = (report) => {
     throw new Error("Native muted-shadow processing evidence is inconsistent.");
   }
   if (shadow.hardwareOutputZeroFilledAfterShadow !== true) throw new Error("Native muted-shadow hardware output was not proven muted.");
+  const handoff = shadow.parameterHandoff;
+  if (!handoff || handoff.mailbox !== "atomic-u64-generation-float32" || handoff.lockFree !== true || handoff.coherent !== true) throw new Error("Native muted-shadow parameter mailbox is invalid.");
+  const publishedUpdates = cleanNonnegativeInteger(handoff.publishedUpdates, "parameter publish count", 1_000_000);
+  const appliedUpdates = cleanNonnegativeInteger(handoff.appliedUpdates, "parameter apply count", 1_000_000);
+  const lastPublishedGeneration = cleanNonnegativeInteger(handoff.lastPublishedGeneration, "published parameter generation", 0xffff_ffff);
+  const lastAppliedGeneration = cleanNonnegativeInteger(handoff.lastAppliedGeneration, "applied parameter generation", 0xffff_ffff);
+  const lastPublishedOutputGainDb = Number(handoff.lastPublishedOutputGainDb);
+  const lastAppliedOutputGainDb = Number(handoff.lastAppliedOutputGainDb);
+  if (publishedUpdates < 1 || publishedUpdates !== appliedUpdates || lastPublishedGeneration < 1 || lastPublishedGeneration !== lastAppliedGeneration || !Number.isFinite(lastPublishedOutputGainDb) || lastPublishedOutputGainDb < -48 || lastPublishedOutputGainDb > 12 || Math.abs(lastPublishedOutputGainDb - lastAppliedOutputGainDb) > 0.000_001) {
+    throw new Error("Native muted-shadow parameter handoff is incoherent.");
+  }
   return {
     ...streamReport,
-    mode: "muted-shadow-output-lab",
+    mode,
     isolation: { ...streamReport.isolation, shadowInput: "generated-golden-only" },
     shadow: {
       fixtureId: "dual-tone-gain",
@@ -268,7 +280,45 @@ export const validateNativeShadowStreamReport = (report) => {
       recoveredSamples,
       failures,
       hardwareOutputZeroFilledAfterShadow: true,
+      parameterHandoff: {
+        mailbox: "atomic-u64-generation-float32",
+        lockFree: true,
+        publishedUpdates,
+        appliedUpdates,
+        lastPublishedGeneration,
+        lastAppliedGeneration,
+        lastPublishedOutputGainDb,
+        lastAppliedOutputGainDb,
+        coherent: true,
+      },
     },
+  };
+};
+
+export const validateNativeStressStreamReport = (report) => {
+  if (!report || report.mode !== "muted-shadow-stress-lab") throw new Error("Native muted-shadow stress mode is invalid.");
+  const normalized = validateNativeShadowStreamReport(report);
+  const stress = report.stress;
+  if (!stress || stress.systemAudioConfigurationChanged !== false) throw new Error("Native muted-shadow stress isolation is invalid.");
+  const targetDurationMs = cleanNonnegativeNumber(stress.targetDurationMs, "stress target duration", 60_000);
+  const parameterChangesRequested = cleanNonnegativeInteger(stress.parameterChangesRequested, "stress parameter request count", 100);
+  const parameterChangesCompleted = cleanNonnegativeInteger(stress.parameterChangesCompleted, "stress parameter completion count", 100);
+  const simulatedRecoveryAtMs = cleanNonnegativeNumber(stress.simulatedRecoveryAtMs, "stress recovery time", 60_000);
+  if (targetDurationMs < 9_000 || parameterChangesRequested !== 2 || simulatedRecoveryAtMs < 50 || simulatedRecoveryAtMs >= targetDurationMs) throw new Error("Native muted-shadow stress evidence is invalid.");
+  if (!normalized.available) {
+    if (parameterChangesCompleted !== 0) throw new Error("Native muted-shadow unavailable stress state is invalid.");
+    return { ...normalized, stress: { targetDurationMs, parameterChangesRequested, parameterChangesCompleted, simulatedRecoveryAtMs, systemAudioConfigurationChanged: false } };
+  }
+  const handoff = normalized.shadow.parameterHandoff;
+  if (parameterChangesCompleted !== 2 || handoff.publishedUpdates !== 3 || handoff.appliedUpdates !== 3 || handoff.lastPublishedGeneration !== 3 || handoff.lastAppliedGeneration !== 3 || Math.abs(handoff.lastAppliedOutputGainDb + 0.75) > 0.000_001) {
+    throw new Error("Native muted-shadow stress parameter sequence is incomplete.");
+  }
+  if (normalized.stream.requestedDurationMs !== targetDurationMs || normalized.stream.observedDurationMs < targetDurationMs || normalized.stream.callbacks < 500 || normalized.shadow.processedFrames < 250_000) {
+    throw new Error("Native muted-shadow stress duration is insufficient.");
+  }
+  return {
+    ...normalized,
+    stress: { targetDurationMs, parameterChangesRequested, parameterChangesCompleted, simulatedRecoveryAtMs, systemAudioConfigurationChanged: false },
   };
 };
 

@@ -68,7 +68,7 @@ try {
   const manifest = JSON.parse(await readFile(path.join(resourcesPath, "native-audio-runtime-manifest.json"), "utf8"));
   const expectedBinaries = {
     deviceProbe: { name: "shared-dsp-device-probe", capability: "query-only-default-output-probe" },
-    silentStream: { name: "shared-dsp-silent-stream", capability: "silence-and-muted-shadow-realtime-output-lab" },
+    silentStream: { name: "shared-dsp-silent-stream", capability: "silence-muted-shadow-and-stress-realtime-output-lab" },
   };
   const binaries = {};
   for (const [key, expected] of Object.entries(expectedBinaries)) {
@@ -82,11 +82,17 @@ try {
       codeValid: run("codesign", ["--verify", "--strict", binaryPath]).ok,
       manifest: entry?.path === `native/${expected.name}`
         && entry?.capability === expected.capability
-        && (key !== "silentStream" || (entry?.silenceTrials === 3 && entry?.shadowTrials === 3)),
+        && (key !== "silentStream" || (entry?.silenceTrials === 3 && entry?.shadowTrials === 3 && entry?.stressTrials === 3)),
       fingerprintMatch: entry?.sha256 === fingerprint,
     };
   }
-  nativeAudio = { manifest: manifest?.schemaVersion === 3 && manifest?.protocolVersion === 1 && manifest?.dspContractVersion === 2, binaries };
+  nativeAudio = {
+    manifest: manifest?.schemaVersion === 4
+      && manifest?.buildConfiguration === "release"
+      && manifest?.protocolVersion === 1
+      && manifest?.dspContractVersion === 2,
+    binaries,
+  };
 } catch {
   nativeAudio = { manifest: false, binaries: {} };
 }

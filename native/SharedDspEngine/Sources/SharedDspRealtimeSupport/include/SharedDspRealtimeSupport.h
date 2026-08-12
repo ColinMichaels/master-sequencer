@@ -15,6 +15,7 @@ PSRealtimeMetrics *ps_realtime_metrics_create(void);
 void ps_realtime_metrics_destroy(PSRealtimeMetrics *metrics);
 void ps_realtime_metrics_configure(PSRealtimeMetrics *metrics, uint32_t expectedFrames, double sampleRate);
 void ps_realtime_metrics_configure_shadow(PSRealtimeMetrics *metrics, void *shadowContext);
+void ps_realtime_publish_shadow_output_gain(PSRealtimeMetrics *metrics, uint32_t generation, float outputGainDb);
 void ps_realtime_metrics_reset_timing(PSRealtimeMetrics *metrics);
 void ps_realtime_metrics_record_device_change(PSRealtimeMetrics *metrics);
 
@@ -29,8 +30,11 @@ uint64_t ps_realtime_device_changes(const PSRealtimeMetrics *metrics);
 uint64_t ps_realtime_shadow_callbacks(const PSRealtimeMetrics *metrics);
 uint64_t ps_realtime_shadow_frames(const PSRealtimeMetrics *metrics);
 uint64_t ps_realtime_shadow_failures(const PSRealtimeMetrics *metrics);
+uint64_t ps_realtime_shadow_parameter_word(const PSRealtimeMetrics *metrics);
+uint64_t ps_realtime_shadow_parameter_publishes(const PSRealtimeMetrics *metrics);
 double ps_realtime_longest_callback_ms(const PSRealtimeMetrics *metrics);
 int ps_realtime_metrics_are_lock_free(const PSRealtimeMetrics *metrics);
+int ps_realtime_shadow_parameter_word_is_lock_free(const PSRealtimeMetrics *metrics);
 
 OSStatus ps_silence_render_callback(
     void *inRefCon,
