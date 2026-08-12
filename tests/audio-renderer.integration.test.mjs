@@ -186,6 +186,45 @@ test("a short Premium rack print follows the patched order with oversampling and
   assert.match(cue, /MASTER path: Premium rack: Precision Limiter → Master Output → Bus Compressor/);
 });
 
+test("a short print executes the complete spatial and creative built-in plug-in rack", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "project-sequencer-spatial-plugins-"));
+  const sourcePath = path.join(root, "source.wav");
+  await generateSineWave(sourcePath, { duration: 0.35, frequency: 480 });
+  const sourceChecksum = await checksum(sourcePath);
+  const make = (type, id, patch) => {
+    const node = createAdvancedProcessor(type, id);
+    Object.assign(node.parameters, patch);
+    return node;
+  };
+  const nodes = [
+    make(ADVANCED_PROCESSOR_TYPES.eq, "side-eq", { channelMode: "side", outputGainDb: -0.2 }),
+    make(ADVANCED_PROCESSOR_TYPES.compressor, "mid-comp", { channelMode: "mid", thresholdDb: -24, ratio: 1.5, mix: 0.35 }),
+    make(ADVANCED_PROCESSOR_TYPES.stereoField, "field", { widthDb: 1, depthDb: -0.5, monoBelowHz: 100, spaceDb: 0.5, balance: 0.05 }),
+    make(ADVANCED_PROCESSOR_TYPES.harmonicColor, "color", { driveDb: 3, mix: 0.15 }),
+    make(ADVANCED_PROCESSOR_TYPES.phaseAlignment, "phase", { target: "side", shift: 0.25, delaySamples: 2, mix: 0.4 }),
+    make(ADVANCED_PROCESSOR_TYPES.hfSmoother, "smooth", { thresholdDb: -24, ratio: 1.5, mix: 0.4 }),
+    make(ADVANCED_PROCESSOR_TYPES.ambience, "space", { wetPercent: 1, decaySeconds: 0.25, preDelayMs: 5 }),
+    make(ADVANCED_PROCESSOR_TYPES.transientShaper, "impact", { attackDb: 0.5, sustainDb: -0.25 }),
+    make(ADVANCED_PROCESSOR_TYPES.creativePhaser, "motion", { mix: 0.08, depth: 0.15, rateHz: 0.2 }),
+    make(ADVANCED_PROCESSOR_TYPES.limiter, "final-limit", { ceilingDbfs: -1, oversample: 2 }),
+  ];
+  const album = {
+    id: "spatial-plugins",
+    artist: "Fixture Artist",
+    title: "Spatial Plug-ins Fixture",
+    masteringPath: "advanced",
+    advancedMastering: { ...createDefaultAdvancedMastering(), nodes },
+    tracks: [{ id: "source", title: "Spatial Source", auditionCandidateId: "source-a", candidates: [{ id: "source-a", sourceRef: { rootId: "fixture", relativePath: "source.wav" } }] }],
+  };
+  const result = await renderAudio({ album, scope: "track", trackId: "source", format: "wav", getLibraryFile: () => ({ absolutePath: sourcePath, duration: 0.35 }), outputRoot: path.join(root, "exports"), timeoutMs: 30_000 });
+  const probe = await probeAudio(result.audioPath);
+  assert.equal(probe.streams[0].codec_name, "pcm_s24le");
+  assert.equal(probe.streams[0].channels, 2);
+  assert.equal(await checksum(sourcePath), sourceChecksum);
+  const manifest = JSON.parse(await readFile(result.manifestPath, "utf8"));
+  assert.deepEqual(manifest.advancedMastering.nodes.map((node) => node.pluginRef.format), Array(nodes.length).fill("builtin"));
+});
+
 test("cancelling a real FFmpeg print removes its partial derivative directory", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "project-sequencer-ffmpeg-cancel-"));
   const sourcePath = path.join(root, "source.wav");

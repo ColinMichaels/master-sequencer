@@ -73,8 +73,10 @@ npm start
   fades, natural endings, hard cuts, fade-outs, crossfades, and post-track
   silence; balance each track before fades and transitions; shape the complete
   album through either the preserved Basic MASTER chain or a Premium analog
-  rack with repeatable EQ, compressor, output, and precision-limiter instances.
-  Premium equipment can be inserted, duplicated, bypassed, removed, and
+  plug-in rack. Included processors cover program EQ, bus compression, stereo
+  field shaping, harmonic color, static phase alignment, HF smoothing,
+  mastering ambience, transient shaping, creative phasing, output trim, and
+  precision limiting. Any plug-in can be inserted, duplicated, bypassed, removed, and
   drag-repatched in any serial order; the same saved order drives live audition
   and the documented FFmpeg print;
   preview edited starts and endings; then print a selected track or
@@ -141,12 +143,23 @@ changes use short ramps to avoid zipper noise. FFmpeg prints remain the exact
 render authority; live browser processing is an audition path.
 
 Basic and Premium are independent album paths. Existing projects migrate with
-Basic active and unchanged, while Premium starts with a separate four-unit
-serial rack. Premium limiter prints can run at 1x, 2x, or 4x sample rate before
+Basic active and unchanged, while Premium starts with a separate four-plug-in
+serial rack. Every rack node carries a stable format, vendor, plug-in ID, and
+definition version so included processors and future user-owned VST3/AU
+instances share one add/remove/reorder/bypass contract. Unresolved external
+instances remain visible, state-preserved, unavailable, and bypassed. Premium
+limiter prints can run at 1x, 2x, 4x, or 8x sample rate before
 returning to 48 kHz; the UI explicitly identifies the live device-rate audition
-and final print distinction. External VST3/AU execution is not simulated: the
-rack reserves a visible native-host boundary, and actual third-party binaries
-remain blocked until the isolated signed desktop companion is implemented.
+and final print distinction. Stereo, mono-sum, Mid-only, Side-only, vectorscope,
+and correlation monitoring are audition-only and never enter a print. External
+VST3/AU execution is not simulated: the rack reserves a visible ownership-aware
+native-host boundary, and actual third-party binaries remain blocked until the
+isolated signed desktop companion is implemented.
+
+The functional controls for the seven new spatial, color, repair, ambience,
+transient, and creative processors are complete. Their planned analog-style
+faceplate refinement is documented in
+[`docs/MASTERING-PLUGIN-VISUAL-DESIGN-NOTES.md`](docs/MASTERING-PLUGIN-VISUAL-DESIGN-NOTES.md).
 
 Projects can be started fresh and reopened from the album rail or Settings.
 Before a switch, pending edits are flushed into the current project's ignored

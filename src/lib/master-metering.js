@@ -24,6 +24,40 @@ export const calculateSignalLevel = (samples, floor = MASTER_METER_FLOOR_DB) => 
   };
 };
 
+export const calculateStereoCorrelation = (leftSamples, rightSamples) => {
+  if (!leftSamples?.length || !rightSamples?.length) return 0;
+  const length = Math.min(leftSamples.length, rightSamples.length);
+  let leftEnergy = 0;
+  let rightEnergy = 0;
+  let crossEnergy = 0;
+  for (let index = 0; index < length; index += 1) {
+    const left = Number(leftSamples[index]) || 0;
+    const right = Number(rightSamples[index]) || 0;
+    leftEnergy += left * left;
+    rightEnergy += right * right;
+    crossEnergy += left * right;
+  }
+  const denominator = Math.sqrt(leftEnergy * rightEnergy);
+  if (denominator <= Number.EPSILON) return 0;
+  return clamp(crossEnergy / denominator, -1, 1);
+};
+
+export const sampleVectorscope = (leftSamples, rightSamples, { points = 96 } = {}) => {
+  if (!leftSamples?.length || !rightSamples?.length || points <= 0) return [];
+  const length = Math.min(leftSamples.length, rightSamples.length);
+  const stride = Math.max(1, Math.floor(length / points));
+  const output = [];
+  for (let index = 0; index < length && output.length < points; index += stride) {
+    const left = clamp(Number(leftSamples[index]) || 0, -1, 1);
+    const right = clamp(Number(rightSamples[index]) || 0, -1, 1);
+    output.push({
+      x: clamp((left - right) * 0.5, -1, 1),
+      y: clamp((left + right) * 0.5, -1, 1),
+    });
+  }
+  return output;
+};
+
 export const sampleLogSpectrum = (
   magnitudes,
   sampleRate,

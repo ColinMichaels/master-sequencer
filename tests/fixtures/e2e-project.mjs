@@ -3,7 +3,7 @@ import { createMasteringPresetLibrary } from "../../src/lib/mastering-presets.js
 import { createDefaultAdvancedMastering } from "../../src/lib/advanced-mastering.js";
 
 export const e2eProjectState = {
-  schemaVersion: 6,
+  schemaVersion: 7,
   albumTemplates: [],
   masteringPresets: createMasteringPresetLibrary(),
   activeAlbumId: "fixture-album",

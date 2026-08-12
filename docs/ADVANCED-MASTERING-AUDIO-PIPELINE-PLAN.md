@@ -1,8 +1,12 @@
 # Advanced Mastering Equipment and Audio Pipeline Plan
 
-Plan date: 2026-08-11
+Plan date: 2026-08-11 · implementation and visual follow-up updated 2026-08-12
 
-Status: serial rack and complete interactive faceplates implemented; analog-modelled native DSP and VST3 host remain planned; not a release approval
+Status: ownership-aware serial plug-in rack, spatial/creative built-ins, monitoring, Web Audio audition, and authoritative FFmpeg prints implemented; isolated native VST3/AU host remains planned; not a release approval
+
+The follow-up analog faceplate and interaction brief for every new built-in is
+maintained in
+[MASTERING-PLUGIN-VISUAL-DESIGN-NOTES.md](./MASTERING-PLUGIN-VISUAL-DESIGN-NOTES.md).
 
 ![Premium mastering rack concept](./concepts/premium-mastering-rack-concept-v1.png)
 
@@ -18,9 +22,9 @@ Implemented on the `codex/advanced-mastering-rack` branch:
 
 - Schema 6 keeps `album.masterBus` intact, migrates every existing album with
   `masteringPath: basic`, and adds an independent normalized Premium rack.
-- The first serial rack supports up to 12 built-in EQ, compressor, output, and
-  precision-limiter instances with insert, duplicate, drag reorder, arrow
-  reorder, bypass, remove, reset, and exact-value controls.
+- The serial rack supports up to 16 built-in plug-in instances with insert,
+  duplicate, drag reorder, arrow reorder, bypass, remove, reset, and exact-value
+  controls.
 - Stored `nodes` plus canonical `connections` form one input-to-output chain.
   Invalid types, duplicate identifiers, unsafe values, and non-serial
   connections fail validation.
@@ -45,6 +49,21 @@ Implemented on the `codex/advanced-mastering-rack` branch:
 Still intentionally gated:
 
 - Installed VST3 or AU binaries are not loaded by the browser or Node server.
+
+Implemented in the schema-7 plug-in wave:
+
+- One catalog and rack-node contract now covers all included processors and
+  preserves future VST3/AU identities, vendors, availability, and bounded opaque
+  state. Missing native instances stay visible, unavailable, and bypassed.
+- Stereo/mono/Mid/Side audition monitoring, vectorscope display, and phase
+  correlation are post-master and are never written into a print.
+- Program EQ and Bus Compressor accept Stereo, Mid, or Side targeting.
+- Stereo Field Matrix, Harmonic Color, static Phase Alignment, HF Smoother,
+  Mastering Ambience, Transient Sculptor, and clearly warned Creative Phaser
+  are addable/removable/reorderable/duplicable plug-ins.
+- Live Web Audio audition and authoritative FFmpeg printing consume the same
+  ordered node list. A real short integration print exercises every new module
+  while checksum verification proves the indexed source remains unchanged.
   The UI names this boundary instead of pretending a third-party processor is
   active. Phase 5 still requires the isolated, signed native companion, SDK and
   license review, crash recovery, latency compensation, state chunks, and a

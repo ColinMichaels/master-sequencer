@@ -1,9 +1,9 @@
 import { MASTERING_LIMITS, normalizeMasterBus } from "../src/lib/mastering.js";
-import { ADVANCED_PROCESSOR_TYPES, ADVANCED_RACK_MAX_PROCESSORS, ADVANCED_RACK_VERSION, buildSerialConnections, createDefaultAdvancedMastering, normalizeAdvancedMastering, normalizeMasteringPath } from "../src/lib/advanced-mastering.js";
+import { ADVANCED_PROCESSOR_TYPES, ADVANCED_RACK_MAX_PROCESSORS, ADVANCED_RACK_VERSION, MASTERING_PLUGIN_FORMATS, MASTERING_PLUGIN_NODE_VERSION, buildSerialConnections, createDefaultAdvancedMastering, isExternalProcessor, normalizeAdvancedMastering, normalizeMasteringPath, normalizeProcessorParameters, processorDefinition } from "../src/lib/advanced-mastering.js";
 import { MASTERING_PRESET_TYPES } from "../src/lib/mastering-presets.js";
 import { isValidAlbumReleaseDate } from "../src/lib/release-date.js";
 
-export const CURRENT_SCHEMA_VERSION = 6;
+export const CURRENT_SCHEMA_VERSION = 7;
 
 const DEFAULT_PROJECT_ARTIST = "Untitled Artist";
 const deliveryProfileIds = new Set(["", "archive-wav", "distribution-wav", "review-mp3"]);
@@ -121,19 +121,22 @@ const validateAdvancedMastering = (rack, label) => {
     validateObject(node, `${label} processor`);
     if (typeof node.id !== "string" || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(node.id) || node.id.length > 120 || ids.has(node.id)) throw new Error(`${label} processor ids must be unique safe identifiers.`);
     ids.add(node.id);
-    if (!Object.values(ADVANCED_PROCESSOR_TYPES).includes(node.typeId)) throw new Error(`${label} contains an unsupported processor type.`);
-    if (node.definitionVersion !== 1) throw new Error(`${label} processor ${node.id} has an unsupported definition version.`);
+    const definition = processorDefinition(node.typeId);
+    const external = isExternalProcessor(node);
+    if (!definition && !external) throw new Error(`${label} contains an unsupported processor type.`);
+    if (node.definitionVersion !== MASTERING_PLUGIN_NODE_VERSION) throw new Error(`${label} processor ${node.id} has an unsupported definition version.`);
     if (typeof node.name !== "string" || !node.name.trim() || node.name.length > 80) throw new Error(`${label} processor ${node.id} needs a name up to 80 characters.`);
     validateBoolean(node.bypass, `${label} processor ${node.id} bypass`);
-    if (node.typeId === ADVANCED_PROCESSOR_TYPES.eq) validateAdvancedEqSettings(node.parameters, `${label} processor ${node.id}`);
-    else if (node.typeId === ADVANCED_PROCESSOR_TYPES.compressor) validateAdvancedCompressorSettings(node.parameters, `${label} processor ${node.id}`);
-    else if (node.typeId === ADVANCED_PROCESSOR_TYPES.output) {
-      validateObject(node.parameters, `${label} processor ${node.id}`);
-      validateNumberRange(node.parameters.outputGainDb, MASTERING_LIMITS.outputGainDb, `${label} processor ${node.id} outputGainDb`);
+    validateObject(node.pluginRef, `${label} processor ${node.id} plug-in identity`);
+    if (external) {
+      if (![MASTERING_PLUGIN_FORMATS.vst3, MASTERING_PLUGIN_FORMATS.audioUnit].includes(node.pluginRef.format) || typeof node.pluginRef.pluginId !== "string" || !node.pluginRef.pluginId.trim()) throw new Error(`${label} processor ${node.id} has an invalid external plug-in identity.`);
+      if (node.unavailable !== true) throw new Error(`${label} processor ${node.id} must remain unavailable until the native host resolves it.`);
+      if (typeof node.opaqueState !== "string" || node.opaqueState.length > 2_000_000) throw new Error(`${label} processor ${node.id} has invalid external state.`);
     } else {
-      validateLimiterSettings(node.parameters, `${label} processor ${node.id}`);
-      if (![1, 2, 4, 8].includes(node.parameters.oversample)) throw new Error(`${label} processor ${node.id} oversample must be 1, 2, 4, or 8.`);
-      if (node.parameters.stereoLinkPercent !== undefined) validateNumberRange(node.parameters.stereoLinkPercent, MASTERING_LIMITS.limiterStereoLinkPercent, `${label} processor ${node.id} stereoLinkPercent`);
+      if (node.pluginRef.format !== MASTERING_PLUGIN_FORMATS.builtin || node.pluginRef.pluginId !== node.typeId || node.pluginRef.included !== true) throw new Error(`${label} processor ${node.id} has an invalid built-in plug-in identity.`);
+      validateObject(node.parameters, `${label} processor ${node.id} parameters`);
+      const normalizedParameters = normalizeProcessorParameters(node.typeId, node.parameters);
+      if (JSON.stringify(node.parameters) !== JSON.stringify(normalizedParameters)) throw new Error(`${label} processor ${node.id} has unsafe or incomplete plug-in parameters.`);
     }
   }
   const expectedConnections = buildSerialConnections(rack.nodes);
@@ -365,6 +368,14 @@ const migrations = new Map([
     albums: Array.isArray(state.albums) ? state.albums.map((album) => ({
       ...album,
       masteringPath: normalizeMasteringPath(album.masteringPath),
+      advancedMastering: normalizeAdvancedMastering(album.advancedMastering || createDefaultAdvancedMastering()),
+    })) : state.albums,
+  })],
+  [6, (state) => ({
+    ...state,
+    schemaVersion: 7,
+    albums: Array.isArray(state.albums) ? state.albums.map((album) => ({
+      ...album,
       advancedMastering: normalizeAdvancedMastering(album.advancedMastering || createDefaultAdvancedMastering()),
     })) : state.albums,
   })],

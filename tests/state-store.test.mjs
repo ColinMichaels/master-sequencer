@@ -8,7 +8,7 @@ import { normalizeMasterBus } from "../src/lib/mastering.js";
 import { createDefaultAdvancedMastering } from "../src/lib/advanced-mastering.js";
 
 const seed = {
-  schemaVersion: 6,
+  schemaVersion: 7,
   albumTemplates: [],
   masteringPresets: { eq: [], compressor: [], output: [], limiter: [], master: [] },
   activeAlbumId: "album",
@@ -131,7 +131,7 @@ test("version 1 project state migrates to the current schema without changing al
   legacy.schemaVersion = 1;
   delete legacy.settings.project;
   const migrated = migrateState(legacy);
-  assert.equal(migrated.schemaVersion, 6);
+  assert.equal(migrated.schemaVersion, 7);
   assert.deepEqual(migrated.albumTemplates, []);
   assert.deepEqual(migrated.settings.librarySavedFilters, []);
   assert.equal(migrated.activeAlbumId, legacy.activeAlbumId);
@@ -149,7 +149,7 @@ test("version 2 project state inherits its artist without interrupting an existi
   legacy.albums[0].artist = "Legacy Ensemble";
   delete legacy.settings.project;
   const migrated = migrateState(legacy);
-  assert.equal(migrated.schemaVersion, 6);
+  assert.equal(migrated.schemaVersion, 7);
   assert.deepEqual(migrated.albumTemplates, []);
   assert.deepEqual(migrated.settings.librarySavedFilters, []);
   assert.deepEqual(migrated.settings.project, { artistName: "Legacy Ensemble", setupComplete: true });
@@ -165,7 +165,7 @@ test("version 3 project state gains a neutral MASTER bus without changing track 
   legacy.albums[0].tracks[0].masterCandidateId = "";
   legacy.albums[0].tracks[0].auditionCandidateId = "";
   const migrated = migrateState(legacy);
-  assert.equal(migrated.schemaVersion, 6);
+  assert.equal(migrated.schemaVersion, 7);
   assert.deepEqual(migrated.albumTemplates, []);
   assert.deepEqual(migrated.settings.librarySavedFilters, []);
   assert.deepEqual(migrated.albums[0].masterBus, normalizeMasterBus());
@@ -181,7 +181,7 @@ test("version 4 project state gains neutral saved library filters", () => {
   legacy.schemaVersion = 4;
   delete legacy.settings.librarySavedFilters;
   const migrated = migrateState(legacy);
-  assert.equal(migrated.schemaVersion, 6);
+  assert.equal(migrated.schemaVersion, 7);
   assert.deepEqual(migrated.settings.librarySavedFilters, []);
   assert.deepEqual(migrated.albums[0].masterBus, normalizeMasterBus());
 });
@@ -193,10 +193,24 @@ test("version 5 project state keeps Basic active and gains an independent Premiu
   delete legacy.albums[0].advancedMastering;
   legacy.albums[0].masterBus.outputGainDb = -3;
   const migrated = migrateState(legacy);
-  assert.equal(migrated.schemaVersion, 6);
+  assert.equal(migrated.schemaVersion, 7);
   assert.equal(migrated.albums[0].masteringPath, "basic");
   assert.equal(migrated.albums[0].masterBus.outputGainDb, -3);
   assert.deepEqual(migrated.albums[0].advancedMastering, createDefaultAdvancedMastering());
+});
+
+test("version 6 Premium racks migrate into ownership-aware plug-in nodes", () => {
+  const legacy = structuredClone(seed);
+  legacy.schemaVersion = 6;
+  legacy.albums[0].advancedMastering.graphVersion = 1;
+  legacy.albums[0].advancedMastering.nodes.forEach((node) => {
+    node.definitionVersion = 1;
+    delete node.pluginRef;
+  });
+  const migrated = migrateState(legacy);
+  assert.equal(migrated.schemaVersion, 7);
+  assert.equal(migrated.albums[0].advancedMastering.graphVersion, 2);
+  assert.ok(migrated.albums[0].advancedMastering.nodes.every((node) => node.definitionVersion === 2 && node.pluginRef.format === "builtin" && node.pluginRef.pluginId === node.typeId));
 });
 
 test("future project-state versions are rejected without guessing", () => {

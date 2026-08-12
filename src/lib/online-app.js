@@ -88,7 +88,7 @@ const componentPresets = () => ({
 });
 
 export const createOnlineAppState = () => ({
-  schemaVersion: 6,
+  schemaVersion: 7,
   albumTemplates: [],
   masteringPresets: componentPresets(),
   activeAlbumId: "cosmic-reggae-sessions",
@@ -153,8 +153,9 @@ const initialWorkspace = () => {
 const validateState = (state) => {
   if (!state || typeof state !== "object" || !Array.isArray(state.albums)) throw new Error("That project is not valid Project Sequencer data.");
   if (state.schemaVersion === 5) state = { ...state, schemaVersion: 6, albums: state.albums.map((album) => ({ ...album, masteringPath: "basic", advancedMastering: createDefaultAdvancedMastering() })) };
-  if (state.schemaVersion !== 6) {
-    const direction = Number(state.schemaVersion) > 6 ? "newer than" : "older than";
+  if (state.schemaVersion === 6) state = { ...state, schemaVersion: 7, albums: state.albums.map((album) => ({ ...album, advancedMastering: normalizeAdvancedMastering(album.advancedMastering) })) };
+  if (state.schemaVersion !== 7) {
+    const direction = Number(state.schemaVersion) > 7 ? "newer than" : "older than";
     throw new Error(`Project state version ${state.schemaVersion ?? "unknown"} is ${direction} this online app supports.`);
   }
   return clone({ ...state, albums: state.albums.map((album) => ({ ...album, masteringPath: album.masteringPath === "advanced" ? "advanced" : "basic", advancedMastering: normalizeAdvancedMastering(album.advancedMastering) })) });
@@ -171,7 +172,7 @@ const slugify = (value) => value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-"
 const freshProjectState = ({ artistName, firstAlbumTitle, era, appearance }) => {
   const albumId = slugify(firstAlbumTitle);
   return {
-    schemaVersion: 6,
+    schemaVersion: 7,
     albumTemplates: [],
     masteringPresets: componentPresets(),
     activeAlbumId: albumId,

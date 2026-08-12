@@ -180,6 +180,7 @@
   .premium-rack-heading, .premium-rack-toolbar { align-items: stretch; flex-direction: column; }
   .premium-rack-master-actions { justify-content: flex-start; }
   .premium-rack-toolbar > div:first-child { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+  .premium-rack-toolbar > div:first-child label { width: 100%; min-width: 0; }
   .premium-rack-toolbar select { width: 100%; min-width: 0; }
   .premium-plugin-boundary { max-width: none; }
   .premium-rack-layout { grid-template-columns: 1fr; }
@@ -192,6 +193,7 @@
   .premium-equipment-rack { padding: 7px; }
   .premium-equipment-rack { overflow-x: auto; }
   .premium-equipment-rack > div { min-width: 840px; }
+  .premium-equipment-rack > div:has(.premium-plugin-panel) { min-width: 100%; }
   .premium-rack-unit { padding: 0; }
   .premium-unit-heading { grid-template-columns: auto minmax(0, 1fr); }
   .premium-unit-actions { grid-column: 1 / -1; justify-content: flex-end; }
@@ -307,7 +309,8 @@
   .master-metering-console > header { align-items: flex-start; flex-direction: column; }
   .master-metering-status { width: 100%; justify-content: space-between; }
   .master-metering-grid { display: block; }
-  .master-spectrum-panel { margin-top: 0.55rem; }
+  .master-spectrum-panel, .master-vectorscope-panel { margin-top: 0.55rem; }
+  .master-monitor-modes p { width: 100%; max-width: none; margin-left: 0; }
   .digital-vu-channel { grid-template-columns: 34px minmax(90px, 1fr) 52px; }
   .digital-vu-peak-value { display: none; }
   .digital-vu-scale { margin-right: 62px; margin-left: 40px; }

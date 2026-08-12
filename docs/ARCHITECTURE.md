@@ -181,6 +181,13 @@ Schema version 6 keeps the fixed Basic MASTER bus intact and adds a separately
 stored Premium serial rack. Migration always leaves Basic selected, so opening
 an older project does not change its live or rendered sound.
 
+Schema version 7 upgrades every Premium node to the common mastering plug-in
+contract. Included processors carry a stable built-in format, vendor, plug-in
+ID, definition version, parameters, and serial position. Future VST3 and Audio
+Unit nodes use the same identity boundary plus bounded opaque state. Until an
+isolated signed native host resolves an installed, user-owned instance, an
+external node is preserved but forced unavailable and bypassed.
+
 ## Adding a feature safely
 
 1. Put domain rules in a pure `src/lib` module when they can be independent of
@@ -203,20 +210,30 @@ commands, state migrations, and style layers. `src/App.jsx` remains the primary
 client composition hub; future feature families should keep moving domain
 rules into focused modules instead of growing it indefinitely. The prioritized
 plan is maintained in [QUALITY-REVIEW-AND-ROADMAP.md](./QUALITY-REVIEW-AND-ROADMAP.md).
-The schema-6 Basic/Premium mastering split and serial processor graph are now
-implemented. `src/lib/advanced-mastering.js` owns normalization, equipment
-definitions, serial connections, and the 12-instance safety limit;
+The schema-7 Basic/Premium mastering split and serial plug-in graph are now
+implemented. `src/lib/advanced-mastering.js` owns normalization, catalog
+definitions, plug-in identity, serial connections, and the 16-instance safety limit;
 `AdvancedMasteringRack.jsx` owns the hardware rack and patch lane; the live Web
 Audio slot pool and FFmpeg filter builder consume the same ordered node list.
+The included catalog adds Stereo Field Matrix, Harmonic Color, Phase Alignment,
+HF Smoother, Mastering Ambience, Transient Sculptor, and Creative Phaser to the
+original EQ, compressor, output, and limiter. Master monitoring now adds
+audition-only stereo/mono/Mid/Side matrices, a vectorscope, and phase
+correlation; monitor selection is never serialized into a master print.
 Basic remains the default after migration, and each path keeps independent
 state. The higher-fidelity shared DSP core and isolated native plug-in companion
 remain specified separately in
 [ADVANCED-MASTERING-AUDIO-PIPELINE-PLAN.md](./ADVANCED-MASTERING-AUDIO-PIPELINE-PLAN.md).
+The original analog-style visual direction and per-processor faceplate roadmap
+are tracked in
+[MASTERING-PLUGIN-VISUAL-DESIGN-NOTES.md](./MASTERING-PLUGIN-VISUAL-DESIGN-NOTES.md).
 
 ## Verification layers
 
-- `npm test` covers pure domain rules, server boundaries, migrations, recovery,
-  render jobs, Basic prints, and a real 4x-oversampled Premium FFmpeg print.
+- `npm test` covers pure domain rules, plug-in identity and bounds, server
+  boundaries, migrations, recovery, render jobs, Basic prints, the original
+  Premium chain, and a real FFmpeg print through every new spatial/creative
+  built-in.
 - `npm run test:browser` starts an isolated repository-owned server with tiny
   generated fixtures. It covers persistence, privacy masking, independent
   audition/master choices, import rejection, modal focus, filters, mobile
