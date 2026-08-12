@@ -1,6 +1,7 @@
 import { SHARED_DSP_CONTRACT_VERSION } from "../dsp/shared-dsp-core.js";
 
 export const NATIVE_AUDIO_ENGINE_PROTOCOL_VERSION = 1;
+export const NATIVE_SHADOW_GOLDEN_SHA256 = "74d25b2c630082715417bc8f213357752cfc56f439d6f930ac2dd7fdbde9b995";
 export const NATIVE_AUDIO_BUFFER_SIZES = Object.freeze([32, 64, 128, 256, 512, 1_024, 2_048, 4_096]);
 export const NATIVE_AUDIO_SAMPLE_RATES = Object.freeze([44_100, 48_000, 88_200, 96_000, 176_400, 192_000]);
 
@@ -216,6 +217,57 @@ export const validateNativeSilentStreamReport = (report) => {
       processorOverloads: cleanNonnegativeInteger(stream.processorOverloads, "processor-overload count"),
       longestCallbackMs: cleanNonnegativeNumber(stream.longestCallbackMs, "longest callback", 10_000),
       lockFreeTelemetry: stream.lockFreeTelemetry === true,
+    },
+  };
+};
+
+export const validateNativeShadowStreamReport = (report) => {
+  if (!report || report.mode !== "muted-shadow-output-lab") throw new Error("Native muted-shadow mode is invalid.");
+  const streamReport = validateNativeSilentStreamReport({ ...report, mode: "silent-output-lab" });
+  if (report.isolation?.shadowInput !== "generated-golden-only") throw new Error("Native muted-shadow input isolation is invalid.");
+  if (!streamReport.available) {
+    if (report.shadow != null) throw new Error("Native muted-shadow unavailable state is invalid.");
+    return { ...streamReport, mode: "muted-shadow-output-lab", isolation: { ...streamReport.isolation, shadowInput: "generated-golden-only" }, shadow: null };
+  }
+
+  const shadow = report.shadow;
+  if (!shadow || typeof shadow !== "object") throw new Error("Native muted-shadow evidence is missing.");
+  const expectedSha256 = typeof shadow.expectedSha256 === "string" ? shadow.expectedSha256.toLowerCase() : "";
+  const actualSha256 = typeof shadow.actualSha256 === "string" ? shadow.actualSha256.toLowerCase() : "";
+  const processedCallbacks = cleanNonnegativeInteger(shadow.processedCallbacks, "shadow callback count");
+  const processedFrames = cleanNonnegativeInteger(shadow.processedFrames, "shadow frame count");
+  const kernelProcessedFrames = cleanNonnegativeInteger(shadow.kernelProcessedFrames, "kernel frame count");
+  const capturedFrames = cleanNonnegativeInteger(shadow.capturedFrames, "captured golden frame count", 1_000_000);
+  const recoveredSamples = cleanNonnegativeInteger(shadow.recoveredSamples, "recovered shadow sample count");
+  const failures = cleanNonnegativeInteger(shadow.failures, "shadow failure count");
+  if (shadow.fixtureId !== "dual-tone-gain" || shadow.fixtureSampleRate !== 48_000 || shadow.fixtureFrames !== 4_096 || shadow.generatedInput !== true || shadow.checksumAlgorithm !== "sha256-float32le-v1") {
+    throw new Error("Native muted-shadow golden authority is invalid.");
+  }
+  if (expectedSha256 !== NATIVE_SHADOW_GOLDEN_SHA256 || actualSha256 !== expectedSha256 || shadow.checksumMatch !== true) throw new Error("Native muted-shadow checksum does not match the reviewed golden.");
+  if (processedCallbacks !== streamReport.stream.callbacks || processedFrames !== streamReport.stream.renderedFrames || kernelProcessedFrames !== processedFrames || capturedFrames !== 4_096 || processedFrames < capturedFrames || recoveredSamples !== 0 || failures !== 0) {
+    throw new Error("Native muted-shadow processing evidence is inconsistent.");
+  }
+  if (shadow.hardwareOutputZeroFilledAfterShadow !== true) throw new Error("Native muted-shadow hardware output was not proven muted.");
+  return {
+    ...streamReport,
+    mode: "muted-shadow-output-lab",
+    isolation: { ...streamReport.isolation, shadowInput: "generated-golden-only" },
+    shadow: {
+      fixtureId: "dual-tone-gain",
+      fixtureSampleRate: 48_000,
+      fixtureFrames: 4_096,
+      generatedInput: true,
+      checksumAlgorithm: "sha256-float32le-v1",
+      expectedSha256,
+      actualSha256,
+      checksumMatch: true,
+      processedCallbacks,
+      processedFrames,
+      kernelProcessedFrames,
+      capturedFrames,
+      recoveredSamples,
+      failures,
+      hardwareOutputZeroFilledAfterShadow: true,
     },
   };
 };

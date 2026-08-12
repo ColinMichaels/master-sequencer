@@ -1,5 +1,6 @@
 import AudioToolbox
 import CoreAudio
+import CryptoKit
 import Foundation
 import SharedDspEngine
 import SharedDspRealtimeSupport
@@ -26,6 +27,7 @@ private struct Isolation: Encodable {
     let inputAccess = false
     let sourceMediaAccess = false
     let productionPlaybackConnected = false
+    let shadowInput: String
 }
 
 private struct Lifecycle: Encodable {
@@ -63,17 +65,36 @@ private struct StreamMetrics: Encodable {
     let lockFreeTelemetry: Bool
 }
 
+private struct ShadowEvidence: Encodable {
+    let fixtureId: String
+    let fixtureSampleRate: Int
+    let fixtureFrames: Int
+    let generatedInput: Bool
+    let checksumAlgorithm: String
+    let expectedSha256: String
+    let actualSha256: String
+    let checksumMatch: Bool
+    let processedCallbacks: UInt64
+    let processedFrames: UInt64
+    let kernelProcessedFrames: Int
+    let capturedFrames: Int
+    let recoveredSamples: Int
+    let failures: UInt64
+    let hardwareOutputZeroFilledAfterShadow: Bool
+}
+
 private struct SilentStreamReport: Encodable {
     let schemaVersion = 1
     let capturedAt: String
-    let mode = "silent-output-lab"
+    let mode: String
     let available: Bool
     let reasonCode: String?
     let handshake: Handshake
-    let isolation = Isolation()
+    let isolation: Isolation
     let lifecycle: Lifecycle
     let recovery: Recovery
     let stream: StreamMetrics?
+    let shadow: ShadowEvidence?
 }
 
 private enum EngineState: String {
@@ -131,6 +152,88 @@ private func nominalSampleRate(for device: AudioObjectID) throws -> Double {
     return sampleRate
 }
 
+private final class GoldenShadowProcessor {
+    static let fixtureId = "dual-tone-gain"
+    static let fixtureSampleRate = 48_000
+    static let fixtureFrames = 4_096
+    static let maximumCallbackFrames = 4_096
+    static let expectedSha256 = "74d25b2c630082715417bc8f213357752cfc56f439d6f930ac2dd7fdbde9b995"
+
+    private let fixtureInput: [[Float]]
+    private var scratchInput = [[Float](repeating: 0, count: maximumCallbackFrames), [Float](repeating: 0, count: maximumCallbackFrames)]
+    private var scratchOutput = [[Float](repeating: 0, count: maximumCallbackFrames), [Float](repeating: 0, count: maximumCallbackFrames)]
+    private var capturedOutput = [[Float](repeating: 0, count: fixtureFrames), [Float](repeating: 0, count: fixtureFrames)]
+    private let kernel: SharedDspKernel
+    private var fixtureCursor = 0
+    private(set) var capturedFrames = 0
+
+    init() {
+        var left = [Float](repeating: 0, count: Self.fixtureFrames)
+        var right = [Float](repeating: 0, count: Self.fixtureFrames)
+        for frame in 0..<Self.fixtureFrames {
+            left[frame] = Float(0.27 * sin((2 * Double.pi * 997 * Double(frame)) / Double(Self.fixtureSampleRate)))
+            right[frame] = Float(0.27 * sin((2 * Double.pi * 503 * Double(frame)) / Double(Self.fixtureSampleRate)))
+        }
+        fixtureInput = [left, right]
+        kernel = SharedDspKernel(
+            sampleRate: Double(Self.fixtureSampleRate),
+            settings: SharedDspSettings(inputGainDb: 3.5, outputGainDb: -0.75, peakGuardEnabled: false, smoothingMs: 0)
+        )
+    }
+
+    func process(frameCount: UInt32) -> Bool {
+        let count = Int(frameCount)
+        guard count > 0, count <= Self.maximumCallbackFrames else { return false }
+
+        for frame in 0..<count {
+            scratchInput[0][frame] = fixtureInput[0][fixtureCursor]
+            scratchInput[1][frame] = fixtureInput[1][fixtureCursor]
+            fixtureCursor += 1
+            if fixtureCursor == Self.fixtureFrames { fixtureCursor = 0 }
+        }
+        kernel.process(inputChannels: scratchInput, outputChannels: &scratchOutput, startFrame: 0, frameCount: count)
+
+        let captureCount = min(count, Self.fixtureFrames - capturedFrames)
+        if captureCount > 0 {
+            for frame in 0..<captureCount {
+                capturedOutput[0][capturedFrames + frame] = scratchOutput[0][frame]
+                capturedOutput[1][capturedFrames + frame] = scratchOutput[1][frame]
+            }
+            capturedFrames += captureCount
+        }
+        return true
+    }
+
+    func sha256() -> String {
+        guard capturedFrames == Self.fixtureFrames else { return "" }
+        var bytes = [UInt8]()
+        bytes.reserveCapacity(8 + 2 * Self.fixtureFrames * MemoryLayout<UInt32>.size)
+        appendLittleEndian(UInt32(2), to: &bytes)
+        appendLittleEndian(UInt32(Self.fixtureFrames), to: &bytes)
+        for channel in capturedOutput {
+            for sample in channel { appendLittleEndian(sample.bitPattern, to: &bytes) }
+        }
+        return SHA256.hash(data: Data(bytes)).map { String(format: "%02x", $0) }.joined()
+    }
+
+    var processedFrames: Int { kernel.metrics.processedFrames }
+    var recoveredSamples: Int { kernel.metrics.recoveredSamples }
+
+    private func appendLittleEndian(_ value: UInt32, to bytes: inout [UInt8]) {
+        bytes.append(UInt8(value & 0xff))
+        bytes.append(UInt8((value >> 8) & 0xff))
+        bytes.append(UInt8((value >> 16) & 0xff))
+        bytes.append(UInt8((value >> 24) & 0xff))
+    }
+}
+
+@_cdecl("ps_shared_dsp_shadow_process")
+func psSharedDspShadowProcess(_ context: UnsafeMutableRawPointer?, _ frameCount: UInt32) -> Int32 {
+    guard let context else { return 1 }
+    let processor = Unmanaged<GoldenShadowProcessor>.fromOpaque(context).takeUnretainedValue()
+    return processor.process(frameCount: frameCount) ? 0 : 1
+}
+
 private final class SilentOutputEngine {
     private(set) var state: EngineState = .stopped
     private(set) var startRequests = 0
@@ -147,13 +250,17 @@ private final class SilentOutputEngine {
     private(set) var maximumFramesPerSlice: UInt32 = 0
 
     let metrics: OpaquePointer
+    let shadowProcessor: GoldenShadowProcessor?
     private var audioUnit: AudioUnit?
     private var outputDevice = kAudioObjectUnknown
     private var defaultListenerRegistered = false
     private var overloadListenerRegistered = false
 
-    init(metrics: OpaquePointer) {
+    init(metrics: OpaquePointer, shadowEnabled: Bool) {
         self.metrics = metrics
+        shadowProcessor = shadowEnabled ? GoldenShadowProcessor() : nil
+        let context = shadowProcessor.map { Unmanaged.passUnretained($0).toOpaque() }
+        ps_realtime_metrics_configure_shadow(metrics, context)
     }
 
     private func reject(_ operation: String) throws -> Never {
@@ -344,6 +451,9 @@ do {
     }
     let durationMs = try boundedMilliseconds("--duration-ms", default: 750, minimum: 100, maximum: 5_000)
     let simulateAtMs = try boundedMilliseconds("--simulate-device-change-ms", default: 250, minimum: 50, maximum: 4_000)
+    let shadowEnabled = CommandLine.arguments.contains("--shadow")
+    let reportMode = shadowEnabled ? "muted-shadow-output-lab" : "silent-output-lab"
+    let isolation = Isolation(shadowInput: shadowEnabled ? "generated-golden-only" : "disabled")
     guard simulateAtMs < durationMs - 50 else { throw EngineError.invalidArgument("simulated device change must leave at least 50 milliseconds for recovery") }
 
     do {
@@ -352,26 +462,29 @@ do {
         let handshake = Handshake(
             protocolVersion: 1,
             dspContractVersion: sharedDspContractVersion,
-            engineVersion: "0.3.0",
+            engineVersion: "0.4.0",
             engineInstanceId: UUID().uuidString.lowercased(),
             implementationFingerprint: fingerprint.lowercased(),
             capabilities: Capabilities(offlineRender: true, realTimeOutput: true, deviceNotifications: true, maximumChannels: 2, supportedSampleRates: [])
         )
         try writeReport(SilentStreamReport(
             capturedAt: ISO8601DateFormatter().string(from: Date()),
+            mode: reportMode,
             available: false,
             reasonCode: "no-output-device",
             handshake: handshake,
+            isolation: isolation,
             lifecycle: Lifecycle(startRequests: 0, starts: 0, stopRequests: 0, stops: 0, recoveryRequests: 0, recoveries: 0, invalidTransitions: 0, finalState: "stopped"),
             recovery: Recovery(defaultDeviceListener: false, processorOverloadListener: false, simulatedDeviceChange: false, deviceChangesObserved: 0),
-            stream: nil
+            stream: nil,
+            shadow: nil
         ))
         exit(0)
     }
     guard let metrics = ps_realtime_metrics_create() else { throw EngineError.invalidArgument("could not allocate control-thread metrics") }
     defer { ps_realtime_metrics_destroy(metrics) }
 
-    let engine = SilentOutputEngine(metrics: metrics)
+    let engine = SilentOutputEngine(metrics: metrics, shadowEnabled: shadowEnabled)
     defer { engine.forceCleanup() }
     let startedAt = Date()
     var simulated = false
@@ -401,7 +514,7 @@ do {
     let handshake = Handshake(
         protocolVersion: 1,
         dspContractVersion: sharedDspContractVersion,
-        engineVersion: "0.3.0",
+        engineVersion: "0.4.0",
         engineInstanceId: UUID().uuidString.lowercased(),
         implementationFingerprint: fingerprint.lowercased(),
         capabilities: Capabilities(
@@ -412,11 +525,36 @@ do {
             supportedSampleRates: knownRates.contains(roundedRate) ? [roundedRate] : []
         )
     )
+    let shadowEvidence: ShadowEvidence?
+    if let processor = engine.shadowProcessor {
+        let actualSha256 = processor.sha256()
+        shadowEvidence = ShadowEvidence(
+            fixtureId: GoldenShadowProcessor.fixtureId,
+            fixtureSampleRate: GoldenShadowProcessor.fixtureSampleRate,
+            fixtureFrames: GoldenShadowProcessor.fixtureFrames,
+            generatedInput: true,
+            checksumAlgorithm: "sha256-float32le-v1",
+            expectedSha256: GoldenShadowProcessor.expectedSha256,
+            actualSha256: actualSha256,
+            checksumMatch: actualSha256 == GoldenShadowProcessor.expectedSha256,
+            processedCallbacks: ps_realtime_shadow_callbacks(metrics),
+            processedFrames: ps_realtime_shadow_frames(metrics),
+            kernelProcessedFrames: processor.processedFrames,
+            capturedFrames: processor.capturedFrames,
+            recoveredSamples: processor.recoveredSamples,
+            failures: ps_realtime_shadow_failures(metrics),
+            hardwareOutputZeroFilledAfterShadow: true
+        )
+    } else {
+        shadowEvidence = nil
+    }
     try writeReport(SilentStreamReport(
         capturedAt: ISO8601DateFormatter().string(from: Date()),
+        mode: reportMode,
         available: true,
         reasonCode: nil,
         handshake: handshake,
+        isolation: isolation,
         lifecycle: Lifecycle(
             startRequests: engine.startRequests,
             starts: engine.starts,
@@ -448,7 +586,8 @@ do {
             processorOverloads: ps_realtime_processor_overloads(metrics),
             longestCallbackMs: ps_realtime_longest_callback_ms(metrics),
             lockFreeTelemetry: ps_realtime_metrics_are_lock_free(metrics) == 1
-        )
+        ),
+        shadow: shadowEvidence
     ))
 } catch {
     FileHandle.standardError.write(Data("shared-dsp-silent-stream: \(error)\n".utf8))

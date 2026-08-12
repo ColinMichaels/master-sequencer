@@ -1,7 +1,7 @@
 # Native audio engine contract
 
-Status: compiled memory-safe DSP/offline proof plus tested host contracts; not a
-production real-time audio engine
+Status: compiled memory-safe DSP/offline proof plus muted real-time shadow
+processing; not a production audio engine
 
 ## Compiled Swift package
 
@@ -13,7 +13,7 @@ production real-time audio engine
 | `shared-dsp-self-test` | Compiled bounds, bypass, recovery, and sample-rate reset checks |
 | `shared-dsp-golden-runner` | Binary Float32 bridge used only for cross-language parity verification |
 | `shared-dsp-device-probe` | Query-only Core Audio bridge for the current default-output format and reported latency |
-| `shared-dsp-silent-stream` | Explicit silence-only AudioUnit lifecycle and callback-timing laboratory |
+| `shared-dsp-silent-stream` | Explicit silence-only and muted shared-DSP AudioUnit laboratory |
 
 The processing method performs no file, network, UI, logging, or explicit
 allocation work. Hosts own the input/output buffers. Reset and sample-rate
@@ -43,14 +43,16 @@ Run the hardware boundary separately:
 ```bash
 npm run native:devices:verify
 npm run native:realtime:verify
+npm run native:shadow:verify
 npm run native:stage
 ```
 
 The first command verifies the same compiled parity authority, fingerprints the
 probe binary, executes it, and requires an exact protocol/DSP/fingerprint
-handshake. The real-time command runs three short silence-only trials. Staging
-requires both gates before copying two verified executables and a path-free
-manifest into ignored desktop staging. It never stages audio.
+handshake. The real-time command runs three short silence-only trials, and the
+shadow command runs three muted shared-DSP trials against a reviewed golden.
+Staging requires all three gates before copying two verified executables and a
+path-free schema-3 manifest into ignored desktop staging. It never stages audio.
 Staging clears any older native probe first, so a failed build or handshake
 cannot leave a stale executable for a later package command to pick up.
 
@@ -84,10 +86,10 @@ UI.
 
 `SharedDspRealtimeSupport` is a deliberately small C boundary around the host's
 `AudioBufferList` and callback ABI. It owns no audio memory. Every callback
-zero-fills the host-provided buffers, reads the hardware clock, and updates only
-lock-free atomic counters. It performs no allocation, locking, file or network
-access, logging, Swift collection work, parameter changes, or project-media
-reads.
+reads the hardware clock, updates only lock-free atomic counters, and zero-fills
+the host-provided buffers immediately before returning. The C work performs no
+allocation, locking, file or network access, logging, parameter changes, or
+project-media reads.
 
 Swift owns the control thread and enforces `stopped -> starting -> running`,
 `running -> recovering -> running`, and `running -> stopped`. Every request and
@@ -103,10 +105,36 @@ xruns, render errors, and processor-overload notifications. The C atomics must
 also report lock-free on the running architecture.
 
 On the final 2026-08-12 Apple Silicon staging run, all trials used a hardware-
-aligned 48 kHz stereo client format, produced 34–47 callbacks and 17,408–24,064
+aligned 48 kHz stereo client format, produced 45–46 callbacks and 23,040–23,552
 silent frames, completed one recovery apiece, and had a worst callback below
-0.005 ms. These short POC measurements on one machine are not broad performance
+0.007 ms. These short POC measurements on one machine are not broad performance
 certification.
+
+## Muted shared-DSP shadow boundary
+
+`npm run native:shadow:verify` enables a second explicit mode in the same inert
+laboratory executable. On the control thread it preallocates two-channel input,
+output, and golden-capture arrays and generates the existing 4,096-frame
+`dual-tone-gain` fixture. The callback passes only an opaque processor context
+and frame count into Swift; it never passes the hardware `AudioBufferList`, a
+file path, project media, or input-device samples.
+
+Every callback runs `SharedDspKernel` over the generated fixture, then the C
+boundary zero-fills the hardware buffers. After the stream has fully stopped,
+the control thread hashes the first complete output fixture with the same
+Float32 little-endian layout used by the reviewed golden runner. Reports fail
+closed unless every hardware callback has matching shadow work, the kernel and
+C frame counts reconcile, the SHA-256 equals the versioned golden, recovery
+completed, and the hardware-output declaration remains `silence-only`.
+
+Three 750 ms Apple Silicon trials passed this boundary at 48 kHz stereo, with
+46–47 callbacks and 23,552–24,064 processed frames per trial. Each completed one
+simulated recovery with exact golden parity and no shadow failures, callback
+errors, deadline misses, timing-gap xruns, or processor overloads. The slowest
+observed callback was below 1.7 ms against the current
+10.67 ms 512-frame period. This proves generated shadow processing on one
+machine; it is not allocation instrumentation, long-duration profiling, or
+permission to route user audio.
 
 ## Latency authority
 
@@ -145,11 +173,11 @@ log stores reason codes and timestamps, never absolute paths or audio data.
 
 ## Remaining production work
 
-This checkpoint does not route project audio or shared DSP through the hardware
-callback. It also does not provide full device enumeration, aggregate-device
+This checkpoint does not route project audio or shared-DSP output into hardware
+buffers. It also does not provide full device enumeration, aggregate-device
 support, physical hot-plug tests, WASM, a background service, production stream
 IPC, or native offline printing. The golden runner remains a test bridge. The
-query-only and silence-only binaries can be packaged into the POC, but promotion
+query-only and laboratory binaries can be packaged into the POC, but promotion
 still requires long-duration and representative-device profiling, callback
 allocation instrumentation, real device-loss tests, measured loopback latency,
 Developer ID signing/notarization, and the existing source-safe rendered-audio

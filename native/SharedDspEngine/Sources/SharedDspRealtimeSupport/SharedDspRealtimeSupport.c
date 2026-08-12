@@ -14,12 +14,18 @@ struct PSRealtimeMetrics {
     _Atomic uint64_t renderErrors;
     _Atomic uint64_t processorOverloads;
     _Atomic uint64_t deviceChanges;
+    _Atomic uint64_t shadowCallbacks;
+    _Atomic uint64_t shadowFrames;
+    _Atomic uint64_t shadowFailures;
     _Atomic uint64_t longestCallbackTicks;
     _Atomic uint64_t previousOutputHostTime;
     _Atomic uint64_t deadlineTicks;
     _Atomic uint64_t ticksPerFrame;
     _Atomic uint32_t expectedFrames;
+    void *shadowContext;
 };
+
+extern int32_t ps_shared_dsp_shadow_process(void *context, uint32_t frameCount);
 
 static uint64_t ps_seconds_to_host_ticks(double seconds) {
     mach_timebase_info_data_t info;
@@ -64,6 +70,11 @@ void ps_realtime_metrics_configure(PSRealtimeMetrics *metrics, uint32_t expected
     atomic_store_explicit(&metrics->previousOutputHostTime, 0, memory_order_relaxed);
 }
 
+void ps_realtime_metrics_configure_shadow(PSRealtimeMetrics *metrics, void *shadowContext) {
+    if (!metrics) return;
+    metrics->shadowContext = shadowContext;
+}
+
 void ps_realtime_metrics_reset_timing(PSRealtimeMetrics *metrics) {
     if (!metrics) return;
     atomic_store_explicit(&metrics->previousOutputHostTime, 0, memory_order_relaxed);
@@ -87,6 +98,9 @@ PS_GETTER(ps_realtime_timing_gap_xruns, timingGapXruns)
 PS_GETTER(ps_realtime_render_errors, renderErrors)
 PS_GETTER(ps_realtime_processor_overloads, processorOverloads)
 PS_GETTER(ps_realtime_device_changes, deviceChanges)
+PS_GETTER(ps_realtime_shadow_callbacks, shadowCallbacks)
+PS_GETTER(ps_realtime_shadow_frames, shadowFrames)
+PS_GETTER(ps_realtime_shadow_failures, shadowFailures)
 
 double ps_realtime_longest_callback_ms(const PSRealtimeMetrics *metrics) {
     return metrics ? ps_host_ticks_to_milliseconds(atomic_load_explicit(&metrics->longestCallbackTicks, memory_order_relaxed)) : 0;
@@ -96,6 +110,7 @@ int ps_realtime_metrics_are_lock_free(const PSRealtimeMetrics *metrics) {
     if (!metrics) return 0;
     return atomic_is_lock_free(&metrics->callbacks)
         && atomic_is_lock_free(&metrics->renderedFrames)
+        && atomic_is_lock_free(&metrics->shadowCallbacks)
         && atomic_is_lock_free(&metrics->longestCallbackTicks)
         && atomic_is_lock_free(&metrics->expectedFrames);
 }
@@ -113,6 +128,18 @@ OSStatus ps_silence_render_callback(
     if (!metrics || !ioData) return noErr;
     uint64_t startedAt = mach_absolute_time();
 
+    if (metrics->shadowContext) {
+        int32_t shadowStatus = ps_shared_dsp_shadow_process(metrics->shadowContext, inNumberFrames);
+        if (shadowStatus == 0) {
+            atomic_fetch_add_explicit(&metrics->shadowCallbacks, 1, memory_order_relaxed);
+            atomic_fetch_add_explicit(&metrics->shadowFrames, inNumberFrames, memory_order_relaxed);
+        } else {
+            atomic_fetch_add_explicit(&metrics->shadowFailures, 1, memory_order_relaxed);
+        }
+    }
+
+    // Shadow processing never receives ioData. Hardware buffers are zeroed only
+    // after it completes, preserving an explicit muted-output boundary.
     for (UInt32 index = 0; index < ioData->mNumberBuffers; index += 1) {
         AudioBuffer *buffer = &ioData->mBuffers[index];
         if (buffer->mData && buffer->mDataByteSize > 0) memset(buffer->mData, 0, buffer->mDataByteSize);

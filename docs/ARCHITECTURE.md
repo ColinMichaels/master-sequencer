@@ -120,7 +120,7 @@ baseline order references before disk state changes.
 | `src/lib/library-search.js` | Build the in-memory catalog index and define portable saved-filter records |
 | `src/lib/*.js` | Pure import, sequence, formatting, appearance, and mastering rules |
 | `src/dsp/*` | Opt-in shared processing contract and AudioWorklet adapter; not production authority yet |
-| `native/SharedDspEngine/*` | Swift contract-v2 kernel, golden tools, query-only probe, and isolated silence-only AudioUnit laboratory; not production device authority |
+| `native/SharedDspEngine/*` | Swift contract-v2 kernel, golden tools, query-only probe, and isolated muted-shadow AudioUnit laboratory; not production device authority |
 | `desktop-resources/staged/*` | Ignored FFmpeg artifacts and optional verified native-audio executables copied into desktop builds |
 | `src/styles/*.css` | Tokens/base rules, shell chrome, workspace features, and responsive/motion rules |
 
@@ -171,13 +171,16 @@ capability is query-only and cannot become playback authority through the
 status endpoint. Concurrent requests share one probe and status is cached
 briefly so a local page cannot create an unbounded child-process loop.
 
-The silence-only executable is packaged as inert laboratory code. No server
+The silence/shadow executable is packaged as inert laboratory code. No server
 route, renderer action, bootstrap, or transport path launches it. Its explicit
 verification command owns the AudioUnit lifecycle, registers default-device and
 processor-overload listeners, writes only zeros into host buffers, and emits
 path-free evidence after stopping. A small C module contains the necessary
-host-buffer pointers and lock-free atomics; the memory-safe Swift DSP kernel
-remains separate and is not called from this callback yet.
+host-buffer pointers and lock-free atomics. In muted-shadow mode the callback
+runs only pre-generated golden samples through the memory-safe Swift kernel,
+then C zeroes the hardware buffers. Swift never receives `AudioBufferList`, and
+the executable still has no source-media, local API, Settings, or transport
+connection.
 
 Audio delivery supports single HTTP byte ranges, including suffix ranges used
 by media clients. Malformed, multiple, reversed, and out-of-bounds ranges return

@@ -6,6 +6,7 @@ import {
   normalizeNativeAudioDeviceConfiguration,
   validateNativeAudioEngineHandshake,
   validateNativeAudioHardwareProbe,
+  validateNativeShadowStreamReport,
   validateNativeSilentStreamReport,
 } from "../src/lib/native-audio-engine-contract.js";
 
@@ -199,4 +200,61 @@ test("silent native stream reports can safely represent a machine with no output
   });
   assert.equal(report.available, false);
   assert.equal(report.reasonCode, "no-output-device");
+});
+
+test("muted native shadow reports bind every callback to the reviewed generated golden while hardware stays silent", () => {
+  const report = validateNativeShadowStreamReport({
+    schemaVersion: 1,
+    capturedAt: "2026-08-12T12:00:00.000Z",
+    mode: "muted-shadow-output-lab",
+    available: true,
+    reasonCode: null,
+    handshake: { protocolVersion: 1, dspContractVersion: 2, engineVersion: "0.4.0", engineInstanceId: "engine-abcd1234", implementationFingerprint: "1234567890abcdef1234567890abcdef", capabilities: { offlineRender: true, realTimeOutput: true, deviceNotifications: true, maximumChannels: 2, supportedSampleRates: [48_000] } },
+    isolation: { audioContent: "silence-only", inputAccess: false, sourceMediaAccess: false, productionPlaybackConnected: false, shadowInput: "generated-golden-only" },
+    lifecycle: { startRequests: 2, starts: 2, stopRequests: 2, stops: 2, recoveryRequests: 1, recoveries: 1, invalidTransitions: 0, finalState: "stopped" },
+    recovery: { defaultDeviceListener: true, processorOverloadListener: true, simulatedDeviceChange: true, deviceChangesObserved: 1 },
+    stream: { sampleRate: 48_000, channels: 2, maximumFramesPerSlice: 512, requestedDurationMs: 750, observedDurationMs: 760, callbacks: 70, renderedFrames: 35_840, frameMismatches: 0, deadlineMisses: 0, timingGapXruns: 0, renderErrors: 0, processorOverloads: 0, longestCallbackMs: 0.09, lockFreeTelemetry: true },
+    shadow: { fixtureId: "dual-tone-gain", fixtureSampleRate: 48_000, fixtureFrames: 4_096, generatedInput: true, checksumAlgorithm: "sha256-float32le-v1", expectedSha256: "74d25b2c630082715417bc8f213357752cfc56f439d6f930ac2dd7fdbde9b995", actualSha256: "74d25b2c630082715417bc8f213357752cfc56f439d6f930ac2dd7fdbde9b995", checksumMatch: true, processedCallbacks: 70, processedFrames: 35_840, kernelProcessedFrames: 35_840, capturedFrames: 4_096, recoveredSamples: 0, failures: 0, hardwareOutputZeroFilledAfterShadow: true },
+  });
+  assert.equal(report.shadow.checksumMatch, true);
+  assert.equal(report.shadow.processedFrames, report.stream.renderedFrames);
+  assert.equal(report.isolation.audioContent, "silence-only");
+});
+
+test("muted native shadow reports reject checksum drift, missing callback work, and a non-muted hardware boundary", () => {
+  const valid = {
+    schemaVersion: 1,
+    capturedAt: "2026-08-12T12:00:00.000Z",
+    mode: "muted-shadow-output-lab",
+    available: true,
+    reasonCode: null,
+    handshake: { protocolVersion: 1, dspContractVersion: 2, engineVersion: "0.4.0", engineInstanceId: "engine-abcd1234", implementationFingerprint: "1234567890abcdef1234567890abcdef", capabilities: { offlineRender: true, realTimeOutput: true, deviceNotifications: true, maximumChannels: 2, supportedSampleRates: [48_000] } },
+    isolation: { audioContent: "silence-only", inputAccess: false, sourceMediaAccess: false, productionPlaybackConnected: false, shadowInput: "generated-golden-only" },
+    lifecycle: { startRequests: 2, starts: 2, stopRequests: 2, stops: 2, recoveryRequests: 1, recoveries: 1, invalidTransitions: 0, finalState: "stopped" },
+    recovery: { defaultDeviceListener: true, processorOverloadListener: true, simulatedDeviceChange: true, deviceChangesObserved: 1 },
+    stream: { sampleRate: 48_000, channels: 2, maximumFramesPerSlice: 512, requestedDurationMs: 750, observedDurationMs: 760, callbacks: 70, renderedFrames: 35_840, frameMismatches: 0, deadlineMisses: 0, timingGapXruns: 0, renderErrors: 0, processorOverloads: 0, longestCallbackMs: 0.09, lockFreeTelemetry: true },
+    shadow: { fixtureId: "dual-tone-gain", fixtureSampleRate: 48_000, fixtureFrames: 4_096, generatedInput: true, checksumAlgorithm: "sha256-float32le-v1", expectedSha256: "74d25b2c630082715417bc8f213357752cfc56f439d6f930ac2dd7fdbde9b995", actualSha256: "74d25b2c630082715417bc8f213357752cfc56f439d6f930ac2dd7fdbde9b995", checksumMatch: true, processedCallbacks: 70, processedFrames: 35_840, kernelProcessedFrames: 35_840, capturedFrames: 4_096, recoveredSamples: 0, failures: 0, hardwareOutputZeroFilledAfterShadow: true },
+  };
+  assert.throws(() => validateNativeShadowStreamReport({ ...valid, shadow: { ...valid.shadow, actualSha256: "0".repeat(64) } }), /checksum/);
+  assert.throws(() => validateNativeShadowStreamReport({ ...valid, shadow: { ...valid.shadow, processedCallbacks: 69 } }), /inconsistent/);
+  assert.throws(() => validateNativeShadowStreamReport({ ...valid, shadow: { ...valid.shadow, hardwareOutputZeroFilledAfterShadow: false } }), /hardware output/);
+});
+
+test("muted native shadow reports preserve a path-free no-output-device state", () => {
+  const report = validateNativeShadowStreamReport({
+    schemaVersion: 1,
+    capturedAt: "2026-08-12T12:00:00.000Z",
+    mode: "muted-shadow-output-lab",
+    available: false,
+    reasonCode: "no-output-device",
+    handshake: { protocolVersion: 1, dspContractVersion: 2, engineVersion: "0.4.0", engineInstanceId: "engine-abcd1234", implementationFingerprint: "1234567890abcdef1234567890abcdef", capabilities: { offlineRender: true, realTimeOutput: true, deviceNotifications: true, maximumChannels: 2, supportedSampleRates: [] } },
+    isolation: { audioContent: "silence-only", inputAccess: false, sourceMediaAccess: false, productionPlaybackConnected: false, shadowInput: "generated-golden-only" },
+    lifecycle: { startRequests: 0, starts: 0, stopRequests: 0, stops: 0, recoveryRequests: 0, recoveries: 0, invalidTransitions: 0, finalState: "stopped" },
+    recovery: { defaultDeviceListener: false, processorOverloadListener: false, simulatedDeviceChange: false, deviceChangesObserved: 0 },
+    stream: null,
+    shadow: null,
+  });
+  assert.equal(report.available, false);
+  assert.equal(report.shadow, null);
+  assert.equal(report.isolation.shadowInput, "generated-golden-only");
 });

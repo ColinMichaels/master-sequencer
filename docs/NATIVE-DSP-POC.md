@@ -143,17 +143,42 @@ absence. It still does not claim real-time native playback.
   increments the same device-change signal without changing the user's selected
   output, then proves an owned stop/dispose/recreate/start cycle. Physical
   hot-plug remains a separate hardware test.
-- Three 750 ms hardware trials ran at 48 kHz stereo. They produced 34–47
-  callbacks and 17,408–24,064 silent frames, completed one recovery each, and
+- Three 750 ms hardware trials ran at 48 kHz stereo. They produced 45–46
+  callbacks and 23,040–23,552 silent frames, completed one recovery each, and
   ended stopped. Across all trials there were zero frame-bound violations,
   deadline misses, timing-gap xruns, render errors, and processor overloads; the
-  longest callback was below 0.005 ms.
-- `npm run native:stage` now requires both native gates, clears stale staging
-  first, and writes a schema-2 manifest with independent hashes and capabilities
-  for both executables.
+  longest callback was below 0.007 ms.
+- At Gate 8, staging required the query and silence gates and wrote independent
+  hashes and capabilities for both executables. Gate 9 strengthens that current
+  requirement below.
 
 This proves a narrow real-time host boundary, not a Pro playback engine. Web
 Audio remains live audition authority and FFmpeg remains print authority.
+
+### Gate 9 — muted shared-DSP callback shadow: passed 2026-08-12
+
+- The real callback now invokes the Swift `SharedDspKernel` with only a frame
+  count and opaque preallocated context. It receives generated in-memory samples
+  from the reviewed `dual-tone-gain` fixture, never a source file, input device,
+  project buffer, or hardware output pointer.
+- All hardware buffers are zero-filled in C after shadow processing. The report
+  is rejected unless every AudioUnit callback has matching kernel work and the
+  C and Swift frame counts reconcile with zero failures.
+- After the AudioUnit is stopped, the control thread hashes the first complete
+  4,096-frame result using the same Float32 little-endian authority as the
+  versioned golden runner. All three hardware trials matched
+  `74d25b2c...b995` exactly.
+- The final 750 ms trials processed 46–47 callbacks and 23,552–24,064 frames
+  apiece. Each completed one recovery with zero frame-bound violations,
+  deadline misses, timing-gap xruns, render errors, processor overloads, or
+  shadow failures. The slowest callback was below 1.7 ms against the current
+  10.67 ms hardware period.
+- `npm run native:stage` requires query, silence, and muted-shadow verification
+  before writing the two binaries and path-free schema-3 manifest.
+
+This advances the shared kernel into the real callback without making it audible
+or granting it access to user media. Callback allocation instrumentation,
+long-duration runs, and physical device changes remain promotion gates.
 
 ## Decision
 
@@ -318,11 +343,14 @@ this checkpoint.
    gates should work begin on an isolated third-party plug-in host.
 7. **Complete:** package the fingerprinted query-only Core Audio probe and
    publish only sanitized status.
-8. **Silence-only callback complete; production routing remains gated:** next,
-   exercise shared DSP in muted shadow mode using generated in-memory samples,
-   verify its callback checksum against reviewed goldens, and keep hardware
-   output zeroed. Only after long-duration profiling and physical device-loss
-   tests should user-selected project audio enter this path.
+8. **Complete:** the silence-only callback owns start, stop, recovery, and
+   lock-free timing telemetry without production playback.
+9. **Muted shadow complete; user audio remains gated:** the real callback runs
+   generated samples through the Swift kernel, matches the reviewed golden, and
+   still emits only zeros. Next require allocation instrumentation, longer
+   stress runs, physical device-loss/sample-rate tests, and a reviewed
+   control-thread parameter handoff before any user-selected audio enters this
+   path.
 
 The promotion gate for shared DSP is measurable parity and recovery—not its UI
 appearance. It must survive buffer-size changes, sample-rate changes, device

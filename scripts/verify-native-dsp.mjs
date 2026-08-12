@@ -5,7 +5,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { generateFixtureInput, loadSharedDspGoldenFixtures } from "../tests/helpers/shared-dsp-golden.mjs";
-import { validateNativeAudioHardwareProbe, validateNativeSilentStreamReport } from "../src/lib/native-audio-engine-contract.js";
+import { validateNativeAudioHardwareProbe, validateNativeShadowStreamReport, validateNativeSilentStreamReport } from "../src/lib/native-audio-engine-contract.js";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const packagePath = path.join(repositoryRoot, "native", "SharedDspEngine");
@@ -79,6 +79,7 @@ for (const fixture of fixtureSet.fixtures) {
 
 let hardwareProbe = null;
 let realtimeTrials = null;
+let shadowTrials = null;
 let staging = null;
 const stagingEntries = {};
 if (process.argv.includes("--devices")) {
@@ -147,17 +148,71 @@ if (process.argv.includes("--realtime")) {
     stagingEntries.silentStream = {
       path: "native/shared-dsp-silent-stream",
       sha256: fingerprint,
-      capability: "silence-only-realtime-output-lab",
-      engineVersion: "0.3.0",
-      trials: realtimeTrials.length,
+      capability: "silence-and-muted-shadow-realtime-output-lab",
+      engineVersion: "0.4.0",
+      silenceTrials: realtimeTrials.length,
+    };
+  }
+}
+
+if (process.argv.includes("--shadow")) {
+  const streamPath = path.join(binaryPath, "shared-dsp-silent-stream");
+  const fingerprint = createHash("sha256").update(await readFile(streamPath)).digest("hex");
+  shadowTrials = [];
+  for (let trial = 1; trial <= 3; trial += 1) {
+    const stream = spawnSync(streamPath, ["--shadow", "--duration-ms", "750", "--simulate-device-change-ms", "250"], {
+      encoding: "utf8",
+      timeout: 15_000,
+      env: { ...process.env, PROJECT_SEQUENCER_ENGINE_FINGERPRINT: fingerprint },
+    });
+    if (stream.status !== 0) throw new Error(stream.stderr || `Native muted-shadow trial ${trial} failed.`);
+    const report = validateNativeShadowStreamReport(JSON.parse(stream.stdout));
+    if (!report.available) throw new Error("Native muted-shadow verification requires a current default output device.");
+    if (report.handshake.implementationFingerprint !== fingerprint) throw new Error("Native muted-shadow fingerprint does not match its compiled binary.");
+    if (report.stream.frameMismatches || report.stream.deadlineMisses || report.stream.timingGapXruns || report.stream.renderErrors || report.stream.processorOverloads) {
+      throw new Error(`Native muted-shadow trial ${trial} reported callback, timing, or overload failures.`);
+    }
+    shadowTrials.push({
+      trial,
+      sampleRate: report.stream.sampleRate,
+      channels: report.stream.channels,
+      callbacks: report.stream.callbacks,
+      renderedFrames: report.stream.renderedFrames,
+      recoveries: report.lifecycle.recoveries,
+      longestCallbackMs: report.stream.longestCallbackMs,
+      checksumMatch: report.shadow.checksumMatch,
+      goldenSha256: report.shadow.actualSha256,
+      shadowCallbacks: report.shadow.processedCallbacks,
+      shadowFrames: report.shadow.processedFrames,
+      shadowFailures: report.shadow.failures,
+      hardwareOutput: report.isolation.audioContent,
+      frameMismatches: report.stream.frameMismatches,
+      deadlineMisses: report.stream.deadlineMisses,
+      timingGapXruns: report.stream.timingGapXruns,
+      renderErrors: report.stream.renderErrors,
+      processorOverloads: report.stream.processorOverloads,
+    });
+  }
+  if (stageRequested) {
+    const stagedStreamPath = path.join(stagedDirectory, "shared-dsp-silent-stream");
+    await mkdir(stagedDirectory, { recursive: true });
+    await copyFile(streamPath, stagedStreamPath);
+    await chmod(stagedStreamPath, 0o755);
+    stagingEntries.silentStream = {
+      ...stagingEntries.silentStream,
+      path: "native/shared-dsp-silent-stream",
+      sha256: fingerprint,
+      capability: "silence-and-muted-shadow-realtime-output-lab",
+      engineVersion: "0.4.0",
+      shadowTrials: shadowTrials.length,
     };
   }
 }
 
 if (stageRequested) {
-  if (!stagingEntries.deviceProbe || !stagingEntries.silentStream) throw new Error("Native audio staging requires both --devices and --realtime verification gates.");
+  if (!stagingEntries.deviceProbe || !stagingEntries.silentStream?.silenceTrials || !stagingEntries.silentStream?.shadowTrials) throw new Error("Native audio staging requires --devices, --realtime, and --shadow verification gates.");
   const manifest = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     stagedAt: new Date().toISOString(),
     protocolVersion: hardwareProbe.handshake.protocolVersion,
     dspContractVersion: hardwareProbe.handshake.dspContractVersion,
@@ -176,5 +231,6 @@ process.stdout.write(`${JSON.stringify({
   selfTest: selfTest.stdout.trim(),
   ...(hardwareProbe ? { hardwareProbe } : {}),
   ...(realtimeTrials ? { realtimeTrials } : {}),
+  ...(shadowTrials ? { shadowTrials } : {}),
   ...(staging ? { staging } : {}),
 }, null, 2)}\n`);

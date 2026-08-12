@@ -35,7 +35,7 @@ normal audit returns a report even when local-only. Add
 The local POC may use explicitly configured or installed FFmpeg. That is not a
 distribution mechanism.
 
-The optional query-only and silence-only native-audio POC is staged with:
+The optional query-only and muted native-audio POC is staged with:
 
 ```bash
 npm run native:stage
@@ -43,8 +43,9 @@ npm run native:stage
 
 This command compiles the Swift package, passes the self-test and all 16 golden
 comparisons, verifies the query-only hardware handshake, runs three explicit
-silence-only real-time/recovery trials, and writes only two ignored executables
-plus a sanitized schema-2 manifest. A distribution build that includes them
+silence-only trials plus three generated shared-DSP shadow/recovery trials, and
+writes only two ignored executables plus a sanitized schema-3 manifest. A
+distribution build that includes them
 must sign both nested executables with the same Developer ID team; the strict
 release audit checks each fingerprint and rejects missing or invalid nested
 code.
@@ -129,8 +130,9 @@ Intel/Apple Silicon testing remain separate product-release gates.
 - Packaged three-launch media lifecycle: passed.
 - Optional Swift hardware probe: packaged; fingerprint handshake and path-free
   bootstrap status passed across all three launches.
-- Optional silent-stream laboratory: three hardware trials passed before
-  staging; packaged but never auto-started by the app.
+- Optional silent/shadow laboratory: three muted hardware trials matched the
+  reviewed DSP golden before staging; packaged but never auto-started by the
+  app.
 - Valid Developer ID identities on this Mac: zero.
 - Signature: ad-hoc/linker only; not Developer ID.
 - Hardened-runtime proof on a Developer ID signature: absent.

@@ -27,7 +27,8 @@
     "dsp:native:verify": "node scripts/verify-native-dsp.mjs",
     "native:devices:verify": "node scripts/verify-native-dsp.mjs --devices",
     "native:realtime:verify": "node scripts/verify-native-dsp.mjs --realtime",
-    "native:stage": "node scripts/verify-native-dsp.mjs --devices --realtime --stage",
+    "native:shadow:verify": "node scripts/verify-native-dsp.mjs --shadow",
+    "native:stage": "node scripts/verify-native-dsp.mjs --devices --realtime --shadow --stage",
     "check": "npm test && npm run build",
     "check:full": "npm run check && npm run test:browser && npm run test:browser:online"
   },
