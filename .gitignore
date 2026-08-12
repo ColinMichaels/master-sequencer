@@ -1,5 +1,6 @@
 node_modules
 dist/
+release/
 exports/
 data/sequencer-state.json
 data/sequencer-state.json.tmp

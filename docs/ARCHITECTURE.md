@@ -30,6 +30,22 @@ waveform analysis, and rendering identify a source through its indexed key.
 Protected sources use an opaque `privateSourceId`; their original filename and
 relative path are removed before library data reaches the browser.
 
+## Runtime profiles
+
+The product now has one implemented local architecture and two distribution
+profiles under development:
+
+| Profile | UI | Project documents | Media and processing |
+| --- | --- | --- | --- |
+| Current local web app | React in a browser | Ignored local JSON through Node | Indexed local sources, Web Audio audition, FFmpeg print |
+| Free hosted web | Same React workspace | Planned account/cloud documents plus local recovery | Browser-approved local files, Web Audio/AudioWorklet, no audio upload by default |
+| Pro native POC | Same built React workspace in Electron | OS application-data JSON now; account sync later | Embedded loopback Node engine, persistent local paths, system FFmpeg now, shared/native DSP later |
+
+The desktop engine is owned by the desktop app and listens on a random
+`127.0.0.1` port. It is not a separately installed background daemon. See
+[NATIVE-DSP-POC.md](./NATIVE-DSP-POC.md) for the product boundary and release
+gates.
+
 ## Core invariants
 
 Every feature must preserve these rules:
@@ -81,6 +97,8 @@ Every feature must preserve these rules:
 | `server/audio-renderer.mjs` | Normalize edit instructions, build FFmpeg graphs, enforce timeout/cancellation, and atomically publish documented derivatives |
 | `server/project-assets.mjs` | Convert selected images/lyrics into safe configured-root references |
 | `server/native-picker.mjs` | Register paths selected by the native macOS picker without copying files |
+| `server/tool-paths.mjs` | Resolve injected FFmpeg/ffprobe executables for local and packaged runtimes |
+| `server/shared-dsp-host.mjs` | Node adapter for the versioned shared-DSP portability prototype |
 
 The state and configuration stores serialize writes before replacing their
 target file. This prevents overlapping requests from sharing a temporary write
@@ -100,6 +118,7 @@ baseline order references before disk state changes.
 | `src/lib/project-commands.js` | Immutable commands for albums, tracks, candidates, assets, and sequence edits |
 | `src/lib/library-search.js` | Build the in-memory catalog index and define portable saved-filter records |
 | `src/lib/*.js` | Pure import, sequence, formatting, appearance, and mastering rules |
+| `src/dsp/*` | Opt-in shared processing contract and AudioWorklet adapter; not production authority yet |
 | `src/styles/*.css` | Tokens/base rules, shell chrome, workspace features, and responsive/motion rules |
 
 Autosave uses a short debounce for editing comfort, then puts each snapshot on a
@@ -212,6 +231,10 @@ Basic remains the default after migration, and each path keeps independent
 state. The higher-fidelity shared DSP core and isolated native plug-in companion
 remain specified separately in
 [ADVANCED-MASTERING-AUDIO-PIPELINE-PLAN.md](./ADVANCED-MASTERING-AUDIO-PIPELINE-PLAN.md).
+The first executable shell and contract proof are documented in
+[NATIVE-DSP-POC.md](./NATIVE-DSP-POC.md) and
+[SHARED-DSP-CONTRACT.md](./SHARED-DSP-CONTRACT.md); neither changes the current
+Web Audio/FFmpeg authority boundary.
 
 ## Verification layers
 

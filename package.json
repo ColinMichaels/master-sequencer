@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "desktop/main.mjs",
   "description": "A local-first, multi-album sequencing and master-review workspace.",
   "scripts": {
     "dev": "node server/index.mjs --dev",
@@ -13,6 +14,10 @@
     "test:browser": "playwright test",
     "test:browser:online": "playwright test --config=playwright.online.config.js",
     "test:browser:headed": "playwright test --headed",
+    "desktop:run": "npm run build && electron desktop/main.mjs",
+    "desktop:smoke": "npm run build && node scripts/desktop-smoke.mjs",
+    "desktop:pack": "npm run build && electron-builder --dir",
+    "dsp:smoke": "node scripts/shared-dsp-smoke.mjs",
     "check": "npm test && npm run build",
     "check:full": "npm run check && npm run test:browser && npm run test:browser:online"
   },
@@ -26,6 +31,32 @@
     "vite": "8.2.1"
   },
   "devDependencies": {
-    "@playwright/test": "1.62.1"
+    "@playwright/test": "1.62.1",
+    "electron": "43.4.0",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "com.projectsequencer.desktop",
+    "productName": "Project Sequencer",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "desktop/**/*",
+      "dist/**/*",
+      "server/**/*",
+      "src/dsp/**/*",
+      "src/lib/**/*.js",
+      "data/seed-state.json",
+      "config/sequencer.config.json",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.music",
+      "target": [
+        "dir"
+      ]
+    }
   }
 }

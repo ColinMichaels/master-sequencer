@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { opendir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
+import { ffprobeExecutable } from "./tool-paths.mjs";
 
 const execFileAsync = promisify(execFile);
 export const AUDIO_EXTENSIONS = new Set([".mp3", ".wav", ".flac", ".aiff", ".aif", ".m4a", ".aac", ".ogg", ".opus"]);
@@ -59,7 +60,7 @@ const walk = async (directory, rootPath, rootId, ignoreDirectories, files, seenA
 
 const probeAudio = async (file) => {
   try {
-    const { stdout } = await execFileAsync("ffprobe", [
+    const { stdout } = await execFileAsync(ffprobeExecutable(), [
       "-v", "error",
       "-show_entries", "format=duration,bit_rate:stream=codec_name,sample_rate,channels,bits_per_sample",
       "-of", "json",

@@ -6,6 +6,7 @@ import { calculateProgramTimeline, normalizeMasterBus, normalizeMastering } from
 import { ADVANCED_PROCESSOR_TYPES, normalizeAdvancedMastering, normalizeMasteringPath, processorDefinition } from "../src/lib/advanced-mastering.js";
 import { validateDeliveryRequest } from "../src/lib/delivery-profiles.js";
 import { sourceKey } from "./audio-library.mjs";
+import { ffmpegExecutable } from "./tool-paths.mjs";
 
 const AUDIO_FORMATS = new Set(["wav", "mp3"]);
 const RENDER_SCOPES = new Set(["album", "track", "preview", "comparison"]);
@@ -36,7 +37,7 @@ const throwIfCancelled = (signal) => {
 
 export const runFfmpeg = (argumentsList, { signal, timeoutMs = 10 * 60_000, expectedDuration = 0, onProgress = () => {} } = {}) => new Promise((resolve, reject) => {
   throwIfCancelled(signal);
-  const child = spawn("ffmpeg", [...argumentsList.slice(0, -1), "-progress", "pipe:3", "-nostats", argumentsList.at(-1)], { stdio: ["ignore", "ignore", "pipe", "pipe"] });
+  const child = spawn(ffmpegExecutable(), [...argumentsList.slice(0, -1), "-progress", "pipe:3", "-nostats", argumentsList.at(-1)], { stdio: ["ignore", "ignore", "pipe", "pipe"] });
   let errors = "";
   let progressBuffer = "";
   let settled = false;

@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { ffmpegExecutable } from "./tool-paths.mjs";
 
 export const WAVEFORM_POINT_LIMITS = Object.freeze({ minimum: 240, maximum: 1600, fallback: 900 });
 
@@ -40,7 +41,7 @@ const samplesFromBuffer = (buffer) => {
 };
 
 export const extractWaveform = (filePath, requestedPoints, {
-  ffmpegPath = "ffmpeg",
+  ffmpegPath = ffmpegExecutable(),
   sampleRate = 400,
   maxBytes = 32_000_000,
 } = {}) => new Promise((resolve, reject) => {

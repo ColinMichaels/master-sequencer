@@ -49,6 +49,17 @@ npm run build
 npm start
 ```
 
+An initial native desktop proof of concept packages the same UI and local
+Node/FFmpeg engine as one Electron application. It uses separate operating
+system application data and does not change indexed source media:
+
+```bash
+npm run desktop:run
+```
+
+See [Native Media and Shared DSP POC](docs/NATIVE-DSP-POC.md) for the proposed
+Free web / Pro native boundary, current limitations, and packaging roadmap.
+
 ## Main workflows
 
 - **Sequence:** add individual audio files or a whole folder, review the files
@@ -258,6 +269,8 @@ changes.
 - Album- and track-level visual asset records
 - Candidate-level Suno prompt and DistroKid clean lyric attachments
 - FFmpeg-based non-destructive trims, fades, crossfades, and documented exports
+- Electron native-shell POC around the same loopback Node/FFmpeg engine
+- Versioned shared-DSP prototype with browser AudioWorklet and Node host adapters
 - No database, cloud account, upload service, or media duplication
 
 The local API validates its Host and state-changing Origin, applies restrictive
@@ -270,12 +283,17 @@ See [Architecture](docs/ARCHITECTURE.md) for data flow and extension rules, and
 assessment and prioritized future plan. The dedicated
 [Advanced Mastering and Audio Pipeline Plan](docs/ADVANCED-MASTERING-AUDIO-PIPELINE-PLAN.md)
 defines the Basic/Premium equipment boundary, processor routing graph, shared
-DSP direction, and native VST3-hosting phases.
+DSP direction, and native VST3-hosting phases. The runnable prototype and its
+honest production gaps are tracked in
+[Native Media and Shared DSP POC](docs/NATIVE-DSP-POC.md) and
+[Shared DSP Contract](docs/SHARED-DSP-CONTRACT.md).
 
 ## Verify
 
 ```bash
 npm run check
+npm run dsp:smoke
+npm run desktop:smoke
 ```
 
 The full release gate also runs the isolated rendered-browser suite:

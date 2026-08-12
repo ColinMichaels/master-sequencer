@@ -2,7 +2,9 @@
 
 Plan date: 2026-08-11
 
-Status: serial rack and complete interactive faceplates implemented; analog-modelled native DSP and VST3 host remain planned; not a release approval
+Status: serial rack and complete interactive faceplates implemented; native
+Electron shell and shared-contract POC started; analog-modelled native DSP and
+VST3 host remain planned; not a release approval
 
 ![Premium mastering rack concept](./concepts/premium-mastering-rack-concept-v1.png)
 
@@ -56,6 +58,23 @@ Still intentionally gated:
   interaction. The C++ analog-modelled DSP core, BS.1770 true-peak
   qualification, external key input, and colored compressor modes remain Phase
   3 work and must not be claimed as complete.
+
+Native/DSP POC checkpoint on `codex/native-dsp-poc`:
+
+- The existing production Node server and built React UI can launch as one
+  Electron desktop application with isolated application data and a random
+  loopback port.
+- All current FFmpeg/ffprobe call sites accept an executable supplied by the
+  desktop host, which is the first step toward a bundled media-tool runtime.
+- Shared DSP contract v1 runs the same JavaScript kernel through an
+  AudioWorklet adapter and a Node host adapter. It currently proves gain,
+  smoothing, exact bypass, block-size determinism, and sample-peak guarding
+  only. It is not connected to the production transport or print path.
+- Packaging remains unsigned and uses installed FFmpeg. Google login, paid
+  entitlements, native device I/O, true-peak DSP, and external plug-in hosting
+  remain outside this checkpoint. See
+  [NATIVE-DSP-POC.md](./NATIVE-DSP-POC.md) and
+  [SHARED-DSP-CONTRACT.md](./SHARED-DSP-CONTRACT.md).
 
 ## Faceplate control duty audit — 2026-08-12
 

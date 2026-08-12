@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { ffmpegExecutable } from "./tool-paths.mjs";
 
 const lastNumber = (text, pattern) => {
   const matches = [...text.matchAll(pattern)];
@@ -23,7 +24,7 @@ export const parseTechnicalAnalysis = (output) => {
 };
 
 const analyzeFile = (file, { timeoutMs = 120_000 } = {}) => new Promise((resolve, reject) => {
-  const child = spawn("ffmpeg", [
+  const child = spawn(ffmpegExecutable(), [
     "-hide_banner", "-nostats", "-i", file.absolutePath,
     "-af", "ebur128=peak=true:framelog=verbose,astats=metadata=1:reset=0,silencedetect=noise=-50dB:d=0.1",
     "-f", "null", "-",
