@@ -19,6 +19,9 @@
     "desktop:media-smoke": "npm run build && node scripts/desktop-media-smoke.mjs",
     "desktop:media-smoke:packaged": "node scripts/desktop-media-smoke.mjs --packaged",
     "desktop:pack": "npm run build && electron-builder --dir",
+    "desktop:audit": "node scripts/audit-macos-release.mjs",
+    "desktop:dist": "node scripts/build-macos-distribution.mjs",
+    "ffmpeg:stage": "node scripts/stage-ffmpeg-runtime.mjs",
     "dsp:smoke": "node scripts/shared-dsp-smoke.mjs",
     "dsp:golden": "node --test tests/shared-dsp.test.mjs tests/shared-dsp-golden.test.mjs",
     "dsp:native:verify": "node scripts/verify-native-dsp.mjs",
@@ -39,7 +42,7 @@
     "electron": "43.4.0",
     "electron-builder": "26.15.3"
   },
-  "build": {
+    "build": {
     "appId": "com.projectsequencer.desktop",
     "productName": "Project Sequencer",
     "asar": true,
@@ -56,8 +59,23 @@
       "config/sequencer.config.json",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "desktop-resources/staged",
+        "to": ".",
+        "filter": [
+          "bin/**",
+          "licenses/**",
+          "ffmpeg-runtime-manifest.json"
+        ]
+      }
+    ],
     "mac": {
       "category": "public.app-category.music",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.inherit.plist",
       "target": [
         "dir"
       ]

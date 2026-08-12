@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "redistributionApproved": false,
+  "binaryKind": "self-contained",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "approvalReference": "",
+  "sourceUrl": "https://replace-with-approved-source.example/ffmpeg-build.tar.xz",
+  "licenseSpdx": "REPLACE-WITH-REVIEWED-SPDX-EXPRESSION",
+  "buildConfiguration": "REPLACE-WITH-THE-EXACT-FFMPEG-CONFIGURATION",
+  "tools": {
+    "ffmpeg": {
+      "sourcePath": "/absolute/path/to/approved/ffmpeg",
+      "sha256": "REPLACE_WITH_64_HEX_CHARACTERS",
+      "version": "REPLACE_WITH_APPROVED_VERSION"
+    },
+    "ffprobe": {
+      "sourcePath": "/absolute/path/to/approved/ffprobe",
+      "sha256": "REPLACE_WITH_64_HEX_CHARACTERS",
+      "version": "REPLACE_WITH_APPROVED_VERSION"
+    }
+  },
+  "licenseFiles": [
+    {
+      "sourcePath": "/absolute/path/to/approved/license-file",
+      "targetName": "COPYING",
+      "sha256": "REPLACE_WITH_64_HEX_CHARACTERS"
+    }
+  ]
+}

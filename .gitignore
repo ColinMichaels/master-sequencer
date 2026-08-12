@@ -11,7 +11,11 @@ data/sequencer-projects.json
 data/sequencer-projects.json.tmp
 data/projects/
 config/sequencer.local.json
+config/ffmpeg-bundle-manifest.local.json
 .DS_Store
 .idea/
 native/**/.build/
+desktop-resources/staged/bin/
+desktop-resources/staged/licenses/
+desktop-resources/staged/ffmpeg-runtime-manifest.json
 npm-debug.log*

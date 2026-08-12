@@ -120,6 +120,7 @@ baseline order references before disk state changes.
 | `src/lib/*.js` | Pure import, sequence, formatting, appearance, and mastering rules |
 | `src/dsp/*` | Opt-in shared processing contract and AudioWorklet adapter; not production authority yet |
 | `native/SharedDspEngine/*` | Swift contract-v2 kernel and golden parity runner; compiled offline proof, not real-time device authority |
+| `desktop-resources/staged/*` | Ignored, approval-gated FFmpeg runtime and licenses copied into distribution builds only |
 | `src/styles/*.css` | Tokens/base rules, shell chrome, workspace features, and responsive/motion rules |
 
 Autosave uses a short debounce for editing comfort, then puts each snapshot on a

@@ -89,6 +89,21 @@ than a claim of working production login or synchronization. See
   transport/print integration. See
   [NATIVE-AUDIO-ENGINE-CONTRACT.md](./NATIVE-AUDIO-ENGINE-CONTRACT.md).
 
+### Gate 6 — macOS distribution pipeline: prepared; external gates remain
+
+- FFmpeg staging now fails closed on redistribution approval, provenance,
+  hashes, version, license notices, platform/architecture, and non-system
+  dynamic dependencies. Generated runtime files remain ignored.
+- Local packaging includes hardened-runtime entitlement configuration and still
+  passes the complete packaged media lifecycle when using installed FFmpeg.
+- The release audit distinguishes local/ad-hoc, Developer ID signed, and signed
+  plus notarized states and inspects nested code, Gatekeeper, stapling, and
+  bundled-runtime evidence.
+- The strict DMG/ZIP distribution command requires forced code signing, one
+  complete Apple notarization credential set, and staged approved FFmpeg before
+  it builds. It currently blocks because all three external prerequisites are
+  absent. See [MACOS-DISTRIBUTION.md](./MACOS-DISTRIBUTION.md).
+
 ## Decision
 
 Build this as a branch of Project Sequencer, not a separate product fork.
@@ -206,8 +221,8 @@ this checkpoint.
 
 - Google login, cloud project-document storage, subscriptions, entitlement
   checks, usage limits, or account recovery
-- Bundled FFmpeg binaries, license notices, updater, signing, notarization, or
-  release installers
+- An approved staged FFmpeg artifact, valid Developer ID identity, notarized
+  installer, custom production icon, updater, and release-channel infrastructure
 - A true-peak oversampled limiter, loudness engine, final shared EQ/compressor,
   production-grade dynamics fixtures, or native audio-device callback
 - Security-scoped bookmarks required by a future Mac App Store sandboxed build
@@ -233,8 +248,10 @@ this checkpoint.
    Swift implementation passes the current goldens, and dropout/latency/recovery
    contracts are tested. Core Audio callbacks, hot-plug tests, WASM, and
    production offline rendering remain promotion work.
-6. Bundle approved FFmpeg builds, sign/notarize the app, add updates, and only
-   then start the isolated third-party plug-in host.
+6. **Pipeline prepared; distribution blocked:** stage an approved FFmpeg build,
+   supply Developer ID and notarization credentials, pass the strict audit on
+   DMG/ZIP artifacts, then add update/rollback infrastructure. Only after those
+   gates should work begin on an isolated third-party plug-in host.
 
 The promotion gate for shared DSP is measurable parity and recovery—not its UI
 appearance. It must survive buffer-size changes, sample-rate changes, device
