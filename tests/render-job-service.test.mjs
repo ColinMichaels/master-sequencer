@@ -92,17 +92,31 @@ test("completed documented renders are rediscovered after restart and partial fi
     audioFile: "fallback.mp3",
     warnings: [],
   }));
+  const currentManifestDirectory = path.join(root, "2026-08-12", "schema-3-print");
+  await mkdir(currentManifestDirectory, { recursive: true });
+  await writeFile(path.join(currentManifestDirectory, "current.wav"), Buffer.alloc(16));
+  await writeFile(path.join(currentManifestDirectory, "current-render-manifest.json"), JSON.stringify({
+    schemaVersion: 3,
+    renderId: "render-schema-3",
+    createdAt: "2026-08-12T12:00:00.000Z",
+    scope: "track",
+    format: "wav",
+    audioFile: "current.wav",
+    warnings: [],
+  }));
 
   const results = await discoverRenderResults(root);
-  assert.equal(results.length, 2);
+  assert.equal(results.length, 3);
   const documented = results.find((result) => result.id === "render-123");
   assert.equal(documented.size, 24);
   assert.equal(typeof results.find((result) => result.id === "render-fallback").createdAt, "string");
+  assert.equal(results.find((result) => result.id === "render-schema-3").size, 16);
   await assert.rejects(() => readFile(path.join(directory, "orphan.part.wav")), { code: "ENOENT" });
   assert.equal((await readFile(path.join(directory, "artist.part.mix.wav"))).byteLength, 12);
 
   const service = createRenderJobService({ outputRoot: root, getLibraryFile: () => null });
   await service.initialize();
   assert.equal(service.get("render-123").recovered, true);
+  assert.equal(service.get("render-schema-3").recovered, true);
   assert.equal(service.result("render-123").manifestPath, path.join(directory, "album-render-manifest.json"));
 });

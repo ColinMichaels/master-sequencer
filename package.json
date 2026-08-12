@@ -16,6 +16,8 @@
     "test:browser:headed": "playwright test --headed",
     "desktop:run": "npm run build && electron desktop/main.mjs",
     "desktop:smoke": "npm run build && node scripts/desktop-smoke.mjs",
+    "desktop:media-smoke": "npm run build && node scripts/desktop-media-smoke.mjs",
+    "desktop:media-smoke:packaged": "node scripts/desktop-media-smoke.mjs --packaged",
     "desktop:pack": "npm run build && electron-builder --dir",
     "dsp:smoke": "node scripts/shared-dsp-smoke.mjs",
     "check": "npm test && npm run build",

@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, dialog, session, shell } from "electron";
+import { runDesktopSmokePlan } from "./smoke-verifier.mjs";
 
 const LOOPBACK_HOST = "127.0.0.1";
 const STARTUP_TIMEOUT_MS = 30_000;
@@ -79,9 +80,12 @@ const stopServer = () => {
 const appPaths = () => {
   const developmentRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   const appRoot = app.isPackaged ? app.getAppPath() : developmentRoot;
-  const userRoot = smokeMode
-    ? (smokeRoot = mkdtempSync(path.join(tmpdir(), "project-sequencer-desktop-smoke-")))
-    : app.getPath("userData");
+  const suppliedSmokeRoot = smokeMode ? process.env.PROJECT_SEQUENCER_DESKTOP_USER_ROOT?.trim() : "";
+  const userRoot = suppliedSmokeRoot
+    ? path.resolve(suppliedSmokeRoot)
+    : smokeMode
+      ? (smokeRoot = mkdtempSync(path.join(tmpdir(), "project-sequencer-desktop-smoke-")))
+      : app.getPath("userData");
   const dataRoot = path.join(userRoot, "data");
   const configRoot = path.join(userRoot, "config");
   const exportsRoot = path.join(userRoot, "exports");
@@ -100,13 +104,14 @@ const startLocalEngine = async () => {
   const port = await reservePort();
   const engineToken = randomBytes(32).toString("base64url");
   const serverEntry = path.join(paths.appRoot, "server", "index.mjs");
+  const configuredEnvironmentPath = (name, fallback) => process.env[name]?.trim() || fallback;
   const serverEnvironment = {
     ...process.env,
     ELECTRON_RUN_AS_NODE: "1",
     PROJECT_SEQUENCER_PORT: String(port),
     PROJECT_SEQUENCER_DATA_ROOT: paths.dataRoot,
-    PROJECT_SEQUENCER_SEED_PATH: path.join(paths.appRoot, "data", "seed-state.json"),
-    PROJECT_SEQUENCER_CONFIG_PATH: path.join(paths.appRoot, "config", "sequencer.config.json"),
+    PROJECT_SEQUENCER_SEED_PATH: configuredEnvironmentPath("PROJECT_SEQUENCER_SEED_PATH", path.join(paths.appRoot, "data", "seed-state.json")),
+    PROJECT_SEQUENCER_CONFIG_PATH: configuredEnvironmentPath("PROJECT_SEQUENCER_CONFIG_PATH", path.join(paths.appRoot, "config", "sequencer.config.json")),
     PROJECT_SEQUENCER_LOCAL_CONFIG_PATH: path.join(paths.configRoot, "sequencer.local.json"),
     PROJECT_SEQUENCER_EXPORTS_PATH: paths.exportsRoot,
     PROJECT_SEQUENCER_FFMPEG_PATH: ffmpeg,
@@ -174,9 +179,9 @@ const createWindow = async (engine) => {
   await mainWindow.loadURL(engine.url);
 
   if (smokeMode) {
-    const result = await mainWindow.webContents.executeJavaScript(`fetch('/api/bootstrap').then(async (response) => ({ ok: response.ok, body: await response.json() }))`);
-    if (!result.ok || !result.body?.state || !Array.isArray(result.body?.library)) throw new Error("Desktop bootstrap returned an invalid payload.");
-    process.stdout.write(`Desktop smoke passed: ${engine.url}; FFmpeg ${engine.ffmpeg}; data ${engine.userRoot}\n`);
+    const smokePlan = process.env.PROJECT_SEQUENCER_DESKTOP_SMOKE_PLAN?.trim() || "bootstrap";
+    const result = await mainWindow.webContents.executeJavaScript(`(${runDesktopSmokePlan.toString()})(${JSON.stringify(smokePlan)})`);
+    process.stdout.write(`Desktop smoke passed: ${JSON.stringify(result)}; ${engine.url}; FFmpeg ${engine.ffmpeg}; data ${engine.userRoot}\n`);
     app.quit();
   }
 };
@@ -201,7 +206,10 @@ const reportFatalError = (error) => {
   process.exitCode = 1;
   process.stderr.write(`Project Sequencer desktop startup failed: ${error.stack || error.message}\n`);
   if (!smokeMode) dialog.showErrorBox("Project Sequencer could not start", error.message);
-  app.quit();
+  if (smokeMode) {
+    stopServer();
+    app.exit(1);
+  } else app.quit();
 };
 
 app.whenReady().then(boot).catch(reportFatalError);

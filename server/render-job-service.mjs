@@ -4,6 +4,7 @@ import path from "node:path";
 import { RenderCancelledError, renderAudio } from "./audio-renderer.mjs";
 
 const terminalStatuses = new Set(["completed", "failed", "cancelled"]);
+const SUPPORTED_RENDER_MANIFEST_VERSIONS = new Set([1, 2, 3]);
 
 const isWithin = (parentPath, candidatePath) => {
   const relative = path.relative(parentPath, candidatePath);
@@ -39,7 +40,7 @@ export const discoverRenderResults = async (outputRoot) => {
   for (const manifestPath of files.filter((filePath) => filePath.endsWith("-render-manifest.json"))) {
     try {
       const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-      if (![1, 2].includes(manifest.schemaVersion) || typeof manifest.audioFile !== "string" || path.basename(manifest.audioFile) !== manifest.audioFile) continue;
+      if (!SUPPORTED_RENDER_MANIFEST_VERSIONS.has(manifest.schemaVersion) || typeof manifest.audioFile !== "string" || path.basename(manifest.audioFile) !== manifest.audioFile) continue;
       const outputDirectory = path.dirname(manifestPath);
       const audioPath = path.resolve(outputDirectory, manifest.audioFile);
       if (!isWithin(outputRoot, audioPath)) continue;

@@ -5,6 +5,37 @@ Plan date: 2026-08-12
 Status: runnable proof of concept on `codex/native-dsp-poc`; not a signed or
 customer-ready desktop release
 
+## Roadmap gate status
+
+### Gate 1 — packaged local-media lifecycle: passed 2026-08-12
+
+The automated lifecycle uses a generated schema-7 project document and a
+generated 0.6-second WAV in a disposable directory. This is the source-safe
+equivalent of copying a real project and media into a test area.
+
+It passes in both the development shell and the packaged `.app` and proves:
+
+- authenticated bootstrap and persistent application-data state across three
+  launches
+- indexed 32-byte range playback without copying or changing the fixture
+- compact waveform peaks and technical loudness analysis without absolute paths
+- one short documented 24-bit/48 kHz WAV print plus readable cue sheet and
+  schema-3 manifest
+- an explicitly offline root after the media folder is temporarily moved
+- restored indexing after the folder returns and rediscovery of completed
+  render history after restart
+
+Commands:
+
+```bash
+npm run desktop:media-smoke
+npm run desktop:pack
+npm run desktop:media-smoke:packaged
+```
+
+This gate found and fixed a real compatibility gap: render discovery accepted
+manifest versions 1 and 2 while the schema-7 renderer writes version 3.
+
 ## Decision
 
 Build this as a branch of Project Sequencer, not a separate product fork.
@@ -132,9 +163,10 @@ this checkpoint.
 
 ## Recommended build sequence
 
-1. Prove this shell against a copied project document and explicitly selected
-   test media; verify reopen, offline/reconnect, range playback, waveform,
-   analysis, one short print, cue sheet, and manifest.
+1. **Complete:** prove the packaged shell with an isolated project document and
+   generated test media; verify reopen, offline/reconnect, range playback,
+   waveform, analysis, one short print, cue sheet, manifest, and recovered
+   render history.
 2. Define the cloud project-document schema and conflict rules. Add Google
    sign-in without putting local paths, file handles, or audio bytes in cloud
    records.
