@@ -150,6 +150,10 @@ for responsive auditioning only—FFmpeg remains authoritative for every print.
 The default server binds to `127.0.0.1`. It accepts only the configured local
 Host and port, and state-changing browser requests must have a matching Origin.
 This limits DNS-rebinding and cross-site request risks against the local API.
+When the server is owned by the desktop shell, Electron also supplies a random
+per-launch engine token through a private renderer session. The server requires
+that header on API, media, and static requests, while ordinary browser mode
+remains compatible when no engine token is configured.
 Responses deny framing, disable MIME sniffing, use a same-origin resource
 policy, and apply a restrictive content security policy. User-supplied SVG
 assets receive an additional sandbox policy.

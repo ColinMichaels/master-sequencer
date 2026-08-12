@@ -6,6 +6,7 @@ import { createApiRouter } from "./api-router.mjs";
 import { scanAudioLibrary, sourceKey } from "./audio-library.mjs";
 import { createAudioWatchService } from "./audio-watch-service.mjs";
 import { addAudioSource, loadConfig, projectRoot, removeAudioSource } from "./config-store.mjs";
+import { ENGINE_AUTH_HEADER, engineRequestIsAuthorized } from "./engine-auth.mjs";
 import { BASE_SECURITY_HEADERS, isStateChangingMethod, requestHostIsAllowed, requestOriginIsAllowed } from "./http-utils.mjs";
 import { contentTypeFor, sendJson, streamFile } from "./http-response.mjs";
 import { chooseAudioPaths, chooseProjectAssetPaths, revealInFinder } from "./native-picker.mjs";
@@ -192,6 +193,10 @@ const serveProduction = async (request, response, url) => {
 
 const server = createServer(async (request, response) => {
   try {
+    if (!engineRequestIsAuthorized(request.headers[ENGINE_AUTH_HEADER])) {
+      sendJson(response, 401, { error: "Project Sequencer engine authentication is required." });
+      return;
+    }
     if (!requestHostIsAllowed(request.headers.host, { configuredHost: config.host, port: config.port })) {
       sendJson(response, 403, { error: "Project Sequencer accepts requests only through its configured local address." });
       return;

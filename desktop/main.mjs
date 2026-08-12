@@ -1,13 +1,15 @@
 import { spawn, spawnSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { accessSync, constants, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { app, BrowserWindow, dialog, shell } from "electron";
+import { app, BrowserWindow, dialog, session, shell } from "electron";
 
 const LOOPBACK_HOST = "127.0.0.1";
 const STARTUP_TIMEOUT_MS = 30_000;
+const ENGINE_AUTH_HEADER = "X-Project-Sequencer-Engine-Token";
 const smokeMode = process.env.PROJECT_SEQUENCER_DESKTOP_SMOKE === "1";
 let serverProcess = null;
 let mainWindow = null;
@@ -49,13 +51,16 @@ const reservePort = () => new Promise((resolve, reject) => {
   });
 });
 
-const waitForServer = async (url) => {
+const waitForServer = async (url, engineToken) => {
   const deadline = Date.now() + STARTUP_TIMEOUT_MS;
   let lastError;
   while (Date.now() < deadline) {
     if (serverProcess?.exitCode !== null) throw new Error(`Local engine stopped before startup completed (exit ${serverProcess.exitCode}).`);
     try {
-      const response = await fetch(`${url}/api/health`, { signal: AbortSignal.timeout(1_000) });
+      const response = await fetch(`${url}/api/health`, {
+        headers: { [ENGINE_AUTH_HEADER]: engineToken },
+        signal: AbortSignal.timeout(1_000),
+      });
       if (response.ok) return response.json();
     } catch (error) {
       lastError = error;
@@ -93,6 +98,7 @@ const startLocalEngine = async () => {
   }
 
   const port = await reservePort();
+  const engineToken = randomBytes(32).toString("base64url");
   const serverEntry = path.join(paths.appRoot, "server", "index.mjs");
   const serverEnvironment = {
     ...process.env,
@@ -105,6 +111,7 @@ const startLocalEngine = async () => {
     PROJECT_SEQUENCER_EXPORTS_PATH: paths.exportsRoot,
     PROJECT_SEQUENCER_FFMPEG_PATH: ffmpeg,
     PROJECT_SEQUENCER_FFPROBE_PATH: ffprobe,
+    PROJECT_SEQUENCER_ENGINE_TOKEN: engineToken,
   };
 
   serverProcess = spawn(process.execPath, [serverEntry], {
@@ -119,8 +126,20 @@ const startLocalEngine = async () => {
   serverProcess.once("error", (error) => process.stderr.write(`[local-engine] ${error.message}\n`));
 
   const url = `http://${LOOPBACK_HOST}:${port}`;
-  await waitForServer(url);
-  return { url, ffmpeg, ffprobe, userRoot: paths.userRoot };
+  await waitForServer(url, engineToken);
+  const anonymousResponse = await fetch(`${url}/api/health`, { signal: AbortSignal.timeout(1_000) });
+  if (anonymousResponse.status !== 401) throw new Error("Local engine started without enforcing its per-launch credential.");
+  return { url, engineToken, ffmpeg, ffprobe, userRoot: paths.userRoot };
+};
+
+const createAuthenticatedRendererSession = (engine) => {
+  const partition = `project-sequencer-${randomBytes(12).toString("hex")}`;
+  const rendererSession = session.fromPartition(partition, { cache: true });
+  rendererSession.webRequest.onBeforeSendHeaders({ urls: [`${engine.url}/*`] }, (details, callback) => {
+    details.requestHeaders[ENGINE_AUTH_HEADER] = engine.engineToken;
+    callback({ requestHeaders: details.requestHeaders });
+  });
+  return rendererSession;
 };
 
 const lockWindowNavigation = (window) => {
@@ -134,6 +153,7 @@ const lockWindowNavigation = (window) => {
 };
 
 const createWindow = async (engine) => {
+  const rendererSession = createAuthenticatedRendererSession(engine);
   mainWindow = new BrowserWindow({
     width: 1540,
     height: 980,
@@ -146,6 +166,7 @@ const createWindow = async (engine) => {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      session: rendererSession,
     },
   });
   lockWindowNavigation(mainWindow);

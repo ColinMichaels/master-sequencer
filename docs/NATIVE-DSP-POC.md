@@ -71,6 +71,10 @@ after the engine protocol, file lifecycle, and packaging risks are proven.
 - The renderer has no Node integration, uses context isolation and Chromium
   sandboxing, refuses in-window navigation, and opens only HTTPS external links
   through the operating system.
+- Each launch creates a random engine credential. Electron injects it into
+  loopback requests through a private renderer session, while the React page
+  never receives or stores the credential. Normal browser mode remains
+  compatible when native authentication is not configured.
 - `src/dsp/shared-dsp-core.js` supplies a versioned, allocation-free processing
   loop for gain, smoothing, exact bypass, and a prototype sample-peak guard.
   The browser AudioWorklet and Node host both use that source contract.
@@ -118,8 +122,6 @@ this checkpoint.
 - Google login, cloud project-document storage, subscriptions, entitlement
   checks, usage limits, or account recovery
 - Browser folder-handle persistence and its reconnect experience
-- A per-launch authenticated engine session beyond the current random loopback
-  port and existing Host/Origin protections
 - Bundled FFmpeg binaries, license notices, updater, signing, notarization, or
   release installers
 - A true-peak oversampled limiter, loudness engine, final shared EQ/compressor,
