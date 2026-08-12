@@ -36,6 +36,15 @@ npm run desktop:media-smoke:packaged
 This gate found and fixed a real compatibility gap: render discovery accepted
 manifest versions 1 and 2 while the schema-7 renderer writes version 3.
 
+### Gate 2 — cloud project and Google-auth boundary: passed 2026-08-12
+
+The versioned cloud-document contract, canonical digest, local-only exclusions,
+optimistic revision rules, explicit divergent-edit result, and private Google
+credential seam are implemented and unit tested. No cloud backend or Google
+client credentials are configured, so this is architectural readiness rather
+than a claim of working production login or synchronization. See
+[CLOUD-PROJECT-SYNC-CONTRACT.md](./CLOUD-PROJECT-SYNC-CONTRACT.md).
+
 ## Decision
 
 Build this as a branch of Project Sequencer, not a separate product fork.
@@ -167,9 +176,9 @@ this checkpoint.
    generated test media; verify reopen, offline/reconnect, range playback,
    waveform, analysis, one short print, cue sheet, manifest, and recovered
    render history.
-2. Define the cloud project-document schema and conflict rules. Add Google
-   sign-in without putting local paths, file handles, or audio bytes in cloud
-   records.
+2. **Contract complete; provider deployment gated:** define the cloud project
+   schema, local-only exclusions, conflict rules, and Google-auth seam. A live
+   login/backend still requires approved provider credentials and deployment.
 3. Add the free browser file-handle registry and a clear **Reconnect folder**
    flow. Treat a lost permission as recoverable state, not lost project data.
 4. Expand shared DSP v1 behind an opt-in laboratory flag, add golden audio
