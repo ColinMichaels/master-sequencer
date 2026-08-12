@@ -2,10 +2,14 @@ import React from "react";
 import { ExportIcon, PlayIcon, RefreshIcon } from "./Icons.jsx";
 import { TransportWaveform } from "./TransportWaveform.jsx";
 
-export function TransportBar({ audioRef, audioHandlers, current, status, activeAlbum, visual, playing, currentTime, mediaDuration, liveMasteringLabel, resetArmed, onTogglePlayback, onSeek, onPlaySequence, onResetOrder, onExport }) {
+export function TransportBar({ playbackButtonRef, audioRef, audioHandlers, current, status, activeAlbum, visual, playing, currentTime, mediaDuration, liveMasteringLabel, resetArmed, onTogglePlayback, onSeek, onPlaySequence, onResetOrder, onExport }) {
   return (
-    <footer className="transport-bar">
-      <div className="transport-copy"><span>Sequence Preview</span><strong>{current?.trackTitle || "Ready to audition"}</strong><small>{status}</small></div>
+    <footer className="transport-bar" aria-keyshortcuts="ArrowUp ArrowDown">
+      <div className="transport-copy">
+        <strong>{current?.trackTitle || "Ready to audition"}</strong>
+        <span className="sr-only" role="status" aria-live="polite" data-transport-status>{status}</span>
+        <span className="sr-only">Up Arrow selects the previous playable track. Down Arrow selects the next playable track.</span>
+      </div>
       <TransportWaveform
         audioRef={audioRef}
         audioHandlers={audioHandlers}
@@ -16,6 +20,7 @@ export function TransportBar({ audioRef, audioHandlers, current, status, activeA
         currentTime={currentTime}
         mediaDuration={mediaDuration}
         liveMasteringLabel={liveMasteringLabel}
+        playbackButtonRef={playbackButtonRef}
         playing={playing}
         hasCurrentMedia={Boolean(current)}
         renderedPreview={Boolean(current?.renderedPreview)}

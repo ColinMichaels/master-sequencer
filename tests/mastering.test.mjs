@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildAdvancedMasteringFilters, buildMasterBusFilters, buildPreviewEntries, buildRenderGraph } from "../server/audio-renderer.mjs";
 import { calculateProgramTimeline, normalizeMasterBus, normalizeMastering, programDuration } from "../src/lib/mastering.js";
-import { ADVANCED_PROCESSOR_TYPES, createAdvancedProcessor, createDefaultAdvancedMastering } from "../src/lib/advanced-mastering.js";
+import { ADVANCED_PROCESSOR_TYPES, createAdvancedProcessor, createDefaultAdvancedMastering, normalizeAdvancedMastering } from "../src/lib/advanced-mastering.js";
 
 test("mastering settings clamp trims and ending lengths to the source", () => {
   const settings = normalizeMastering({ trimStart: 8, trimEnd: 6, fadeIn: 99, endMode: "fade", endDuration: 99, gapAfter: 2 }, 10);
@@ -165,6 +165,9 @@ test("neutral and bypassed MASTER buses remain literal render no-ops", () => {
 test("Premium rack filters follow the movable patch order and support repeated equipment", () => {
   const firstEq = createAdvancedProcessor(ADVANCED_PROCESSOR_TYPES.eq, "eq-1");
   firstEq.parameters.lowShelf.gainDb = 2;
+  firstEq.parameters.lowMidBand.gainDb = -1.5;
+  firstEq.parameters.highMidBand.gainDb = 1.25;
+  firstEq.parameters.outputGainDb = -0.5;
   const limiter = createAdvancedProcessor(ADVANCED_PROCESSOR_TYPES.limiter, "limit-1");
   limiter.parameters.ceilingDbfs = -1.2;
   limiter.parameters.oversample = 4;
@@ -173,13 +176,45 @@ test("Premium rack filters follow the movable patch order and support repeated e
   const rack = { ...createDefaultAdvancedMastering(), nodes: [limiter, firstEq, secondEq] };
   const processed = buildAdvancedMasteringFilters(rack);
   assert.deepEqual(processed.settings.nodes.map((node) => node.id), ["limit-1", "eq-1", "eq-2"]);
-  assert.match(processed.filters.join(","), /^aresample=192000,alimiter=.*aresample=48000,lowshelf=f=120:g=2:p=2,highshelf=f=8000:g=-1:p=2$/);
+  assert.match(processed.filters.join(","), /^aresample=192000,alimiter=.*aresample=48000,lowshelf=f=120:g=2:p=2,equalizer=f=400:t=q:w=1:g=-1\.5,equalizer=f=1600:t=q:w=1:g=1\.25,volume=-0\.5dB,highshelf=f=8000:g=-1:p=2$/);
 
   const graph = buildRenderGraph([{ sourceDuration: 10, mastering: {} }], { masteringPath: "advanced", advancedMastering: rack });
   assert.equal(graph.masteringPath, "advanced");
   assert.equal(graph.outputLabel, "mastered");
   assert.ok(graph.filterComplex.indexOf("alimiter") < graph.filterComplex.indexOf("lowshelf"));
   assert.ok(graph.filterComplex.indexOf("lowshelf") < graph.filterComplex.indexOf("highshelf"));
+});
+
+test("Premium sidechain and stereo-link controls produce real print filters", () => {
+  const compressor = createAdvancedProcessor(ADVANCED_PROCESSOR_TYPES.compressor, "compressor-1");
+  compressor.parameters.sidechainEnabled = true;
+  compressor.parameters.sidechainFilterHz = 180;
+  const limiter = createAdvancedProcessor(ADVANCED_PROCESSOR_TYPES.limiter, "limiter-1");
+  limiter.parameters.oversample = 2;
+  limiter.parameters.stereoLinkPercent = 40;
+  const processed = buildAdvancedMasteringFilters({ ...createDefaultAdvancedMastering(), nodes: [compressor, limiter] });
+
+  assert.match(processed.filters.join(","), /asplit=2\[compressor_program\]\[compressor_detector\].*highpass=f=180:p=2.*sidechaincompress=threshold=/);
+  assert.match(processed.filters.join(","), /asplit=2\[linked_in\]\[independent_in\].*channelsplit=channel_layout=stereo.*amix=inputs=2:normalize=0/);
+});
+
+test("legacy Premium controls gain complete faceplate parameters without losing the existing mid-band setting", () => {
+  const legacyEq = createAdvancedProcessor(ADVANCED_PROCESSOR_TYPES.eq, "legacy-eq");
+  legacyEq.parameters = {
+    enabled: true,
+    lowShelf: { frequencyHz: 120, gainDb: 1 },
+    midBand: { frequencyHz: 9_400, gainDb: -2, q: 1.4 },
+    highShelf: { frequencyHz: 8_000, gainDb: 0.5 },
+  };
+  const legacyLimiter = createAdvancedProcessor(ADVANCED_PROCESSOR_TYPES.limiter, "legacy-limiter");
+  legacyLimiter.parameters = { enabled: true, ceilingDbfs: -1, attackMs: 5, releaseMs: 50, oversample: 1 };
+  const normalized = normalizeAdvancedMastering({ nodes: [legacyEq, legacyLimiter] });
+
+  assert.deepEqual(normalized.nodes[0].parameters.lowMidBand, { frequencyHz: 400, gainDb: 0, q: 1 });
+  assert.deepEqual(normalized.nodes[0].parameters.highMidBand, { frequencyHz: 9_400, gainDb: -2, q: 1.4 });
+  assert.equal(normalized.nodes[0].parameters.outputGainDb, 0);
+  assert.equal(normalized.nodes[1].parameters.oversample, 4);
+  assert.equal(normalized.nodes[1].parameters.stereoLinkPercent, 100);
 });
 
 test("transition previews keep the edited tail and play through the complete next track", () => {

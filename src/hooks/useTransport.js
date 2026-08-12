@@ -110,7 +110,7 @@ export const useTransport = ({ libraryMap, masterBus, masteringPath = "basic", a
     return candidate ? libraryMap.get(sourceKey(candidate.sourceRef)) : null;
   }, [libraryMap]);
 
-  const playEntry = useCallback((entry, startAt = entry?.startAt || 0) => {
+  const playEntry = useCallback((entry, startAt = entry?.startAt || 0, { autoplay = true } = {}) => {
     if ((!entry?.file && !entry?.url) || !audioRef.current) return;
     const audio = audioRef.current;
     const token = ++playToken.current;
@@ -118,9 +118,14 @@ export const useTransport = ({ libraryMap, masterBus, masteringPath = "basic", a
     setCurrent(entry);
     setCurrentTime(0);
     setMediaDuration(0);
-    const graph = ensureAudioGraph();
+    const graph = autoplay ? ensureAudioGraph() : audioGraph.current;
     updateAudioGraph(entry);
-    resumeAudioGraph(graph);
+    if (autoplay) resumeAudioGraph(graph);
+    else {
+      audio.pause();
+      setPlaying(false);
+      suspendAudioGraph();
+    }
     audio.src = entry.url || api.mediaUrl(entry.file.key);
     audio.load();
     const applyStartPosition = () => {
@@ -129,13 +134,15 @@ export const useTransport = ({ libraryMap, masterBus, masteringPath = "basic", a
     };
     if (audio.readyState >= 1) applyStartPosition();
     else audio.addEventListener("loadedmetadata", applyStartPosition, { once: true });
-    // Start loading under the original click so a slower protected stream does
-    // not outlive the browser's transient audio-playback permission.
-    audio.play().catch((error) => {
-      if (error.name === "AbortError" && audio.paused) return;
-      if (token === playToken.current) setStatus(`Playback needs a direct play gesture: ${error.message}`);
-    });
-  }, [ensureAudioGraph, resumeAudioGraph, updateAudioGraph]);
+    if (autoplay) {
+      // Start loading under the original click so a slower protected stream does
+      // not outlive the browser's transient audio-playback permission.
+      audio.play().catch((error) => {
+        if (error.name === "AbortError" && audio.paused) return;
+        if (token === playToken.current) setStatus(`Playback needs a direct play gesture: ${error.message}`);
+      });
+    }
+  }, [ensureAudioGraph, resumeAudioGraph, suspendAudioGraph, updateAudioGraph]);
 
   const previewFile = useCallback((file, label = file?.name) => {
     if (!file) return;
@@ -215,6 +222,40 @@ export const useTransport = ({ libraryMap, masterBus, masteringPath = "basic", a
     queueCursor.current = 0;
     setStatus(skipped ? `Playing available order; ${skipped} missing source ${skipped === 1 ? "is" : "are"} skipped.` : "Playing the complete working order.");
     playEntry(entries[0], startAt);
+  }, [fileForTrack, playEntry]);
+
+  const navigateSequence = useCallback((album, direction) => {
+    if (!album?.tracks?.length || ![-1, 1].includes(direction)) return;
+    const playable = album.tracks
+      .map((track, index) => ({ file: fileForTrack(track), trackTitle: track.title, albumTitle: album.title, track, index }))
+      .filter((entry) => entry.file);
+    if (!playable.length) {
+      setStatus("No playable track exists in the main sequence.");
+      return;
+    }
+
+    const currentPlayableIndex = playable.findIndex((entry) => entry.track.id === currentRef.current?.track?.id);
+    const targetPlayableIndex = currentPlayableIndex < 0
+      ? direction > 0 ? 0 : playable.length - 1
+      : currentPlayableIndex + direction;
+    if (targetPlayableIndex < 0 || targetPlayableIndex >= playable.length) {
+      setStatus(direction < 0 ? "Already at the first playable track." : "Already at the last playable track.");
+      return;
+    }
+
+    const target = playable[targetPlayableIndex];
+    const entries = playable.slice(targetPlayableIndex);
+    // Navigation changes the selected source without unexpectedly starting a
+    // paused transport; an already-playing sequence continues seamlessly.
+    const autoplay = Boolean(audioRef.current?.src && !audioRef.current.paused);
+    mode.current = "queue";
+    queue.current = entries;
+    queueCursor.current = 0;
+    completionMessage.current = "Available-sequence preview complete.";
+    setStatus(autoplay
+      ? `Playing ${target.trackTitle} in the main sequence.`
+      : `${target.trackTitle} selected. Press Space to play.`);
+    playEntry(target, 0, { autoplay });
   }, [fileForTrack, playEntry]);
 
   const previewChapter = useCallback((album, startIndex = 0) => {
@@ -332,5 +373,5 @@ export const useTransport = ({ libraryMap, masterBus, masteringPath = "basic", a
     onError: handleError,
   }), [handleEnded, handleError, resumeAudioGraph, suspendAudioGraph]);
 
-  return { audioRef, audioHandlers, meteringRef, current, status, setStatus, playing, currentTime, mediaDuration, liveMasteringAvailable, fileForTrack, previewFile, previewRendered, previewMasteringComparison, playSequence, previewChapter, stop, togglePlayback, seek };
+  return { audioRef, audioHandlers, meteringRef, current, status, setStatus, playing, currentTime, mediaDuration, liveMasteringAvailable, fileForTrack, previewFile, previewRendered, previewMasteringComparison, playSequence, navigateSequence, previewChapter, stop, togglePlayback, seek };
 };

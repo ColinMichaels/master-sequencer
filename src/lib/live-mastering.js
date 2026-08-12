@@ -18,10 +18,13 @@ export const equalizerResponseDbAtFrequency = (eq, frequency) => {
   const safeFrequency = Math.max(1, Number(frequency) || 1);
   const lowWeight = 1 / (1 + (safeFrequency / eq.lowShelf.frequencyHz) ** 4);
   const highWeight = 1 / (1 + (eq.highShelf.frequencyHz / safeFrequency) ** 4);
-  const octaves = Math.log2(safeFrequency / eq.midBand.frequencyHz);
-  const midWidth = 1.25 / Math.sqrt(eq.midBand.q);
-  const midWeight = Math.exp(-0.5 * (octaves / midWidth) ** 2);
-  return eq.lowShelf.gainDb * lowWeight + eq.midBand.gainDb * midWeight + eq.highShelf.gainDb * highWeight;
+  const midBands = eq.lowMidBand && eq.highMidBand ? [eq.lowMidBand, eq.highMidBand] : [eq.midBand];
+  const midResponse = midBands.reduce((total, band) => {
+    const octaves = Math.log2(safeFrequency / band.frequencyHz);
+    const midWidth = 1.25 / Math.sqrt(band.q);
+    return total + band.gainDb * Math.exp(-0.5 * (octaves / midWidth) ** 2);
+  }, 0);
+  return eq.lowShelf.gainDb * lowWeight + midResponse + eq.highShelf.gainDb * highWeight + (eq.outputGainDb ?? 0);
 };
 
 export const equalizerLiveImpact = ({ frequencyData, sampleRate, eq, pointCount = EQ_LIVE_POINT_COUNT } = {}) => {
@@ -53,6 +56,22 @@ export const equalizerLiveImpact = ({ frequencyData, sampleRate, eq, pointCount 
 };
 
 export const decibelsToGain = (decibels) => 10 ** (Number(decibels || 0) / 20);
+
+// The low band bypasses detector compression when the sidechain filter is in,
+// then recombines with the compressed high band so bass energy is preserved.
+export const compressorSidechainMix = ({ enabled = false } = {}) => {
+  if (!enabled) return { fullRange: 1, highPass: 0, lowBand: 0 };
+  return { fullRange: 0, highPass: 1, lowBand: 1 };
+};
+
+export const limiterStereoMatrix = (linkPercent = 100) => {
+  // Equal-power is inappropriate here because the two branches carry the same
+  // program; linear weights preserve unity when linked and independent paths sum.
+  const link = clamp((Number(linkPercent) || 0) / 100, 0, 1);
+  const independent = 1 - link;
+  const linked = link;
+  return { independent, linked };
+};
 
 const setParam = (param, value, context, timeConstant = 0.012) => {
   if (!param) return;
@@ -176,16 +195,31 @@ export const applyLiveMasteringSettings = (graph, masterBus = {}, options = {}) 
       slot.lowShelf.type = "lowshelf";
       updateParam(slot.lowShelf.frequency, eq?.lowShelf.frequencyHz ?? 120);
       updateParam(slot.lowShelf.gain, eq?.lowShelf.gainDb ?? 0);
-      slot.midBand.type = "peaking";
-      updateParam(slot.midBand.frequency, eq?.midBand.frequencyHz ?? 1_000);
-      updateParam(slot.midBand.Q, eq?.midBand.q ?? 1);
-      updateParam(slot.midBand.gain, eq?.midBand.gainDb ?? 0);
+      slot.lowMidBand.type = "peaking";
+      updateParam(slot.lowMidBand.frequency, eq?.lowMidBand.frequencyHz ?? 400);
+      updateParam(slot.lowMidBand.Q, eq?.lowMidBand.q ?? 1);
+      updateParam(slot.lowMidBand.gain, eq?.lowMidBand.gainDb ?? 0);
+      slot.highMidBand.type = "peaking";
+      updateParam(slot.highMidBand.frequency, eq?.highMidBand.frequencyHz ?? 1_600);
+      updateParam(slot.highMidBand.Q, eq?.highMidBand.q ?? 1);
+      updateParam(slot.highMidBand.gain, eq?.highMidBand.gainDb ?? 0);
       slot.highShelf.type = "highshelf";
       updateParam(slot.highShelf.frequency, eq?.highShelf.frequencyHz ?? 8_000);
       updateParam(slot.highShelf.gain, eq?.highShelf.gainDb ?? 0);
+      updateParam(slot.eqOutputGain.gain, decibelsToGain(eq?.outputGainDb ?? 0));
 
       const mix = compressorSettings?.mix ?? 0;
+      const sidechain = compressorSidechainMix({ enabled: compressorSettings?.sidechainEnabled, frequencyHz: compressorSettings?.sidechainFilterHz });
       updateParam(slot.compressorDry.gain, 1 - mix, 0.006);
+      updateParam(slot.compressorFullRange.gain, sidechain.fullRange, 0.006);
+      slot.compressorSidechainFilter.type = "highpass";
+      updateParam(slot.compressorSidechainFilter.frequency, compressorSettings?.sidechainFilterHz ?? 120);
+      updateParam(slot.compressorSidechainFilter.Q, 0.707);
+      updateParam(slot.compressorSidechainGain.gain, sidechain.highPass, 0.006);
+      slot.compressorLowBandFilter.type = "lowpass";
+      updateParam(slot.compressorLowBandFilter.frequency, compressorSettings?.sidechainFilterHz ?? 120);
+      updateParam(slot.compressorLowBandFilter.Q, 0.707);
+      updateParam(slot.compressorLowBandGain.gain, sidechain.lowBand, 0.006);
       updateParam(slot.compressorWet.gain, mix, 0.006);
       updateParam(slot.compressor.threshold, compressorSettings?.thresholdDb ?? 0);
       updateParam(slot.compressor.ratio, compressorSettings?.ratio ?? 1);
@@ -199,6 +233,16 @@ export const applyLiveMasteringSettings = (graph, masterBus = {}, options = {}) 
       updateParam(slot.limiter.ratio, limiterSettings ? 20 : 1);
       updateParam(slot.limiter.attack, clamp((limiterSettings?.attackMs ?? 1) / 1_000, 0, 1));
       updateParam(slot.limiter.release, clamp((limiterSettings?.releaseMs ?? 1) / 1_000, 0, 1));
+      for (const channelLimiter of [slot.limiterLeft, slot.limiterRight]) {
+        updateParam(channelLimiter.threshold, limiterSettings?.ceilingDbfs ?? 0);
+        updateParam(channelLimiter.knee, 0);
+        updateParam(channelLimiter.ratio, limiterSettings ? 20 : 1);
+        updateParam(channelLimiter.attack, clamp((limiterSettings?.attackMs ?? 1) / 1_000, 0, 1));
+        updateParam(channelLimiter.release, clamp((limiterSettings?.releaseMs ?? 1) / 1_000, 0, 1));
+      }
+      const stereoMatrix = limiterStereoMatrix(limiterSettings?.stereoLinkPercent ?? 100);
+      updateParam(slot.limiterIndependentGain.gain, stereoMatrix.independent, 0.006);
+      updateParam(slot.limiterLinkedGain.gain, stereoMatrix.linked, 0.006);
       if (compressorSettings && !advancedCompressor) advancedCompressor = slot.compressor;
       if (limiterSettings && !advancedLimiter) advancedLimiter = slot.limiter;
       if (node?.typeId === ADVANCED_PROCESSOR_TYPES.compressor) processorMeters[`processor:${node.id}:compressor`] = slot.compressor;
@@ -212,21 +256,46 @@ export const applyLiveMasteringSettings = (graph, masterBus = {}, options = {}) 
 const createProcessorSlot = (context) => {
   const input = context.createGain();
   const lowShelf = context.createBiquadFilter();
-  const midBand = context.createBiquadFilter();
+  const lowMidBand = context.createBiquadFilter();
+  const highMidBand = context.createBiquadFilter();
   const highShelf = context.createBiquadFilter();
+  const eqOutputGain = context.createGain();
   const compressorDry = context.createGain();
+  const compressorFullRange = context.createGain();
+  const compressorSidechainFilter = context.createBiquadFilter();
+  const compressorSidechainGain = context.createGain();
+  const compressorDetectorSum = context.createGain();
+  const compressorLowBandFilter = context.createBiquadFilter();
+  const compressorLowBandGain = context.createGain();
   const compressor = context.createDynamicsCompressor();
   const makeupGain = context.createGain();
   const compressorWet = context.createGain();
   const compressorSum = context.createGain();
   const outputGain = context.createGain();
   const limiter = context.createDynamicsCompressor();
+  const limiterLinkedGain = context.createGain();
+  const limiterSplitter = context.createChannelSplitter(2);
+  const limiterLeft = context.createDynamicsCompressor();
+  const limiterRight = context.createDynamicsCompressor();
+  const limiterMerger = context.createChannelMerger(2);
+  const limiterIndependentGain = context.createGain();
+  const limiterSum = context.createGain();
   const output = context.createGain();
-  input.connect(lowShelf).connect(midBand).connect(highShelf);
-  highShelf.connect(compressorDry).connect(compressorSum);
-  highShelf.connect(compressor).connect(makeupGain).connect(compressorWet).connect(compressorSum);
-  compressorSum.connect(outputGain).connect(limiter).connect(output);
-  return { input, lowShelf, midBand, highShelf, compressorDry, compressor, makeupGain, compressorWet, compressorSum, outputGain, limiter, output };
+  input.connect(lowShelf).connect(lowMidBand).connect(highMidBand).connect(highShelf).connect(eqOutputGain);
+  eqOutputGain.connect(compressorDry).connect(compressorSum);
+  eqOutputGain.connect(compressorFullRange).connect(compressorDetectorSum);
+  eqOutputGain.connect(compressorSidechainFilter).connect(compressorSidechainGain).connect(compressorDetectorSum);
+  compressorDetectorSum.connect(compressor).connect(makeupGain).connect(compressorWet).connect(compressorSum);
+  eqOutputGain.connect(compressorLowBandFilter).connect(compressorLowBandGain).connect(makeupGain);
+  compressorSum.connect(outputGain);
+  outputGain.connect(limiter).connect(limiterLinkedGain).connect(limiterSum);
+  outputGain.connect(limiterSplitter);
+  limiterSplitter.connect(limiterLeft, 0, 0);
+  limiterSplitter.connect(limiterRight, 1, 0);
+  limiterLeft.connect(limiterMerger, 0, 0);
+  limiterRight.connect(limiterMerger, 0, 1);
+  limiterMerger.connect(limiterIndependentGain).connect(limiterSum).connect(output);
+  return { input, lowShelf, lowMidBand, highMidBand, highShelf, eqOutputGain, compressorDry, compressorFullRange, compressorSidechainFilter, compressorSidechainGain, compressorDetectorSum, compressorLowBandFilter, compressorLowBandGain, compressor, makeupGain, compressorWet, compressorSum, outputGain, limiter, limiterLinkedGain, limiterSplitter, limiterLeft, limiterRight, limiterMerger, limiterIndependentGain, limiterSum, output };
 };
 
 export const createLiveMasteringGraph = (audio, AudioContextClass) => {

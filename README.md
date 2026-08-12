@@ -115,6 +115,15 @@ The seven primary views also use the number row or numeric keypad shortcuts
 header output meter opens Mastering directly without taking over its VU/Hz
 controls. Long sequence and library lists render and scroll within their own
 workspace instead of pushing essential transport controls out of reach.
+Space is reserved globally for the shared transport: it toggles playback from
+any focused control, prevents that control from also consuming the keystroke,
+and returns keyboard focus to the main play/pause button. Paste or use another
+non-Space editing action when a field needs a literal space.
+Up Arrow and Down Arrow select the previous or next playable track in the main
+sequence and synchronize that selection with the shared player. Playback keeps
+running when it was already active; a paused player stays paused. Focused text
+fields, selects, sliders, waveform controls, and open dialogs retain their
+normal arrow-key behavior.
 
 On phone widths, the shell removes duplicate count panels and hover-only
 tooltips, keeps the active album and primary actions above the fold, and

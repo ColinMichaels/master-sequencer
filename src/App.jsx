@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import React, { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlbumRail } from "./components/AlbumRail.jsx";
 import { AppHeader } from "./components/AppHeader.jsx";
 import { AudioExportForm } from "./components/AudioExportForm.jsx";
@@ -66,6 +66,9 @@ const SettingsWorkspace = lazyNamed(workspaceLoaders.settings, "SettingsWorkspac
 const preloadWorkspace = (view) => workspaceLoaders[view]?.().catch(() => {});
 
 const EMPTY_TRACKS = [];
+
+const arrowKeyBelongsToFocusedControl = (target) => target instanceof Element
+  && Boolean(target.closest("input, textarea, select, [contenteditable='true'], [role='textbox'], [role='slider']"));
 
 function WorkspaceFallback() {
   return <main className="workspace-loading" role="status" aria-live="polite"><span className="loading-wave" /><strong>Opening workspace…</strong></main>;
@@ -190,11 +193,6 @@ const downloadText = (content, filename, type) => {
   URL.revokeObjectURL(link.href);
 };
 
-const isTextEntryTarget = (target) => {
-  if (typeof Element === "undefined" || !(target instanceof Element)) return false;
-  return Boolean(target.closest("input, textarea, select, [contenteditable='true'], [role='textbox']"));
-};
-
 export default function App() {
   const project = useProjectData();
   const { appearance, resolvedMode } = useAppearance(project.state?.settings?.appearance);
@@ -220,6 +218,7 @@ export default function App() {
   const [assetTrackId, setAssetTrackId] = useState("");
   const [firstRunSeen, setFirstRunSeen] = useState(() => hasSeenFirstRunGuide());
   const [firstRunDismissed, setFirstRunDismissed] = useState(false);
+  const transportPlaybackButtonRef = useRef(null);
   const configuredArtistName = useMemo(() => projectArtistNameCommand(project.state), [project.state]);
   const activeAlbumRecord = useMemo(() => project.state?.albums.find((album) => album.id === project.state.activeAlbumId) || project.state?.albums[0], [project.state?.activeAlbumId, project.state?.albums]);
   const activeAlbum = useMemo(() => activeAlbumRecord ? { ...activeAlbumRecord, artist: configuredArtistName } : activeAlbumRecord, [activeAlbumRecord, configuredArtistName]);
@@ -339,16 +338,36 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    // Space is an application-level transport command by product design. Capture
+    // it before focused controls can toggle themselves or insert whitespace.
     const toggleTransportWithSpace = (event) => {
       if ((event.code !== "Space" && event.key !== " ") || event.repeat || event.isComposing) return;
-      if (event.altKey || event.ctrlKey || event.metaKey || isTextEntryTarget(event.target)) return;
+      if (event.altKey || event.ctrlKey || event.metaKey) return;
       event.preventDefault();
+      event.stopImmediatePropagation();
+      transportPlaybackButtonRef.current?.focus({ preventScroll: true });
       if (transport.current) transport.togglePlayback();
       else if (sequenceAlbum?.tracks.length) transport.playSequence(sequenceAlbum);
     };
     window.addEventListener("keydown", toggleTransportWithSpace, { capture: true });
     return () => window.removeEventListener("keydown", toggleTransportWithSpace, { capture: true });
   }, [sequenceAlbum, transport.current, transport.playSequence, transport.togglePlayback]);
+
+  useEffect(() => {
+    // Track navigation is global only when arrows are not owned by an editable,
+    // selectable, rotary, waveform, or modal control.
+    const navigateMainSequenceWithArrows = (event) => {
+      const direction = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
+      if (!direction || event.repeat || event.isComposing || event.defaultPrevented) return;
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      if (arrowKeyBelongsToFocusedControl(event.target) || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      transport.navigateSequence(sequenceAlbum, direction);
+    };
+    window.addEventListener("keydown", navigateMainSequenceWithArrows, { capture: true });
+    return () => window.removeEventListener("keydown", navigateMainSequenceWithArrows, { capture: true });
+  }, [sequenceAlbum, transport.navigateSequence]);
 
   const updateAppearance = (patch) => project.updateState((draft) => {
     updateAppearanceCommand(draft, patch);
@@ -765,8 +784,8 @@ export default function App() {
           {activeView === "settings" && <SettingsWorkspace state={project.state} roots={project.roots} scan={project.scan} watching={project.watching} scanning={project.scanning} onlineApp={api.onlineApp} projectArtistName={configuredArtistName} currentProject={currentProject} projects={project.projects} projectBusy={project.projectOperation} revealPrivateFilenames={revealPrivateFilenames} appearance={appearance} resolvedMode={resolvedMode} onProjectIdentityChange={saveProjectIdentity} onAppearanceChange={updateAppearance} onTogglePrivate={(checked) => project.updateState((draft) => { draft.settings ||= {}; draft.settings.revealPrivateFilenames = checked; })} onAddRoot={project.addRoot} onRemoveRoot={project.removeRoot} onChooseSources={project.chooseSources} onRescan={project.rescan} onImportState={importState} onOpenProjects={() => setModal("projects")} onNewProject={() => setModal("new-project")} onExportBundle={exportPortableBundle} />}
         </Suspense>
       </div>
-      <TransportBar audioRef={transport.audioRef} audioHandlers={transport.audioHandlers} current={transport.current} status={transport.status} activeAlbum={sequenceAlbum} visual={transportVisual} playing={transport.playing} currentTime={transport.currentTime} mediaDuration={transport.mediaDuration} liveMasteringLabel={liveMasteringLabel} resetArmed={resetArmed} onTogglePlayback={transport.togglePlayback} onSeek={transport.seek} onPlaySequence={() => transport.playSequence(sequenceAlbum)} onResetOrder={resetOrder} onExport={exportSequence} />
-      <div className="status-strip"><span role="status" aria-live="polite">{project.saveStatus}</span><span>{api.onlineApp ? `${project.library.length} audio files available · changes stay in this browser` : `${project.library.length} audio files indexed · ${project.roots.length} configured path${project.roots.length === 1 ? "" : "s"}`}</span></div>
+      <TransportBar playbackButtonRef={transportPlaybackButtonRef} audioRef={transport.audioRef} audioHandlers={transport.audioHandlers} current={transport.current} status={transport.status} activeAlbum={sequenceAlbum} visual={transportVisual} playing={transport.playing} currentTime={transport.currentTime} mediaDuration={transport.mediaDuration} liveMasteringLabel={liveMasteringLabel} resetArmed={resetArmed} onTogglePlayback={transport.togglePlayback} onSeek={transport.seek} onPlaySequence={() => transport.playSequence(sequenceAlbum)} onResetOrder={resetOrder} onExport={exportSequence} />
+      <span className="sr-only" role="status" aria-live="polite" data-project-save-status>{project.saveStatus}</span>
       {showFirstRunGuide && (
         <FirstRunGuide
           title={modal === "help" ? "Project Sequencer Help & Instructions" : "Welcome to Project Sequencer"}

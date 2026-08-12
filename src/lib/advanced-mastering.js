@@ -23,26 +23,66 @@ const safeId = (value, fallback) => typeof value === "string" && /^[a-z0-9]+(?:-
 const safeName = (value, fallback) => typeof value === "string" && value.trim() ? value.trim().slice(0, 80) : fallback;
 const finiteNumber = (value, fallback) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 const clamp = (value, limits) => Math.min(limits.maximum, Math.max(limits.minimum, finiteNumber(value, limits.minimum)));
+const normalizeBoolean = (value, fallback) => typeof value === "boolean" ? value : fallback;
+
+const ADVANCED_EQ_DEFAULTS = Object.freeze({
+  lowMidBand: Object.freeze({ frequencyHz: 400, gainDb: 0, q: 1 }),
+  highMidBand: Object.freeze({ frequencyHz: 1_600, gainDb: 0, q: 1 }),
+  outputGainDb: 0,
+});
 
 export const processorDefinition = (typeId) => ADVANCED_PROCESSOR_CATALOG.find((definition) => definition.typeId === typeId);
 
 export const processorDefaultParameters = (typeId) => {
   const bus = normalizeMasterBus();
-  if (typeId === ADVANCED_PROCESSOR_TYPES.eq) return { ...bus.eq, enabled: true };
-  if (typeId === ADVANCED_PROCESSOR_TYPES.compressor) return { ...bus.compressor, enabled: true };
+  if (typeId === ADVANCED_PROCESSOR_TYPES.eq) return {
+    enabled: true,
+    lowShelf: bus.eq.lowShelf,
+    lowMidBand: { ...ADVANCED_EQ_DEFAULTS.lowMidBand },
+    highMidBand: { ...ADVANCED_EQ_DEFAULTS.highMidBand },
+    highShelf: bus.eq.highShelf,
+    outputGainDb: ADVANCED_EQ_DEFAULTS.outputGainDb,
+  };
+  if (typeId === ADVANCED_PROCESSOR_TYPES.compressor) return { ...bus.compressor, enabled: true, sidechainEnabled: false, sidechainFilterHz: 120 };
   if (typeId === ADVANCED_PROCESSOR_TYPES.output) return { outputGainDb: bus.outputGainDb };
-  if (typeId === ADVANCED_PROCESSOR_TYPES.limiter) return { ...bus.limiter, enabled: true, oversample: 4 };
+  if (typeId === ADVANCED_PROCESSOR_TYPES.limiter) return { ...bus.limiter, enabled: true, oversample: 4, stereoLinkPercent: 100 };
   return {};
 };
 
 const normalizeEq = (value) => {
-  const normalized = normalizeMasterBus({ eq: { ...asObject(value), enabled: true } }).eq;
-  return { ...normalized, enabled: true };
+  const source = asObject(value);
+  const legacy = normalizeMasterBus({ eq: { ...source, enabled: true } }).eq;
+  const legacyMid = legacy.midBand;
+  const lowMidSource = Object.keys(asObject(source.lowMidBand)).length
+    ? asObject(source.lowMidBand)
+    : legacyMid.frequencyHz <= MASTERING_LIMITS.lowMidBandFrequencyHz.maximum ? legacyMid : ADVANCED_EQ_DEFAULTS.lowMidBand;
+  const highMidSource = Object.keys(asObject(source.highMidBand)).length
+    ? asObject(source.highMidBand)
+    : legacyMid.frequencyHz > MASTERING_LIMITS.lowMidBandFrequencyHz.maximum ? legacyMid : ADVANCED_EQ_DEFAULTS.highMidBand;
+  const normalizeMidBand = (band, defaults, frequencyLimits) => ({
+    frequencyHz: clamp(band.frequencyHz ?? defaults.frequencyHz, frequencyLimits),
+    gainDb: clamp(band.gainDb ?? defaults.gainDb, MASTERING_LIMITS.eqGainDb),
+    q: clamp(band.q ?? defaults.q, MASTERING_LIMITS.midBandQ),
+  });
+  return {
+    enabled: true,
+    lowShelf: legacy.lowShelf,
+    lowMidBand: normalizeMidBand(lowMidSource, ADVANCED_EQ_DEFAULTS.lowMidBand, MASTERING_LIMITS.lowMidBandFrequencyHz),
+    highMidBand: normalizeMidBand(highMidSource, ADVANCED_EQ_DEFAULTS.highMidBand, MASTERING_LIMITS.highMidBandFrequencyHz),
+    highShelf: legacy.highShelf,
+    outputGainDb: clamp(source.outputGainDb ?? ADVANCED_EQ_DEFAULTS.outputGainDb, MASTERING_LIMITS.eqOutputGainDb),
+  };
 };
 
 const normalizeCompressor = (value) => {
-  const normalized = normalizeMasterBus({ compressor: { ...asObject(value), enabled: true } }).compressor;
-  return { ...normalized, enabled: true };
+  const source = asObject(value);
+  const normalized = normalizeMasterBus({ compressor: { ...source, enabled: true } }).compressor;
+  return {
+    ...normalized,
+    enabled: true,
+    sidechainEnabled: normalizeBoolean(source.sidechainEnabled, false),
+    sidechainFilterHz: clamp(source.sidechainFilterHz ?? 120, MASTERING_LIMITS.compressorSidechainFilterHz),
+  };
 };
 
 const normalizeOutput = (value) => ({ outputGainDb: clamp(asObject(value).outputGainDb ?? 0, MASTERING_LIMITS.outputGainDb) });
@@ -50,7 +90,12 @@ const normalizeOutput = (value) => ({ outputGainDb: clamp(asObject(value).output
 const normalizeLimiter = (value) => {
   const source = asObject(value);
   const normalized = normalizeMasterBus({ limiter: { ...source, enabled: true } }).limiter;
-  return { ...normalized, enabled: true, oversample: [1, 2, 4].includes(Number(source.oversample)) ? Number(source.oversample) : 4 };
+  return {
+    ...normalized,
+    enabled: true,
+    oversample: [2, 4, 8].includes(Number(source.oversample)) ? Number(source.oversample) : 4,
+    stereoLinkPercent: clamp(source.stereoLinkPercent ?? 100, MASTERING_LIMITS.limiterStereoLinkPercent),
+  };
 };
 
 export const normalizeProcessorParameters = (typeId, value) => {

@@ -70,6 +70,74 @@ function WaveformMarker({ kind, label, value, minimum, maximum, duration, onChan
   );
 }
 
+function WaveformFadeHandle({ kind, label, value, maximum, duration, origin, onChange }) {
+  const updateValue = (next) => {
+    const rounded = roundMillis(clamp(next, 0, maximum));
+    if (Math.abs(rounded - value) < 0.0005) return;
+    onChange(rounded);
+  };
+  const updateFromPointer = (event) => {
+    const bounds = event.currentTarget.parentElement.getBoundingClientRect();
+    if (!bounds.width) return;
+    const pointerTime = clamp((event.clientX - bounds.left) / bounds.width, 0, 1) * duration;
+    updateValue(kind === "start" ? pointerTime - origin : origin - pointerTime);
+  };
+  const handlePointerDown = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    updateFromPointer(event);
+  };
+  const handlePointerMove = (event) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) updateFromPointer(event);
+  };
+  const handlePointerUp = (event) => {
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+    updateFromPointer(event);
+    event.currentTarget.releasePointerCapture(event.pointerId);
+  };
+  const handlePointerCancel = (event) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  };
+  const handleKeyDown = (event) => {
+    const step = event.altKey ? 0.01 : event.shiftKey ? 1 : 0.1;
+    let next = value;
+    if (event.key === "ArrowLeft" || event.key === "ArrowDown") next -= step;
+    else if (event.key === "ArrowRight" || event.key === "ArrowUp") next += step;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = maximum;
+    else return;
+    event.preventDefault();
+    updateValue(next);
+  };
+  const handleTime = kind === "start" ? origin + value : origin - value;
+
+  return (
+    <button
+      type="button"
+      role="slider"
+      className={`waveform-fade-handle waveform-fade-handle--${kind}`}
+      style={{ left: percent(handleTime, duration) }}
+      aria-label={`${label} fade handle`}
+      aria-orientation="horizontal"
+      aria-valuemin={0}
+      aria-valuemax={maximum}
+      aria-valuenow={value}
+      aria-valuetext={`${timeLabel(value)} ${label.toLowerCase()} fade`}
+      title={`${label} fade: ${timeLabel(value)}. Drag across the waveform or use arrow keys.`}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
+      onKeyDown={handleKeyDown}
+      onClick={(event) => event.stopPropagation()}
+      onDragStart={(event) => event.preventDefault()}
+    >
+      <span aria-hidden="true">{timeLabel(value)}</span>
+    </button>
+  );
+}
+
 export function WaveformEditor({
   file,
   trackTitle,
@@ -83,6 +151,7 @@ export function WaveformEditor({
   endDuration,
   playheadTime,
   onTrimChange,
+  onEndFadeChange,
   onSeek,
 }) {
   const [requestVersion, setRequestVersion] = useState(0);
@@ -103,7 +172,9 @@ export function WaveformEditor({
   const duration = Math.max(0.1, file.duration || 0.1);
   const keptDuration = Math.max(0.1, trimEnd - trimStart);
   const showEndFade = ["fade", "crossfade"].includes(endMode) && endDuration > 0;
+  const visibleEndFadeDuration = showEndFade ? endDuration : 0;
   const endFadeStart = Math.max(trimStart, trimEnd - endDuration);
+  const maximumFadeDuration = Math.max(0, keptDuration - 0.05);
   const nextCopy = nextTrackTitle ? `Next: ${nextTrackTitle}` : "Final playable track";
   const ruler = [0, 0.25, 0.5, 0.75, 1];
   const seekFromPointer = (event) => {
@@ -146,6 +217,8 @@ export function WaveformEditor({
 
         <WaveformMarker kind="start" label="Start" value={trimStart} minimum={0} maximum={Math.max(0, trimEnd - 0.1)} duration={duration} onChange={(value) => onTrimChange("trimStart", value)} />
         <WaveformMarker kind="end" label="End" value={trimEnd} minimum={Math.min(duration, trimStart + 0.1)} maximum={duration} duration={duration} onChange={(value) => onTrimChange("trimEnd", value)} />
+        <WaveformFadeHandle kind="start" label="Opening" value={fadeIn} maximum={maximumFadeDuration} duration={duration} origin={trimStart} onChange={(value) => onTrimChange("fadeIn", value)} />
+        <WaveformFadeHandle kind="end" label="Ending" value={visibleEndFadeDuration} maximum={maximumFadeDuration} duration={duration} origin={trimEnd} onChange={onEndFadeChange} />
         {Number.isFinite(playheadTime) ? <div className="waveform-playhead" style={{ left: percent(playheadTime, duration) }} aria-hidden="true" /> : null}
 
         <div className="waveform-ruler" aria-hidden="true">
@@ -159,11 +232,12 @@ export function WaveformEditor({
       <div className="waveform-readout">
         <span><i className="waveform-key waveform-key--trimmed" />Trimmed</span>
         <strong>Start {timeLabel(trimStart)}</strong>
+        {fadeIn > 0 ? <span><i className="waveform-key waveform-key--fade" />Fade in {timeLabel(fadeIn)}</span> : null}
         <span><i className="waveform-key waveform-key--kept" />Kept audio</span>
-        {showEndFade && <span><i className="waveform-key waveform-key--fade" />{endMode === "crossfade" ? "Crossfade" : "Fade out"}</span>}
+        {showEndFade && <span><i className="waveform-key waveform-key--fade" />{endMode === "crossfade" ? "Crossfade" : "Fade out"} {timeLabel(endDuration)}</span>}
         <strong>End {timeLabel(trimEnd)}</strong>
       </div>
-      <p className="waveform-help">Click the waveform to seek playback. Drag the S and E markers; arrow keys adjust 0.1s, Shift adjusts 1s, and Option adjusts 0.01s.</p>
+      <p className="waveform-help">Click the waveform to seek. Drag the S and E bars to trim; drag their small top handles inward to set fades. Arrow keys adjust 0.1s, Shift 1s, and Option 0.01s.</p>
     </section>
   );
 }

@@ -60,6 +60,20 @@ const validateEqSettings = (eq, label) => {
   validateEqBand(eq.highShelf, MASTERING_LIMITS.highShelfFrequencyHz, `${label} high shelf`);
 };
 
+const validateAdvancedEqSettings = (eq, label) => {
+  validateObject(eq, label);
+  validateBoolean(eq.enabled, `${label} enabled`);
+  validateEqBand(eq.lowShelf, MASTERING_LIMITS.lowShelfFrequencyHz, `${label} low shelf`);
+  if (eq.lowMidBand === undefined && eq.highMidBand === undefined) {
+    validateEqBand(eq.midBand, MASTERING_LIMITS.midBandFrequencyHz, `${label} legacy mid band`, { includeQ: true });
+  } else {
+    validateEqBand(eq.lowMidBand, MASTERING_LIMITS.lowMidBandFrequencyHz, `${label} low-mid band`, { includeQ: true });
+    validateEqBand(eq.highMidBand, MASTERING_LIMITS.highMidBandFrequencyHz, `${label} high-mid band`, { includeQ: true });
+  }
+  validateEqBand(eq.highShelf, MASTERING_LIMITS.highShelfFrequencyHz, `${label} high shelf`);
+  if (eq.outputGainDb !== undefined) validateNumberRange(eq.outputGainDb, MASTERING_LIMITS.eqOutputGainDb, `${label} outputGainDb`);
+};
+
 const validateCompressorSettings = (compressor, label) => {
   validateObject(compressor, label);
   validateBoolean(compressor.enabled, `${label} enabled`);
@@ -72,6 +86,12 @@ const validateCompressorSettings = (compressor, label) => {
   validateNumberRange(compressor.mix, MASTERING_LIMITS.compressorMix, `${label} mix`);
   if (!["average", "maximum"].includes(compressor.link)) throw new Error(`${label} link must be average or maximum.`);
   if (!["peak", "rms"].includes(compressor.detection)) throw new Error(`${label} detection must be peak or rms.`);
+};
+
+const validateAdvancedCompressorSettings = (compressor, label) => {
+  validateCompressorSettings(compressor, label);
+  if (compressor.sidechainEnabled !== undefined) validateBoolean(compressor.sidechainEnabled, `${label} sidechainEnabled`);
+  if (compressor.sidechainFilterHz !== undefined) validateNumberRange(compressor.sidechainFilterHz, MASTERING_LIMITS.compressorSidechainFilterHz, `${label} sidechainFilterHz`);
 };
 
 const validateLimiterSettings = (limiter, label) => {
@@ -105,14 +125,15 @@ const validateAdvancedMastering = (rack, label) => {
     if (node.definitionVersion !== 1) throw new Error(`${label} processor ${node.id} has an unsupported definition version.`);
     if (typeof node.name !== "string" || !node.name.trim() || node.name.length > 80) throw new Error(`${label} processor ${node.id} needs a name up to 80 characters.`);
     validateBoolean(node.bypass, `${label} processor ${node.id} bypass`);
-    if (node.typeId === ADVANCED_PROCESSOR_TYPES.eq) validateEqSettings(node.parameters, `${label} processor ${node.id}`);
-    else if (node.typeId === ADVANCED_PROCESSOR_TYPES.compressor) validateCompressorSettings(node.parameters, `${label} processor ${node.id}`);
+    if (node.typeId === ADVANCED_PROCESSOR_TYPES.eq) validateAdvancedEqSettings(node.parameters, `${label} processor ${node.id}`);
+    else if (node.typeId === ADVANCED_PROCESSOR_TYPES.compressor) validateAdvancedCompressorSettings(node.parameters, `${label} processor ${node.id}`);
     else if (node.typeId === ADVANCED_PROCESSOR_TYPES.output) {
       validateObject(node.parameters, `${label} processor ${node.id}`);
       validateNumberRange(node.parameters.outputGainDb, MASTERING_LIMITS.outputGainDb, `${label} processor ${node.id} outputGainDb`);
     } else {
       validateLimiterSettings(node.parameters, `${label} processor ${node.id}`);
-      if (![1, 2, 4].includes(node.parameters.oversample)) throw new Error(`${label} processor ${node.id} oversample must be 1, 2, or 4.`);
+      if (![1, 2, 4, 8].includes(node.parameters.oversample)) throw new Error(`${label} processor ${node.id} oversample must be 1, 2, 4, or 8.`);
+      if (node.parameters.stereoLinkPercent !== undefined) validateNumberRange(node.parameters.stereoLinkPercent, MASTERING_LIMITS.limiterStereoLinkPercent, `${label} processor ${node.id} stereoLinkPercent`);
     }
   }
   const expectedConnections = buildSerialConnections(rack.nodes);

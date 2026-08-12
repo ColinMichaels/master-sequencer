@@ -64,6 +64,21 @@ export function MasteringWorkspace({ album, libraryMap, presets, renderingAvaila
     const track = draft.tracks.find((item) => item.id === selectedTrackId);
     track.mastering = { ...(track.mastering || {}), [field]: value };
   });
+  const updateEndFade = (value) => onAlbumChange((draft) => {
+    const track = draft.tracks.find((item) => item.id === selectedTrackId);
+    const current = track.mastering || {};
+    const activeEnding = ["fade", "crossfade"].includes(current.endMode);
+    if (value <= 0) {
+      if (!activeEnding) return;
+      track.mastering = { ...current, endMode: "natural" };
+      return;
+    }
+    track.mastering = {
+      ...current,
+      endMode: current.endMode === "crossfade" && hasNextPlayable ? "crossfade" : "fade",
+      endDuration: value,
+    };
+  });
   const resetMastering = () => onAlbumChange((draft) => {
     const track = draft.tracks.find((item) => item.id === selectedTrackId);
     delete track.mastering;
@@ -138,7 +153,7 @@ export function MasteringWorkspace({ album, libraryMap, presets, renderingAvaila
       />
 
       <section className="mastering-tier-selector" aria-label="Mastering equipment level">
-        <div><strong>Mastering Equipment</strong><small>Basic stays intact while Premium uses its own movable rack.</small></div>
+        <div><strong>Equipment</strong></div>
         <div role="group" aria-label="Choose mastering equipment level">
           <button type="button" className={masteringPath === "basic" ? "is-active" : ""} aria-pressed={masteringPath === "basic"} onClick={() => updateMasteringPath("basic")}><span>BASIC</span><strong>Component Chain</strong><small>Fast fixed EQ · compressor · output · limiter</small></button>
           <button type="button" className={masteringPath === "advanced" ? "is-active" : ""} aria-pressed={masteringPath === "advanced"} onClick={() => updateMasteringPath("advanced")}><span>PREMIUM</span><strong>Analog Rack</strong><small>Multiple units · drag-to-patch signal order</small></button>
@@ -195,6 +210,7 @@ export function MasteringWorkspace({ album, libraryMap, presets, renderingAvaila
                 endDuration={settings.endDuration}
                 playheadTime={currentTrackId === selectedTrackId ? currentTime : null}
                 onTrimChange={updateMastering}
+                onEndFadeChange={updateEndFade}
                 onSeek={(time) => onSeekTrack(tracks.indexOf(selectedTrack), time)}
               />
 

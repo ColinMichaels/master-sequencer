@@ -11,6 +11,7 @@ const percent = (value, duration) => `${clamp((value / Math.max(0.1, duration)) 
 const timeLabel = (value) => value > 0 ? formatDuration(value, true) : "0:00";
 
 export function TransportWaveform({
+  playbackButtonRef,
   audioRef,
   audioHandlers,
   file,
@@ -84,7 +85,7 @@ export function TransportWaveform({
   return (
     <div className="transport-player">
       <audio ref={audioRef} crossOrigin="anonymous" preload="metadata" className="transport-audio-source" {...audioHandlers} />
-      <button type="button" className="transport-playback-toggle" onClick={toggle} aria-label={toggleLabel} data-tooltip={toggleLabel}>
+      <button ref={playbackButtonRef} type="button" className="transport-playback-toggle" onClick={toggle} aria-label={toggleLabel} aria-keyshortcuts="Space" data-tooltip={toggleLabel}>
         {playing ? <PauseIcon /> : <PlayIcon />}
       </button>
       <div className="transport-waveform-stack">

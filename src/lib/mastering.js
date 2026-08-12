@@ -6,9 +6,12 @@ export const MASTERING_LIMITS = Object.freeze({
   trackGainDb: range(-24, 12),
   eqGainDb: range(-12, 12),
   lowShelfFrequencyHz: range(20, 500),
+  lowMidBandFrequencyHz: range(80, 2_000),
   midBandFrequencyHz: range(80, 18_000),
+  highMidBandFrequencyHz: range(400, 12_000),
   midBandQ: range(0.1, 10),
   highShelfFrequencyHz: range(1_000, 20_000),
+  eqOutputGainDb: range(-12, 12),
   compressorThresholdDb: range(-60, 0),
   compressorRatio: range(1, 20),
   compressorAttackMs: range(0.01, 2_000),
@@ -16,10 +19,12 @@ export const MASTERING_LIMITS = Object.freeze({
   compressorKnee: range(1, 8),
   compressorMakeupGainDb: range(0, 24),
   compressorMix: range(0, 1),
+  compressorSidechainFilterHz: range(20, 1_000),
   outputGainDb: range(-24, 12),
   limiterCeilingDbfs: range(-9, 0),
   limiterAttackMs: range(0.1, 80),
   limiterReleaseMs: range(1, 8_000),
+  limiterStereoLinkPercent: range(0, 100),
 });
 
 export const MASTER_BUS_DEFAULTS = Object.freeze({

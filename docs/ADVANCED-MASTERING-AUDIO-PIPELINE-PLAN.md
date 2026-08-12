@@ -2,9 +2,15 @@
 
 Plan date: 2026-08-11
 
-Status: serial rack foundation implemented; native Premium DSP and VST3 host remain planned; not a release approval
+Status: serial rack and complete interactive faceplates implemented; analog-modelled native DSP and VST3 host remain planned; not a release approval
 
 ![Premium mastering rack concept](./concepts/premium-mastering-rack-concept-v1.png)
+
+The aged-hardware refinement is now the direct premium-equipment visual source.
+Its control-free faceplates are prepared as project assets, while semantic
+controls and live meter needles remain interactive layers:
+
+![Premium mastering rack realism refinement](./concepts/premium-mastering-rack-realism-v2.png)
 
 ## Implementation checkpoint — 2026-08-11
 
@@ -23,12 +29,15 @@ Implemented on the `codex/advanced-mastering-rack` branch:
   and Premium audition paths remain separately gain-routed, and clean
   references/rendered previews retain their direct bypass.
 - The authoritative FFmpeg graph consumes the same ordered Premium nodes.
-  Limiter prints support 1x, 2x, or 4x processing rate and return to the
+  Limiter prints support 2x, 4x, or 8x processing rate and return to the
   documented 48 kHz output. Cue sheets and schema-3 render manifests record the
   selected tier, rack order, bypass state, parameters, and connections.
-- The CSS/SVG rack follows Concept A with a patch lane, rack rails, screws,
-  brushed faceplates, physical knobs, a compressor VU, technical curves,
-  responsive phone controls, and native accessible inputs.
+- The premium equipment uses control-free edits derived from the accepted v2
+  mockup for its faceplates, screws, labels, rack ears, wear, and surface
+  texture. The compressor uses the separately supplied photoreal v3 dual VU
+  housing. Native accessible controls replace photographed hardware at its
+  exact centers and live needles animate inside the pictured VU, so no knob,
+  switch, lamp, or meter reading appears doubled.
 - Unit, state-migration, live-graph, FFmpeg integration, and rendered browser
   coverage prove repeated instances, drag-to-repatch persistence, Basic/Premium
   isolation, oversampled printing, mobile containment, and source checksums.
@@ -40,11 +49,43 @@ Still intentionally gated:
   active. Phase 5 still requires the isolated, signed native companion, SDK and
   license review, crash recovery, latency compensation, state chunks, and a
   generic fallback editor.
-- The built-in rack currently shares the proven Basic Web Audio/FFmpeg
-  algorithms, with order, repetition, limiter print oversampling, and hardware
-  interaction as its added capabilities. The C++ analog-modelled DSP core,
-  BS.1770 true-peak qualification, richer EQ bands, and colored compressor
-  modes remain Phase 3 work and must not be claimed as complete.
+- The built-in rack extends the proven Basic Web Audio/FFmpeg algorithms with
+  two independently processed mid bands, per-EQ output trim, order,
+  repetition, detector high-pass sidechain compression, continuously variable
+  limiter stereo linking, limiter print oversampling, and complete hardware
+  interaction. The C++ analog-modelled DSP core, BS.1770 true-peak
+  qualification, external key input, and colored compressor modes remain Phase
+  3 work and must not be claimed as complete.
+
+## Faceplate control duty audit — 2026-08-12
+
+The Premium UI intentionally presents the equipment as real studio hardware.
+It does not expose engineering caveats on the faceplate. This section is the
+authority for controls whose current signal duty differs between browser live
+audition and the authoritative printed result.
+
+| Equipment control | Interaction and persistence | Browser live path | FFmpeg print path |
+| --- | --- | --- | --- |
+| EQ low shelf frequency/gain | Knobs move and save | Real biquad shelf | Real `lowshelf` |
+| EQ low-mid frequency/gain | Knobs move and save | Real peaking band | Real `equalizer` band |
+| EQ high-mid frequency/gain | Knobs move and save | Real peaking band | Real `equalizer` band |
+| EQ high shelf frequency/gain | Knobs move and save | Real biquad shelf | Real `highshelf` |
+| EQ output | Knob moves and saves | Real gain stage | Real volume stage |
+| Compressor threshold, ratio, attack, release, mix | Knobs move and save | Real Web Audio compression | Real `acompressor` parameters |
+| Compressor sidechain filter and SC IN | Knob, switch, and lamp move, toggle, and save | Real bass-exclusion compression: adjustable complementary low/high paths preserve the low program band while compression acts above the crossover | Real split detector branch through `highpass` into `sidechaincompress`; program bass remains full-range |
+| Compressor makeup, knee, detection, and link exact controls | Controls save | Makeup and knee are real; detector/link behavior follows Web Audio's fixed implementation | Real `acompressor` makeup, knee, detection, and link parameters |
+| Compressor VU needles | Live measured animation | Reads the active compressor reduction | Reflects live audition only; prints record settings, not meter animation |
+| Limiter ceiling, lookahead, and release | Knobs move and save | Real limiter threshold/time constants using the browser's approximate dynamics stage | Real `alimiter` ceiling, attack/lookahead, release, and latency handling |
+| Limiter 2x, 4x, and 8x selector lamps | Each lamp button toggles and saves | Selection is retained; the audio device rate is unchanged | Real upsample → limit → 48 kHz downsample print path |
+| Limiter stereo link | Knob moves and saves | Real unity-safe linear crossfade between linked stereo limiting and independent left/right limiters | Real unity-safe linear blend of linked `alimiter` and independent channel limiters |
+| Limiter gain-reduction lamps | Live measured animation | Reads active limiter reduction | Reflects live audition only; prints record settings, not lamp animation |
+| IN, BYPASS, power, and status lamps | Switches toggle; lamps follow the circuit state | Real processor/rack bypass routing | Bypassed nodes are omitted from the print graph |
+| Master Output level and IN switch | Knob/switch move and save | Real gain and bypass | Real volume stage and bypass |
+
+Knobs remain adjustable while a processor or the complete rack is bypassed, as
+on physical hardware. Those edits become audible when the circuit returns IN.
+Printed legends, screws, rack ears, logos, and fixed scale marks are decorative
+faceplate artwork rather than controls.
 
 ## Product decision
 
@@ -165,8 +206,8 @@ Use it for the limiter, metering, and generic plug-in shell inside Concept A.
 
 - Use original, brand-neutral faceplates. Borrow broad physical traits, never a
   manufacturer logo, exact panel layout, product name, or trade dress.
-- Render controls in CSS/SVG/Canvas so they scale, animate, theme, and remain
-  interactive. The concept image is a direction board, not a raster UI asset.
+- For the accepted v2 premium rack, use the mockup faceplate slices as the
+  visual layer and keep code-native controls as the interactive layer.
 - Respect physical logic: labels align to controls, ticks follow actual ranges,
   switches have discrete states, meters show measured signals, and indicator
   lamps illuminate only when their state is active.

@@ -187,10 +187,12 @@ export const buildAdvancedMasteringFilters = (advancedMastering = {}) => {
     const parameters = node.parameters;
     if (node.typeId === ADVANCED_PROCESSOR_TYPES.eq) {
       if (parameters.lowShelf.gainDb !== 0) filters.push(`lowshelf=f=${seconds(parameters.lowShelf.frequencyHz)}:g=${seconds(parameters.lowShelf.gainDb)}:p=2`);
-      if (parameters.midBand.gainDb !== 0) filters.push(`equalizer=f=${seconds(parameters.midBand.frequencyHz)}:t=q:w=${seconds(parameters.midBand.q)}:g=${seconds(parameters.midBand.gainDb)}`);
+      if (parameters.lowMidBand.gainDb !== 0) filters.push(`equalizer=f=${seconds(parameters.lowMidBand.frequencyHz)}:t=q:w=${seconds(parameters.lowMidBand.q)}:g=${seconds(parameters.lowMidBand.gainDb)}`);
+      if (parameters.highMidBand.gainDb !== 0) filters.push(`equalizer=f=${seconds(parameters.highMidBand.frequencyHz)}:t=q:w=${seconds(parameters.highMidBand.q)}:g=${seconds(parameters.highMidBand.gainDb)}`);
       if (parameters.highShelf.gainDb !== 0) filters.push(`highshelf=f=${seconds(parameters.highShelf.frequencyHz)}:g=${seconds(parameters.highShelf.gainDb)}:p=2`);
+      if (parameters.outputGainDb !== 0) filters.push(`volume=${seconds(parameters.outputGainDb)}dB`);
     } else if (node.typeId === ADVANCED_PROCESSOR_TYPES.compressor) {
-      filters.push([
+      const compressorFilter = [
         `acompressor=threshold=${decibelsToAmplitude(parameters.thresholdDb)}`,
         `ratio=${seconds(parameters.ratio)}`,
         `attack=${seconds(parameters.attackMs)}`,
@@ -200,18 +202,27 @@ export const buildAdvancedMasteringFilters = (advancedMastering = {}) => {
         `mix=${seconds(parameters.mix)}`,
         `link=${parameters.link}`,
         `detection=${parameters.detection}`,
-      ].join(":"));
+      ].join(":");
+      if (parameters.sidechainEnabled) filters.push(`asplit=2[compressor_program][compressor_detector];[compressor_detector]highpass=f=${seconds(parameters.sidechainFilterHz)}:p=2[compressor_sc];[compressor_program][compressor_sc]sidechaincompress=${compressorFilter.slice("acompressor=".length)}`);
+      else filters.push(compressorFilter);
     } else if (node.typeId === ADVANCED_PROCESSOR_TYPES.output) {
       if (parameters.outputGainDb !== 0) filters.push(`volume=${seconds(parameters.outputGainDb)}dB`);
     } else if (node.typeId === ADVANCED_PROCESSOR_TYPES.limiter) {
       if (parameters.oversample > 1) filters.push(`aresample=${48_000 * parameters.oversample}`);
-      filters.push([
+      const limiterFilter = [
         `alimiter=limit=${decibelsToAmplitude(parameters.ceilingDbfs)}`,
         `attack=${seconds(parameters.attackMs)}`,
         `release=${seconds(parameters.releaseMs)}`,
         "level=false",
         "latency=true",
-      ].join(":"));
+      ].join(":");
+      if (parameters.stereoLinkPercent >= 99.5) filters.push(limiterFilter);
+      else if (parameters.stereoLinkPercent <= 0.5) filters.push(`channelsplit=channel_layout=stereo[left][right];[left]${limiterFilter}[left_limited];[right]${limiterFilter}[right_limited];[left_limited][right_limited]join=inputs=2:channel_layout=stereo`);
+      else {
+        const linkedMix = seconds(parameters.stereoLinkPercent / 100);
+        const independentMix = seconds(1 - parameters.stereoLinkPercent / 100);
+        filters.push(`asplit=2[linked_in][independent_in];[linked_in]${limiterFilter},volume=${linkedMix}[linked_limited];[independent_in]channelsplit=channel_layout=stereo[left][right];[left]${limiterFilter}[left_limited];[right]${limiterFilter}[right_limited];[left_limited][right_limited]join=inputs=2:channel_layout=stereo,volume=${independentMix}[independent_limited];[linked_limited][independent_limited]amix=inputs=2:normalize=0`);
+      }
       if (parameters.oversample > 1) filters.push("aresample=48000");
     }
   }

@@ -97,6 +97,14 @@ risk reduction and user value rather than feature count.
 
 - Dialogs focus their first useful control, keep keyboard focus inside, close
   with Escape, and restore focus to the opener.
+- Space is exclusively owned by the shared transport in capture phase. It
+  toggles playback from text fields, selects, sliders, switches, and buttons,
+  suppresses the focused control's native Space action, and focuses the main
+  play/pause button.
+- Up Arrow and Down Arrow navigate the shared player through the main sequence,
+  skip unavailable sources, preserve play/pause intent, and keep the selected
+  row visible. Editable controls, sliders, waveform controls, and modal dialogs
+  retain their own arrow-key behavior.
 - Audio playback reports source failures and continues to the next available
   track during a sequence instead of silently stalling.
 - Track-record deletion confirmation expires after five seconds.

@@ -49,16 +49,31 @@ const displayControlValue = (value, suffix, precision) => {
   return `${number.toFixed(digits)}${suffix ? `${separator}${suffix}` : ""}`;
 };
 
-export function RotaryControl({ label, value, limits, minimum, maximum, step = 0.1, suffix = "", precision, scale = "linear", disabled = false, compact = false, onChange }) {
+const angleFromDialMarks = (value, dialMarks, fallback) => {
+  if (!dialMarks?.length) return fallback;
+  const marks = [...dialMarks].sort((left, right) => left.value - right.value);
+  if (value <= marks[0].value) return marks[0].angle;
+  if (value >= marks.at(-1).value) return marks.at(-1).angle;
+  const upperIndex = marks.findIndex((mark) => mark.value >= value);
+  const lower = marks[upperIndex - 1];
+  const upper = marks[upperIndex];
+  const progress = (value - lower.value) / (upper.value - lower.value);
+  return lower.angle + progress * (upper.angle - lower.angle);
+};
+
+export function RotaryControl({ label, value, limits, minimum, maximum, step = 0.1, suffix = "", precision, scale = "linear", dialMarks, disabled = false, compact = false, className = "", onChange }) {
+  const [adjusting, setAdjusting] = useState(false);
   const min = limits?.minimum ?? minimum;
   const max = limits?.maximum ?? maximum;
   const safeValue = clamp(Number(value), min, max);
   const position = clamp(normalizedValue(safeValue, min, max, scale), 0, 1);
-  const angle = -135 + position * 270;
+  const angle = angleFromDialMarks(safeValue, dialMarks, -135 + position * 270);
   const rangeStep = scale === "log" ? 0.001 : step;
   const rangeValue = scale === "log" ? position : safeValue;
   const rangeMin = scale === "log" ? 0 : min;
   const rangeMax = scale === "log" ? 1 : max;
+  const displayValue = displayControlValue(safeValue, suffix, precision);
+  const isAdjustmentKey = (key) => ["ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp", "End", "Home", "PageDown", "PageUp"].includes(key);
   const change = (event) => {
     const raw = Number(event.target.value);
     const next = scale === "log" ? valueFromPosition(raw, min, max, scale) : raw;
@@ -67,24 +82,35 @@ export function RotaryControl({ label, value, limits, minimum, maximum, step = 0
   };
 
   return (
-    <label className={`rotary-control ${compact ? "rotary-control--compact" : ""} ${disabled ? "is-disabled" : ""}`} style={{ "--knob-angle": `${angle}deg` }}>
+    <label className={`rotary-control ${compact ? "rotary-control--compact" : ""} ${disabled ? "is-disabled" : ""} ${adjusting ? "is-adjusting" : ""} ${className}`} style={{ "--knob-angle": `${angle}deg` }} data-control-value={displayValue} data-knob-angle={Number(angle.toFixed(2))}>
       <span className="rotary-control-label">{label}</span>
       <span className="rotary-knob-wrap">
         <span className="rotary-ticks" aria-hidden="true" />
         <span className="rotary-knob" aria-hidden="true"><i /></span>
         <input
           type="range"
+          draggable="false"
           min={rangeMin}
           max={rangeMax}
           step={rangeStep}
           value={rangeValue}
           disabled={disabled}
           aria-label={`${label} graphical control`}
-          aria-valuetext={displayControlValue(safeValue, suffix, precision)}
+          aria-valuemin={min}
+          aria-valuemax={max}
+          aria-valuenow={safeValue}
+          aria-valuetext={displayValue}
+          onDragStart={(event) => event.preventDefault()}
+          onPointerDown={() => setAdjusting(true)}
+          onPointerUp={() => setAdjusting(false)}
+          onPointerCancel={() => setAdjusting(false)}
+          onKeyDown={(event) => { if (isAdjustmentKey(event.key)) setAdjusting(true); }}
+          onKeyUp={(event) => { if (isAdjustmentKey(event.key)) setAdjusting(false); }}
+          onBlur={() => setAdjusting(false)}
           onChange={change}
         />
       </span>
-      <output>{displayControlValue(safeValue, suffix, precision)}</output>
+      <output aria-live="off">{displayValue}</output>
     </label>
   );
 }
@@ -206,6 +232,43 @@ function useLiveGainReduction({ active, meteringRef, nodeKey }) {
   }, [active, meteringRef, nodeKey]);
 
   return reductionDb;
+}
+
+export function HardwareGainReductionMeter({ meteringRef, meterNodeKey = "compressor", active, variant = "" }) {
+  const reductionDb = useLiveGainReduction({ active, meteringRef, nodeKey: meterNodeKey });
+  const displayReduction = clamp(reductionDb, 0, 20);
+  // The photographed scale places 0 dB at +14° and 20 dB at −34° from vertical.
+  const needleAngle = 14 - (displayReduction / 20) * 48;
+  return (
+    <div
+      className={`premium-vu ${variant ? `premium-vu--${variant}` : ""} ${active ? "is-live" : ""}`}
+      role="meter"
+      aria-label={`Gain reduction ${displayReduction.toFixed(1)} decibels`}
+      aria-valuemin="0"
+      aria-valuemax="20"
+      aria-valuenow={displayReduction.toFixed(1)}
+      style={{ "--vu-needle-angle": `${needleAngle}deg` }}
+    >
+      <span>GAIN REDUCTION</span>
+      <div className="premium-vu-scale" aria-hidden="true"><i>20</i><i>10</i><i>5</i><i>3</i><i>1</i><i>0</i></div>
+      <b className="premium-vu-needle premium-vu-needle--left" aria-hidden="true" />
+      {variant === "mockup-dual" ? <b className="premium-vu-needle premium-vu-needle--right" aria-hidden="true" /> : null}
+      <em aria-hidden="true" />
+      <output>{active ? `−${displayReduction.toFixed(1)} dB` : "GR IDLE"}</output>
+    </div>
+  );
+}
+
+const LIMITER_LED_THRESHOLDS = Object.freeze([30, 20, 15, 10, 7, 5, 3, 2, 1, 0.5, 0.1]);
+
+export function HardwareGainReductionLeds({ meteringRef, meterNodeKey = "limiter", active }) {
+  const reductionDb = useLiveGainReduction({ active, meteringRef, nodeKey: meterNodeKey });
+  const displayReduction = clamp(reductionDb, 0, LIMITER_LED_THRESHOLDS[0]);
+  return (
+    <div className={`premium-gr-leds ${active ? "is-live" : ""}`} role="meter" aria-label={`Limiter gain reduction ${displayReduction.toFixed(1)} decibels`} aria-valuemin="0" aria-valuemax={LIMITER_LED_THRESHOLDS[0]} aria-valuenow={displayReduction.toFixed(1)}>
+      {LIMITER_LED_THRESHOLDS.map((threshold) => <i key={threshold} className={displayReduction >= threshold ? "is-lit" : ""} aria-hidden="true" />)}
+    </div>
+  );
 }
 
 export function CompressorTransferGraph({ compressor, meteringRef, active, meterNodeKey = "compressor" }) {

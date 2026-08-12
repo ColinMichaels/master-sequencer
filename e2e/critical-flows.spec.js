@@ -4,6 +4,29 @@ import { FIRST_RUN_GUIDE_STORAGE_KEY, FIRST_RUN_GUIDE_STORAGE_VALUE } from "../s
 
 const origin = "http://127.0.0.1:4197";
 
+const parseCssColor = (value) => {
+  const hex = value.match(/^#([\da-f]{6})$/i)?.[1];
+  if (hex) return [0, 2, 4].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16));
+  const rgb = value.match(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/i);
+  if (rgb) return rgb.slice(1, 4).map(Number);
+  const srgb = value.match(/color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)/i);
+  if (srgb) return srgb.slice(1, 4).map((channel) => Number(channel) * 255);
+  throw new Error(`Unsupported CSS color: ${value}`);
+};
+
+const contrastRatio = (foreground, background) => {
+  const luminance = (value) => {
+    const channels = parseCssColor(value).map((channel) => {
+      const normalized = channel / 255;
+      return normalized <= 0.04045 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+    });
+    return (0.2126 * channels[0]) + (0.7152 * channels[1]) + (0.0722 * channels[2]);
+  };
+  const foregroundLuminance = luminance(foreground);
+  const backgroundLuminance = luminance(background);
+  return (Math.max(foregroundLuminance, backgroundLuminance) + 0.05) / (Math.min(foregroundLuminance, backgroundLuminance) + 0.05);
+};
+
 test.beforeEach(async ({ request, page }, testInfo) => {
   if (!testInfo.title.includes("first-time visitors")) {
     await page.addInitScript(({ key, value }) => localStorage.setItem(key, value), {
@@ -153,6 +176,10 @@ test("the header master meter opens Mastering without hijacking its view control
 
 test("Mastering keeps delivery compact and reveals secondary guidance on demand", async ({ page }) => {
   await page.getByRole("button", { name: "Mastering", exact: true }).click();
+  const equipmentSelector = page.getByRole("region", { name: "Mastering equipment level" });
+  await expect(equipmentSelector.getByText("Equipment", { exact: true })).toBeVisible();
+  await expect(equipmentSelector.getByText("Mastering Equipment", { exact: true })).toHaveCount(0);
+  await expect(equipmentSelector.getByText("Basic stays intact while Premium uses its own movable rack.", { exact: true })).toHaveCount(0);
 
   const deliveryControls = page.getByRole("group", { name: "Delivery and publication controls" });
   const deliverySelect = deliveryControls.getByLabel("Print requirements");
@@ -192,22 +219,117 @@ test("Premium mastering patches repeated equipment in the same saved order used 
   const patchButtons = rack.locator(".premium-patch-bay li button");
   await expect(rack).toBeVisible();
   await expect(rack.locator(".premium-rack-unit")).toHaveCount(4);
+  await expect(rack.getByText("Harbor Signal", { exact: true })).toHaveCount(1);
+  await expect(rack.getByText("Northline Audio", { exact: true })).toHaveCount(1);
+  await expect(rack.getByText("Resolute Works", { exact: true })).toHaveCount(1);
+  await expect(rack.getByText("Ironvale Labs", { exact: true })).toHaveCount(1);
+  await expect(rack.getByRole("meter", { name: /Gain reduction/ })).toHaveAttribute("aria-valuenow", "0.0");
+  await expect(rack.locator(".premium-faceplate--eq")).toHaveCSS("background-image", /program-eq-faceplate-clean-v2\.png/);
+  await expect(rack.locator(".premium-faceplate--compressor")).toHaveCSS("background-image", /bus-compressor-faceplate-photoreal-v3\.png/);
+  await expect(rack.locator(".premium-faceplate--limiter")).toHaveCSS("background-image", /precision-limiter-faceplate-clean-v2\.png/);
+  await expect(rack.locator(".premium-vu--mockup-dual")).toHaveCSS("background-image", "none");
+  await expect.poll(() => rack.locator(".premium-vu--mockup-dual").evaluate((meter) => meter.style.getPropertyValue("--vu-needle-angle"))).toBe("14deg");
+  await expect(rack.locator(".premium-meter-drawer")).not.toHaveAttribute("open", "");
+  await expect(rack.locator(".premium-rack-unit").first()).not.toHaveAttribute("draggable", "true");
+  await expect(rack.locator(".premium-rack-unit").first().locator(".premium-drag-handle")).toHaveAttribute("draggable", "true");
+  const compressorThreshold = rack.getByRole("slider", { name: "Threshold graphical control", exact: true });
+  const orderBeforeKnobMove = await patchButtons.allTextContents();
+  await compressorThreshold.fill("-40");
+  await expect(compressorThreshold).toHaveValue("-40");
+  await expect(patchButtons).toHaveText(orderBeforeKnobMove);
+  const lowFrequencyControl = rack.locator(".premium-mock-control--eq-low-frequency");
+  const lowFrequency = rack.getByRole("slider", { name: "Low frequency graphical control", exact: true });
+  await lowFrequency.focus();
+  await expect(lowFrequencyControl.locator("output")).toHaveCSS("font-size", "18px");
+  await lowFrequency.fill("0.75");
+  const affectedFrequency = await lowFrequency.getAttribute("aria-valuenow");
+  const affectedFrequencyText = await lowFrequency.getAttribute("aria-valuetext");
+  expect(Number(affectedFrequency)).toBeGreaterThan(1);
+  expect(affectedFrequencyText).toBe(`${Number(affectedFrequency).toFixed(0)} Hz`);
+  await expect(lowFrequencyControl.locator("output")).toHaveText(affectedFrequencyText);
+  const lowGainControl = rack.locator(".premium-mock-control--eq-low-gain");
+  const lowGain = rack.getByRole("slider", { name: "Low boost / cut graphical control", exact: true });
+  await lowGain.fill("0");
+  await expect(lowGainControl).toHaveAttribute("data-knob-angle", "0");
+  await lowFrequency.fill((Math.log(60 / 20) / Math.log(500 / 20)).toFixed(3));
+  await expect(lowFrequencyControl).toHaveAttribute("data-knob-angle", "0");
+  const compressorRatioControl = rack.locator(".premium-mock-control--comp-ratio");
+  await rack.getByRole("slider", { name: "Ratio graphical control", exact: true }).fill((Math.log(4) / Math.log(20)).toFixed(3));
+  await expect(compressorRatioControl).toHaveAttribute("data-knob-angle", "-45");
+  const limiterStereoLinkControl = rack.locator(".premium-mock-control--limiter-stereo-link");
+  await rack.getByRole("slider", { name: "Stereo link graphical control", exact: true }).fill("50");
+  await expect(limiterStereoLinkControl).toHaveAttribute("data-knob-angle", "0");
+  const eqInSwitch = rack.getByRole("checkbox", { name: "Program Equalizer IN switch", exact: true });
+  const eqBypassSwitch = rack.getByRole("checkbox", { name: "Program Equalizer BYPASS switch", exact: true });
+  const compressorInSwitch = rack.getByRole("checkbox", { name: "Bus Compressor IN switch", exact: true });
+  const compressorBypassSwitch = rack.getByRole("checkbox", { name: "Bus Compressor BYPASS switch", exact: true });
+  await expect(eqInSwitch).toBeChecked();
+  await expect(eqBypassSwitch).not.toBeChecked();
+  await expect(compressorInSwitch).toBeChecked();
+  await expect(compressorBypassSwitch).not.toBeChecked();
+  const compressorPower = rack.getByRole("button", { name: "Bus Compressor power", exact: true });
+  await expect(compressorPower).toHaveAttribute("aria-pressed", "true");
+  await compressorPower.click();
+  await expect(compressorPower).toHaveAttribute("aria-pressed", "false");
+  await expect(compressorBypassSwitch).toBeChecked();
+  await compressorPower.click();
+  await expect(compressorInSwitch).toBeChecked();
+  const compressorSidechainSwitch = rack.getByRole("checkbox", { name: "Sidechain input switch", exact: true });
+  await expect(compressorSidechainSwitch).not.toBeChecked();
+  await compressorSidechainSwitch.click();
+  await expect(compressorSidechainSwitch).toBeChecked();
+  await rack.getByRole("slider", { name: "Sidechain filter graphical control", exact: true }).fill("0.7");
+  await expect(rack.getByRole("checkbox", { name: "Master Output IN switch", exact: true })).toBeChecked();
+  await expect(rack.getByRole("checkbox", { name: "Precision Limiter IN switch", exact: true })).toBeChecked();
+  await expect(rack.getByRole("checkbox", { name: "Precision Limiter BYPASS switch", exact: true })).not.toBeChecked();
+  await rack.getByRole("slider", { name: "Low-mid boost / cut graphical control", exact: true }).fill("2");
+  await rack.getByRole("slider", { name: "High-mid boost / cut graphical control", exact: true }).fill("-1");
+  await rack.getByRole("slider", { name: "EQ output graphical control", exact: true }).fill("1.5");
+  await rack.getByRole("slider", { name: "Stereo link graphical control", exact: true }).fill("65");
+  await expect(rack.getByRole("slider", { name: "Stereo link graphical control", exact: true })).toHaveAttribute("aria-valuetext", "65 %");
+  const oversampling8x = rack.getByRole("button", { name: "8× oversampling", exact: true });
+  await oversampling8x.click();
+  await expect(oversampling8x).toHaveAttribute("aria-pressed", "true");
+  await expect(rack.getByRole("meter", { name: /Limiter gain reduction/ })).toHaveAttribute("aria-valuenow", "0.0");
+  await eqBypassSwitch.click();
+  await expect(eqBypassSwitch).toBeChecked();
+  await expect(eqInSwitch).not.toBeChecked();
+  await expect(rack.locator(".premium-rack-unit").first()).toHaveAttribute("aria-label", /bypassed/);
+  await eqInSwitch.click();
+  await expect(eqInSwitch).toBeChecked();
+  await expect(eqBypassSwitch).not.toBeChecked();
   await expect(patchButtons).toContainText(["01 · EQ", "02 · COMP", "03 · OUT", "04 · LIMIT"]);
 
-  const patchItems = rack.locator(".premium-patch-bay li");
-  await patchItems.nth(1).dragTo(patchItems.nth(2));
+  await rack.locator(".premium-rack-unit").first().locator(".premium-drag-handle").dragTo(rack.locator(".premium-rack-unit").nth(1));
+  await expect(patchButtons).toContainText(["01 · COMP", "02 · EQ", "03 · OUT", "04 · LIMIT"]);
+  await rack.getByRole("button", { name: "Move Program Equalizer up", exact: true }).click();
+  await expect(patchButtons).toContainText(["01 · EQ", "02 · COMP", "03 · OUT", "04 · LIMIT"]);
+  await rack.getByRole("button", { name: "Move Program Equalizer down", exact: true }).click();
   await expect(patchButtons).toContainText(["01 · COMP", "02 · EQ", "03 · OUT", "04 · LIMIT"]);
   await rack.getByRole("button", { name: "Duplicate Program Equalizer", exact: true }).click();
   await expect(rack.locator(".premium-rack-unit")).toHaveCount(5);
   await expect(rack.locator(".premium-rack-unit").getByText("Program Equalizer Copy", { exact: true })).toBeVisible();
 
-  await rack.getByRole("checkbox", { name: "Enable Bus Compressor", exact: true }).click();
+  await compressorBypassSwitch.click();
+  await expect(compressorBypassSwitch).toBeChecked();
+  await expect(compressorInSwitch).not.toBeChecked();
+  await expect(rack.getByRole("checkbox", { name: "Enable Bus Compressor", exact: true })).not.toBeChecked();
   await expect(rack.locator(".premium-rack-unit").first()).toHaveAttribute("aria-label", /bypassed/);
+  await expect(compressorThreshold).toBeEnabled();
+  await compressorThreshold.fill("-38");
+  await expect(compressorThreshold).toHaveValue("-38");
   await rack.getByRole("slider", { name: "Output level graphical control", exact: true }).fill("-1.5");
   await rack.getByLabel("Equipment to add", { exact: true }).selectOption("sequencer.precision-limiter");
-  await rack.getByRole("button", { name: "Add to end of rack", exact: true }).click();
+  const addToRack = rack.getByRole("button", { name: "Add to end of rack", exact: true });
+  await expect(addToRack).toHaveAttribute("data-tooltip", "Add to end of rack");
+  await expect(addToRack.locator(":scope > .icon")).toBeVisible();
+  await expect(addToRack.locator(":scope > :not(.icon):not(.sr-only)")).toHaveCount(0);
+  const addToRackBox = await addToRack.boundingBox();
+  expect(addToRackBox.width).toBe(44);
+  expect(addToRackBox.height).toBe(44);
+  await addToRack.click();
   await expect(rack.locator(".premium-rack-unit")).toHaveCount(6);
-  await expect(page.locator(".status-strip [role='status']")).toContainText("Saved locally");
+  await expect(page.locator("[data-project-save-status]")).toContainText("Saved locally");
 
   const bootstrap = await (await request.get("/api/bootstrap")).json();
   const savedAlbum = bootstrap.state.albums[0];
@@ -221,7 +343,15 @@ test("Premium mastering patches repeated equipment in the same saved order used 
     "sequencer.precision-limiter",
   ]);
   expect(savedAlbum.advancedMastering.nodes[0].bypass).toBe(true);
+  expect(savedAlbum.advancedMastering.nodes[0].parameters.thresholdDb).toBe(-38);
+  expect(savedAlbum.advancedMastering.nodes[0].parameters.sidechainEnabled).toBe(true);
+  expect(savedAlbum.advancedMastering.nodes[0].parameters.sidechainFilterHz).toBeGreaterThan(180);
+  expect(savedAlbum.advancedMastering.nodes[1].parameters.lowMidBand.gainDb).toBe(2);
+  expect(savedAlbum.advancedMastering.nodes[1].parameters.highMidBand.gainDb).toBe(-1);
+  expect(savedAlbum.advancedMastering.nodes[1].parameters.outputGainDb).toBe(1.5);
   expect(savedAlbum.advancedMastering.nodes[3].parameters.outputGainDb).toBe(-1.5);
+  expect(savedAlbum.advancedMastering.nodes[4].parameters.oversample).toBe(8);
+  expect(savedAlbum.advancedMastering.nodes[4].parameters.stereoLinkPercent).toBe(65);
   expect(savedAlbum.advancedMastering.connections).toEqual([
     { from: "input", to: savedAlbum.advancedMastering.nodes[0].id },
     ...savedAlbum.advancedMastering.nodes.slice(0, -1).map((node, index) => ({ from: node.id, to: savedAlbum.advancedMastering.nodes[index + 1].id })),
@@ -369,18 +499,97 @@ test("quick display settings stay behind one far-right gear menu", async ({ page
   await expect(page.getByRole("heading", { name: "Screen Appearance" })).toBeVisible();
 });
 
+test("light and dark modes preserve readable surfaces and distinct interaction states across every workspace", async ({ page }) => {
+  const viewNames = ["Sequence", "Mastering", "Track Review", "Album Decisions", "Assets", "Audio Library", "Settings"];
+  const navigation = page.getByRole("navigation", { name: "Project views" });
+  const settingsTrigger = page.getByRole("button", { name: "Open settings menu" });
+
+  for (const mode of ["light", "dark"]) {
+    await settingsTrigger.click();
+    await page.getByRole("dialog", { name: "Quick Settings" }).getByRole("button", { name: `Use ${mode} mode` }).click();
+    await expect.poll(() => page.evaluate(() => document.documentElement.dataset.mode)).toBe(mode);
+    await page.keyboard.press("Escape");
+
+    const palette = await page.evaluate(() => {
+      const style = getComputedStyle(document.documentElement);
+      return Object.fromEntries(["--ink", "--bone", "--bone-muted", "--lime", "--focus"].map((token) => [token, style.getPropertyValue(token).trim()]));
+    });
+    expect(contrastRatio(palette["--bone"], palette["--ink"])).toBeGreaterThanOrEqual(7);
+    expect(contrastRatio(palette["--bone-muted"], palette["--ink"])).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(palette["--lime"], palette["--ink"])).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(palette["--focus"], palette["--ink"])).toBeGreaterThanOrEqual(4.5);
+
+    for (const viewName of viewNames) {
+      await navigation.getByRole("button", { name: viewName, exact: true }).click();
+      await expect(page.locator(".content-shell main").first()).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
+    }
+
+    await navigation.getByRole("button", { name: "Mastering", exact: true }).click();
+    const masteringTier = page.locator(".mastering-tier-selector");
+    await expect(masteringTier).toBeVisible();
+    await page.getByRole("button", { name: /PREMIUM Analog Rack/ }).click();
+    const tierSurfaces = await masteringTier.evaluate((element) => ({
+      shell: getComputedStyle(element).backgroundColor,
+      control: getComputedStyle(element.querySelector("button")).backgroundColor,
+    }));
+    expect(tierSurfaces.shell).not.toBe("rgb(9, 10, 9)");
+    expect(tierSurfaces.control).not.toBe("rgb(17, 18, 16)");
+
+    const premiumRack = page.locator(".premium-mastering-rack");
+    await expect(premiumRack).toBeVisible();
+    const rackBackground = await premiumRack.evaluate((element) => getComputedStyle(element).backgroundColor);
+    expect(parseCssColor(rackBackground).reduce((sum, channel) => sum + channel, 0)).toBeLessThan(150);
+
+    const activeTier = masteringTier.locator("button.is-active");
+    await expect(activeTier).toHaveAttribute("aria-pressed", "true");
+    await activeTier.focus();
+    const focusState = await activeTier.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth };
+    });
+    expect(focusState.outlineStyle).not.toBe("none");
+    expect(Number.parseFloat(focusState.outlineWidth)).toBeGreaterThanOrEqual(1);
+
+    const disabledButton = page.locator(".command-history button:disabled").first();
+    await expect(disabledButton).toBeVisible();
+    expect(Number(await disabledButton.evaluate((element) => getComputedStyle(element).opacity))).toBeLessThanOrEqual(0.42);
+  }
+
+  await navigation.getByRole("button", { name: "Sequence", exact: true }).click();
+  const sequenceNav = navigation.getByRole("button", { name: "Sequence", exact: true });
+  await sequenceNav.hover();
+  const hoverBackground = await sequenceNav.evaluate((element) => getComputedStyle(element).backgroundColor);
+  const box = await sequenceNav.boundingBox();
+  await page.mouse.move(box.x + (box.width / 2), box.y + (box.height / 2));
+  await page.mouse.down();
+  const pressedBackground = await sequenceNav.evaluate((element) => getComputedStyle(element).backgroundColor);
+  await page.mouse.up();
+  expect(pressedBackground).not.toBe(hoverBackground);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  for (const mode of ["light", "dark"]) {
+    await settingsTrigger.click();
+    await page.getByRole("dialog", { name: "Quick Settings" }).getByRole("button", { name: `Use ${mode} mode` }).click();
+    await page.keyboard.press("Escape");
+    await navigation.getByRole("button", { name: "Mastering", exact: true }).click();
+    await expect(page.locator(".premium-mastering-rack")).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
+  }
+});
+
 test("reordering persists and master selection stays separate from the audition source", async ({ page, request }) => {
   const titles = page.locator(".sequence-track .track-title strong");
   await expect(titles).toHaveText(["Alpha Tone", "[SIGNAL SOURCE WITHHELD]"]);
   await page.getByRole("button", { name: "Move Alpha Tone down" }).click();
-  await expect(page.locator(".status-strip [role='status']")).toContainText("Saved locally");
+  await expect(page.locator("[data-project-save-status]")).toContainText("Saved locally");
   await page.reload();
   await expect(titles).toHaveText(["[SIGNAL SOURCE WITHHELD]", "Alpha Tone"]);
 
   await page.getByRole("button", { name: "Track Review" }).click();
   await page.getByRole("button", { name: /Alpha Tone/ }).click();
   await page.getByRole("radio", { name: "Alternate Mix", exact: true }).check();
-  await expect(page.locator(".status-strip [role='status']")).toContainText("Saved locally");
+  await expect(page.locator("[data-project-save-status]")).toContainText("Saved locally");
 
   const bootstrap = await (await request.get("/api/bootstrap")).json();
   const alpha = bootstrap.state.albums[0].tracks.find((track) => track.id === "alpha");
@@ -428,7 +637,7 @@ test("project setup owns the artist used by new albums", async ({ page, request 
   await page.getByRole("button", { name: "Add Album" }).click();
   await page.getByLabel("Album title").fill("Second Light");
   await page.getByRole("button", { name: "Add Album", exact: true }).last().click();
-  await expect(page.locator(".status-strip [role='status']")).toContainText("Saved locally");
+  await expect(page.locator("[data-project-save-status]")).toContainText("Saved locally");
 
   const bootstrap = await (await request.get("/api/bootstrap")).json();
   expect(bootstrap.state.settings.project).toEqual({ artistName: "Open Orbit Ensemble", setupComplete: true });
@@ -446,7 +655,7 @@ test("saved projects can be loaded and safely removed while album deletion remai
 
   await expect(page.getByRole("button", { name: "Open album Clean Slate" })).toHaveAttribute("aria-current", "true");
   await expect(page.getByText("This album is ready for its first track.")).toBeVisible();
-  await expect(page.locator(".status-strip [role='status']")).toContainText("New project created");
+  await expect(page.locator("[data-project-save-status]")).toContainText("New project created");
 
   await page.getByRole("button", { name: "Open saved projects for Fresh Project QA" }).click();
   const saved = page.getByRole("dialog", { name: "Saved Projects" });
@@ -468,7 +677,7 @@ test("saved projects can be loaded and safely removed while album deletion remai
   await expect(page.getByRole("button", { name: /Remove project Fixture Artist.*Fixture Album/ })).toBeDisabled();
   expect((await (await request.get("/api/bootstrap")).json()).projects).toHaveLength(1);
   await page.getByRole("button", { name: "Close", exact: true }).click();
-  await expect(page.locator(".status-strip [role='status']")).toContainText(/source assets were not changed/i);
+  await expect(page.locator("[data-project-save-status]")).toContainText(/source assets were not changed/i);
 
   await page.getByRole("button", { name: "Add Album" }).click();
   await page.getByLabel("Album title").fill("Delete Me");
@@ -480,7 +689,7 @@ test("saved projects can be loaded and safely removed while album deletion remai
   await deleteDialog.getByRole("button", { name: "Delete Album" }).click();
   await expect(page.getByRole("table", { name: "Fixture Album track order" })).toBeVisible();
   await expect(page.getByText("Delete Me", { exact: true })).toHaveCount(0);
-  await expect(page.locator(".status-strip [role='status']")).toContainText("Saved locally");
+  await expect(page.locator("[data-project-save-status]")).toContainText("Saved locally");
 });
 
 test("an unconfigured installation explains the complete album workflow", async ({ page, request }) => {
@@ -561,11 +770,36 @@ test("phone layout removes redundant counters and keeps sequence controls separa
     expect(box.width).toBeGreaterThanOrEqual(36);
     expect(box.height).toBeGreaterThanOrEqual(36);
   }
+  await expect(page.locator(".status-strip")).toHaveCount(0);
+  await expect(page.locator(".transport-copy > :not(.sr-only)")).toHaveCount(1);
+  await expect(page.locator(".transport-copy strong")).toBeVisible();
+  const saveStatusAnnouncer = page.locator("[data-project-save-status]");
+  await expect(saveStatusAnnouncer).toHaveClass("sr-only");
+  const saveStatusBox = await saveStatusAnnouncer.boundingBox();
+  expect(saveStatusBox.width).toBeLessThanOrEqual(1);
+  expect(saveStatusBox.height).toBeLessThanOrEqual(1);
+  const transportBox = await page.locator(".transport-bar").boundingBox();
+  expect(Math.round(transportBox.y + transportBox.height)).toBe(844);
+  expect(transportBox.height).toBeLessThanOrEqual(86);
+  const transportWaveformBox = await page.locator(".transport-waveform").boundingBox();
+  const transportPlaybackBox = await page.locator(".transport-playback-toggle").boundingBox();
+  const transportActionBox = await page.locator(".transport-actions .transport-button").first().boundingBox();
+  expect(Math.abs(transportWaveformBox.y - transportPlaybackBox.y)).toBeLessThanOrEqual(1);
+  expect(Math.abs(transportWaveformBox.y - transportActionBox.y)).toBeLessThanOrEqual(1);
 
   await page.getByRole("button", { name: "Mastering", exact: true }).click();
   await expect(page.locator(".mastering-heading dl")).toBeHidden();
   await expect(page.locator(".master-signal-flow")).toBeHidden();
   await expect(page.locator(".mastering-track-list > header small")).toBeHidden();
+  const waveformFadeHandles = page.locator(".waveform-fade-handle");
+  await expect(waveformFadeHandles).toHaveCount(2);
+  for (const fadeHandle of await waveformFadeHandles.all()) {
+    await fadeHandle.scrollIntoViewIfNeeded();
+    const fadeHandleBox = await fadeHandle.boundingBox();
+    expect(fadeHandleBox.width).toBeGreaterThanOrEqual(30);
+    expect(fadeHandleBox.height).toBeGreaterThanOrEqual(30);
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
 
   await page.getByRole("button", { name: "Assets", exact: true }).click();
   await expect(page.locator(".assets-heading dl")).toBeHidden();
@@ -592,7 +826,7 @@ test("audio rows drag onto albums as new tracks or matching-title candidates", a
   const dropTarget = page.locator('[data-drop-album-id="drop-target"]');
   const looseSketch = page.locator(".audio-row").filter({ hasText: "Loose Sketch.mp3" });
   await looseSketch.dragTo(dropTarget);
-  await expect(page.locator(".status-strip [role='status']")).toContainText("Saved locally");
+  await expect(page.locator("[data-project-save-status]")).toContainText("Saved locally");
 
   let bootstrap = await (await request.get("/api/bootstrap")).json();
   let targetAlbum = bootstrap.state.albums.find((album) => album.id === "drop-target");
@@ -604,7 +838,7 @@ test("audio rows drag onto albums as new tracks or matching-title candidates", a
   await expect(page.locator(".album-rail")).toHaveClass(/is-collapsed/);
   const alphaTone = page.locator(".audio-row").filter({ hasText: "Alpha Tone.wav" });
   await alphaTone.dragTo(dropTarget);
-  await expect(page.locator(".status-strip [role='status']")).toContainText("Saved locally");
+  await expect(page.locator("[data-project-save-status]")).toContainText("Saved locally");
 
   bootstrap = await (await request.get("/api/bootstrap")).json();
   targetAlbum = bootstrap.state.albums.find((album) => album.id === "drop-target");
@@ -630,10 +864,11 @@ test("the transport waveform stays inside its desktop and phone footer", async (
   expect(bounds.player.bottom).toBeLessThanOrEqual(bounds.bar.bottom);
 });
 
-test("space always toggles transport playback without hijacking text entry", async ({ page }) => {
+test("space exclusively owns transport playback and returns focus there from every control type", async ({ page }) => {
   const transportToggle = page.locator(".transport-playback-toggle");
   await transportToggle.click();
   await expect(transportToggle).toHaveAttribute("aria-label", "Pause playback");
+  await expect(transportToggle).toHaveAttribute("aria-keyshortcuts", "Space");
   const headerMeter = page.getByTestId("header-master-meter");
   await expect(headerMeter).toHaveAttribute("data-meter-active", "true");
   await expect(headerMeter).toHaveAttribute("data-meter-routing", "mastering");
@@ -643,35 +878,124 @@ test("space always toggles transport playback without hijacking text entry", asy
 
   await page.keyboard.press("Space");
   await expect(transportToggle).toHaveAttribute("aria-label", "Resume playback");
-  await expect(page.locator(".transport-copy small")).toHaveText("Playback paused. Press Space to resume.");
+  await expect(transportToggle).toBeFocused();
+  await expect(page.locator("[data-transport-status]")).toHaveText("Playback paused. Press Space to resume.");
   await page.keyboard.press("Space");
   await expect(transportToggle).toHaveAttribute("aria-label", "Pause playback");
-  await expect(page.locator(".transport-copy small")).toHaveText("Playback resumed. Press Space to pause.");
+  await expect(transportToggle).toBeFocused();
+  await expect(page.locator("[data-transport-status]")).toHaveText("Playback resumed. Press Space to pause.");
 
   await page.keyboard.press("Space");
   await expect(transportToggle).toHaveAttribute("aria-label", "Resume playback");
   await page.getByRole("button", { name: "Audio Library", exact: true }).click();
   const search = page.getByPlaceholder("Search files");
-  await search.click();
-  await page.keyboard.type("alpha tone");
+  await search.fill("alpha tone");
+  await search.focus();
   await expect(search).toHaveValue("alpha tone");
+  await page.keyboard.press("Space");
+  await expect(transportToggle).toHaveAttribute("aria-label", "Pause playback");
+  await expect(search).toHaveValue("alpha tone");
+  await expect(transportToggle).toBeFocused();
+
+  const formatFilter = page.getByRole("combobox", { name: "Filter by format" });
+  await formatFilter.focus();
+  const formatBeforeSpace = await formatFilter.inputValue();
+  await page.keyboard.press("Space");
   await expect(transportToggle).toHaveAttribute("aria-label", "Resume playback");
+  await expect(formatFilter).toHaveValue(formatBeforeSpace);
+  await expect(transportToggle).toBeFocused();
+
+  await page.getByRole("button", { name: "Mastering", exact: true }).click();
+  const approvedMaster = page.getByLabel("Approved master");
+  const approvalBeforeSpace = await approvedMaster.isChecked();
+  await approvedMaster.focus();
+  await page.keyboard.press("Space");
+  await expect(transportToggle).toHaveAttribute("aria-label", "Pause playback");
+  expect(await approvedMaster.isChecked()).toBe(approvalBeforeSpace);
+  await expect(transportToggle).toBeFocused();
+
+  const printButton = page.getByRole("button", { name: "Print / Export Audio" });
+  await printButton.focus();
+  await page.keyboard.press("Space");
+  await expect(transportToggle).toHaveAttribute("aria-label", "Resume playback");
+  await expect(page.getByRole("dialog", { name: "Print / Export Audio" })).toHaveCount(0);
+  await expect(transportToggle).toBeFocused();
+
+  await page.getByRole("button", { name: /PREMIUM Analog Rack/ }).click();
+  const threshold = page.getByRole("slider", { name: "Threshold graphical control", exact: true });
+  const thresholdBeforeSpace = await threshold.inputValue();
+  await threshold.focus();
+  await page.keyboard.press("Space");
+  await expect(transportToggle).toHaveAttribute("aria-label", "Pause playback");
+  await expect(threshold).toHaveValue(thresholdBeforeSpace);
+  await expect(transportToggle).toBeFocused();
+
+  await page.getByRole("button", { name: "Add Album", exact: true }).click();
+  const addAlbumDialog = page.getByRole("dialog", { name: "Add Album" });
+  const albumTitle = addAlbumDialog.getByLabel("Album title");
+  await albumTitle.fill("Space remains transport");
+  await albumTitle.focus();
+  await page.keyboard.press("Space");
+  await expect(transportToggle).toHaveAttribute("aria-label", "Resume playback");
+  await expect(albumTitle).toHaveValue("Space remains transport");
+  await expect(addAlbumDialog).toBeVisible();
+  await expect(transportToggle).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(addAlbumDialog).toBeHidden();
 });
 
 test("the sequence row follows the main player track and playback state", async ({ page }) => {
   const alphaRow = page.locator(".sequence-track").filter({ hasText: "Alpha Tone" });
+  const protectedRow = page.locator(".sequence-track").filter({ hasText: "[SIGNAL SOURCE WITHHELD]" });
+  const transportTitle = page.locator(".transport-copy strong");
+  const transportBar = page.locator(".transport-bar");
 
   await alphaRow.locator(".track-title").click();
+  await expect(transportBar).toHaveAttribute("aria-keyshortcuts", "ArrowUp ArrowDown");
+  await expect(alphaRow).toHaveClass(/is-current/);
   await expect(alphaRow).toHaveClass(/is-playing/);
   await expect(alphaRow).toHaveAttribute("aria-label", /Playing.*pause/);
   await expect(alphaRow.getByRole("button", { name: "Pause Alpha Tone" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator(".transport-playback-toggle")).toHaveAttribute("aria-label", "Pause playback");
+
+  await page.keyboard.press("ArrowDown");
+  await expect(transportTitle).toHaveText("[SIGNAL SOURCE WITHHELD]");
+  await expect(protectedRow).toHaveClass(/is-current/);
+  await expect(protectedRow).toHaveClass(/is-playing/);
+  await page.keyboard.press("ArrowUp");
+  await expect(transportTitle).toHaveText("Alpha Tone");
+  await expect(alphaRow).toHaveClass(/is-current/);
+  await expect(alphaRow).toHaveClass(/is-playing/);
 
   await alphaRow.locator(".track-status").click();
   await expect(alphaRow).not.toHaveClass(/is-playing/);
   await expect(alphaRow).toHaveAttribute("aria-label", /Paused.*resume/);
   await expect(alphaRow.getByRole("button", { name: "Resume Alpha Tone" })).toHaveAttribute("aria-pressed", "false");
   await expect(page.locator(".transport-playback-toggle")).toHaveAttribute("aria-label", "Resume playback");
+
+  await page.keyboard.press("ArrowDown");
+  await expect(transportTitle).toHaveText("[SIGNAL SOURCE WITHHELD]");
+  await expect(protectedRow).toHaveClass(/is-current/);
+  await expect(protectedRow).not.toHaveClass(/is-playing/);
+  await expect(page.locator(".transport-playback-toggle")).toHaveAttribute("aria-label", "Resume playback");
+  await page.keyboard.press("ArrowUp");
+  await expect(transportTitle).toHaveText("Alpha Tone");
+  await expect(alphaRow).toHaveClass(/is-current/);
+  await expect(alphaRow).not.toHaveClass(/is-playing/);
+
+  const auditionSource = alphaRow.getByLabel("Audition source for Alpha Tone");
+  await auditionSource.focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(auditionSource).toBeFocused();
+  await expect(transportTitle).toHaveText("Alpha Tone");
+
+  await page.getByRole("button", { name: "Add Album", exact: true }).click();
+  const addAlbumDialog = page.getByRole("dialog", { name: "Add Album" });
+  await addAlbumDialog.getByRole("button", { name: "Cancel" }).focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(addAlbumDialog).toBeVisible();
+  await expect(transportTitle).toHaveText("Alpha Tone");
+  await page.keyboard.press("Escape");
 
   await alphaRow.focus();
   await page.keyboard.press("Enter");
@@ -700,6 +1024,45 @@ test("mastering follows shared playback, seeks from its waveform, and reveals tr
   const alphaTrack = trackList.getByRole("button", { name: /Alpha Tone/ });
   const waveform = page.getByRole("group", { name: /Waveform for Alpha Tone/ });
   const transitionDetail = page.locator(".transport-transition");
+  const startFadeHandle = page.getByRole("slider", { name: "Opening fade handle" });
+  const endFadeHandle = page.getByRole("slider", { name: "Ending fade handle" });
+
+  await expect(startFadeHandle).toHaveAttribute("aria-valuenow", "0");
+  await expect(endFadeHandle).toHaveAttribute("aria-valuenow", "0");
+  const startTrimBefore = await page.getByRole("spinbutton", { name: "Start at seconds" }).inputValue();
+  const endTrimBefore = await page.getByRole("spinbutton", { name: "End at seconds" }).inputValue();
+  await startFadeHandle.scrollIntoViewIfNeeded();
+  const waveformBoxForFade = await waveform.boundingBox();
+  const startFadeBox = await startFadeHandle.boundingBox();
+  await page.mouse.move(startFadeBox.x + 5, startFadeBox.y + 5);
+  await page.mouse.down();
+  await page.mouse.move(waveformBoxForFade.x + waveformBoxForFade.width * 0.2, startFadeBox.y + 5, { steps: 4 });
+  await page.mouse.up();
+  await expect.poll(() => page.getByRole("spinbutton", { name: "Fade in seconds" }).inputValue()).toMatch(/^0\.[12]/);
+
+  const endFadeBox = await endFadeHandle.boundingBox();
+  await page.mouse.move(endFadeBox.x + endFadeBox.width - 5, endFadeBox.y + 5);
+  await page.mouse.down();
+  await page.mouse.move(waveformBoxForFade.x + waveformBoxForFade.width * 0.75, endFadeBox.y + 5, { steps: 4 });
+  await page.mouse.up();
+  await expect(page.getByRole("radio", { name: /Fade Out/ })).toBeChecked();
+  await expect.poll(() => page.getByRole("spinbutton", { name: "Ending fade length seconds" }).inputValue()).toMatch(/^0\.[23]/);
+  await expect(page.getByRole("spinbutton", { name: "Start at seconds" })).toHaveValue(startTrimBefore);
+  await expect(page.getByRole("spinbutton", { name: "End at seconds" })).toHaveValue(endTrimBefore);
+
+  await endFadeHandle.focus();
+  await page.keyboard.press("Home");
+  await expect(page.getByRole("radio", { name: "Natural" })).toBeChecked();
+  await expect(endFadeHandle).toHaveAttribute("aria-valuenow", "0");
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("radio", { name: /Fade Out/ })).toBeChecked();
+  await expect(page.getByRole("spinbutton", { name: "Ending fade length seconds" })).toHaveValue("0.10");
+
+  await startFadeHandle.focus();
+  await page.keyboard.press("Home");
+  await expect(page.getByRole("spinbutton", { name: "Fade in seconds" })).toHaveValue("0.00");
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("spinbutton", { name: "Fade in seconds" })).toHaveValue("0.10");
 
   await expect(transitionDetail).toBeHidden();
   await page.locator(".transport-trim-line--start i").hover();
@@ -778,7 +1141,7 @@ test("album decisions persist versions, transition notes, explicit approval, and
   await page.getByRole("button", { name: "Clear release date" }).click();
   await expect(releaseDate).toHaveValue("");
   await releaseDate.fill("2027-04-23");
-  await expect(page.locator(".status-strip [role='status']")).toContainText("Saved locally");
+  await expect(page.locator("[data-project-save-status]")).toContainText("Saved locally");
   let bootstrap = await (await request.get("/api/bootstrap")).json();
   let datedAlbum = bootstrap.state.albums.find((album) => album.id === "fixture-album");
   expect(datedAlbum.releaseDate).toBe("2027-04-23");
@@ -810,7 +1173,7 @@ test("album decisions persist versions, transition notes, explicit approval, and
   await page.getByRole("button", { name: "Create Empty Album" }).click();
   await expect(page.getByRole("button", { name: "Open album Next Fixture" })).toHaveAttribute("aria-current", "true");
   await expect(page.locator(".decisions-heading > h2")).toHaveText("Album Decisions");
-  await expect(page.locator(".status-strip [role='status']")).toContainText("Saved locally");
+  await expect(page.locator("[data-project-save-status]")).toContainText("Saved locally");
 
   bootstrap = await (await request.get("/api/bootstrap")).json();
   const original = bootstrap.state.albums.find((album) => album.id === "fixture-album");
@@ -918,8 +1281,11 @@ test("mastering analysis, chapter cues, and delivery authority remain explicit",
   await expect(headerMeter).toHaveAttribute("data-meter-routing", "mastering");
   await expect.poll(() => headerMeter.evaluate((element) => getComputedStyle(element).borderColor)).toBe("rgb(168, 201, 47)");
   // The earlier meter exercise can legitimately advance the sequence to its
-  // next source. Re-select the intended mastering track before the A/B check.
+  // next source. Re-select and pause the intended mastering track before the
+  // A/B check so the one-second fixture cannot advance during setup.
   await page.locator(".mastering-track-list").getByRole("button", { name: /^Alpha Tone\./ }).click();
+  await transportToggle.click();
+  await expect(transportToggle).toHaveAttribute("aria-label", "Resume playback");
   await expect(page.locator(".transport-copy")).toContainText("Alpha Tone");
   await page.locator(".reference-ab-panel > summary").click();
   await page.getByLabel("Reference audio track").selectOption("test-root::Alternate Mix.mp3");
@@ -967,7 +1333,7 @@ test("mastering analysis, chapter cues, and delivery authority remain explicit",
   await expect(outputMeter).toHaveClass(/is-active/);
   await expect.poll(async () => Number(await outputMeter.locator('[data-meter-channel="left"]').getAttribute("data-meter-rms")), { timeout: 2_000 }).toBeGreaterThan(-60);
   await expect.poll(async () => Number(await outputMeter.locator(".master-spectrum-panel").getAttribute("data-spectrum-peak")), { timeout: 2_000 }).toBeGreaterThan(-80);
-  await expect(page.locator(".status-strip [role='status']")).toContainText("Saved locally");
+  await expect(page.locator("[data-project-save-status]")).toContainText("Saved locally");
 
   const bootstrap = await (await request.get("/api/bootstrap")).json();
   expect(bootstrap.state.albums[0].delivery).toEqual({ profileId: "archive-wav", masterApproved: false, readyToPublish: true });
@@ -1074,7 +1440,7 @@ test("component and full MASTER presets save, recall, delete, undo, and persist"
   await expect(eqPresets.getByLabel("EQ preset", { exact: true })).not.toContainText("Warm Lift");
   await page.getByRole("button", { name: "Undo Delete eq mastering preset" }).click();
   await expect(eqPresets.getByLabel("EQ preset", { exact: true })).toContainText("Warm Lift");
-  await expect(page.locator(".status-strip [role='status']")).toContainText("Saved locally");
+  await expect(page.locator("[data-project-save-status]")).toContainText("Saved locally");
 
   await page.reload();
   await page.getByRole("button", { name: "Mastering", exact: true }).click();
@@ -1114,7 +1480,7 @@ test("incremental search, saved filters, undo, and portable checksums stay local
   expect(rescan.scan.reusedMetadata).toBe(4);
   expect(rescan.roots[0].connectionState).toBe("connected");
 
-  await expect(page.locator(".status-strip [role='status']")).toContainText("Saved locally");
+  await expect(page.locator("[data-project-save-status]")).toContainText("Saved locally");
   const bundle = await (await request.get("/api/project-bundle")).json();
   expect(bundle.mediaIncluded).toBe(false);
   expect(bundle.kind).toContain("json-checksum-bundle");

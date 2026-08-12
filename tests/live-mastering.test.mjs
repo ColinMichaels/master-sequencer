@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { activeMasteringProcessors, applyLiveMasteringSettings, comparisonPlaybackStart, compressorGainReductionDb, createLiveMasteringGraph, decibelsToGain, equalizerLiveImpact, masterMonitorRouting, playbackBypassesMastering } from "../src/lib/live-mastering.js";
+import { activeMasteringProcessors, applyLiveMasteringSettings, comparisonPlaybackStart, compressorGainReductionDb, compressorSidechainMix, createLiveMasteringGraph, decibelsToGain, equalizerLiveImpact, limiterStereoMatrix, masterMonitorRouting, playbackBypassesMastering } from "../src/lib/live-mastering.js";
 import { ADVANCED_PROCESSOR_TYPES, createAdvancedProcessor, createDefaultAdvancedMastering } from "../src/lib/advanced-mastering.js";
 
 const parameter = () => ({ value: 0 });
@@ -81,29 +81,54 @@ test("raw library and rendered previews bypass live processing to prevent altere
 
 test("Premium live processing assigns each rack position and meter in movable serial order", () => {
   const graph = settingsGraph();
-  const slot = () => ({ lowShelf: filter(), midBand: filter(), highShelf: filter(), compressorDry: gain(), compressor: compressor(), makeupGain: gain(), compressorWet: gain(), outputGain: gain(), limiter: compressor() });
-  graph.processorSlots = [slot(), slot(), slot(), slot()];
+  const slot = () => ({ lowShelf: filter(), lowMidBand: filter(), highMidBand: filter(), highShelf: filter(), eqOutputGain: gain(), compressorDry: gain(), compressorFullRange: gain(), compressorSidechainFilter: filter(), compressorSidechainGain: gain(), compressorLowBandFilter: filter(), compressorLowBandGain: gain(), compressor: compressor(), makeupGain: gain(), compressorWet: gain(), outputGain: gain(), limiter: compressor(), limiterLeft: compressor(), limiterRight: compressor(), limiterIndependentGain: gain(), limiterLinkedGain: gain() });
+  graph.processorSlots = [slot(), slot(), slot(), slot(), slot()];
   const limiter = createAdvancedProcessor(ADVANCED_PROCESSOR_TYPES.limiter, "limit-1");
   limiter.parameters.ceilingDbfs = -1.4;
   const eq = createAdvancedProcessor(ADVANCED_PROCESSOR_TYPES.eq, "eq-1");
+  eq.parameters.lowMidBand.gainDb = -1.5;
+  eq.parameters.highMidBand.gainDb = 1.25;
   eq.parameters.highShelf.gainDb = 2.5;
+  eq.parameters.outputGainDb = -0.5;
   const output = createAdvancedProcessor(ADVANCED_PROCESSOR_TYPES.output, "out-1");
   output.parameters.outputGainDb = -2;
+  const compressorUnit = createAdvancedProcessor(ADVANCED_PROCESSOR_TYPES.compressor, "compressor-1");
+  compressorUnit.parameters.sidechainEnabled = true;
+  compressorUnit.parameters.sidechainFilterHz = 250;
   const secondLimiter = createAdvancedProcessor(ADVANCED_PROCESSOR_TYPES.limiter, "limit-2");
   secondLimiter.parameters.ceilingDbfs = -2.2;
-  const rack = { ...createDefaultAdvancedMastering(), nodes: [limiter, eq, output, secondLimiter] };
+  limiter.parameters.stereoLinkPercent = 25;
+  const rack = { ...createDefaultAdvancedMastering(), nodes: [limiter, eq, output, compressorUnit, secondLimiter] };
 
   const result = applyLiveMasteringSettings(graph, enabledMaster, { masteringPath: "advanced", advancedMastering: rack });
   assert.equal(graph.processedGain.gain.value, 0);
   assert.equal(graph.advancedProcessedGain.gain.value, 1);
   assert.equal(graph.processorSlots[0].limiter.threshold.value, -1.4);
+  assert.equal(graph.processorSlots[1].lowMidBand.gain.value, -1.5);
+  assert.equal(graph.processorSlots[1].highMidBand.gain.value, 1.25);
   assert.equal(graph.processorSlots[1].highShelf.gain.value, 2.5);
+  assert.equal(graph.processorSlots[1].eqOutputGain.gain.value, decibelsToGain(-0.5));
   assert.equal(graph.processorSlots[2].outputGain.gain.value, decibelsToGain(-2));
-  assert.equal(graph.processorSlots[3].limiter.threshold.value, -2.2);
+  assert.equal(graph.processorSlots[3].compressorSidechainFilter.type, "highpass");
+  assert.equal(graph.processorSlots[3].compressorSidechainFilter.frequency.value, 250);
+  assert.equal(graph.processorSlots[3].compressorSidechainGain.gain.value, 1);
+  assert.equal(graph.processorSlots[3].compressorLowBandFilter.type, "lowpass");
+  assert.equal(graph.processorSlots[3].compressorLowBandFilter.frequency.value, 250);
+  assert.equal(graph.processorSlots[3].compressorLowBandGain.gain.value, 1);
+  assert.ok(graph.processorSlots[0].limiterIndependentGain.gain.value > graph.processorSlots[0].limiterLinkedGain.gain.value);
+  assert.equal(graph.processorSlots[4].limiter.threshold.value, -2.2);
   assert.equal(result.metering.limiter, graph.processorSlots[0].limiter);
   assert.equal(result.metering.processorMeters["processor:limit-1:limiter"], graph.processorSlots[0].limiter);
-  assert.equal(result.metering.processorMeters["processor:limit-2:limiter"], graph.processorSlots[3].limiter);
-  assert.deepEqual(activeMasteringProcessors(enabledMaster, "advanced", rack), ["LIMIT", "EQ", "OUT", "LIMIT"]);
+  assert.equal(result.metering.processorMeters["processor:limit-2:limiter"], graph.processorSlots[4].limiter);
+  assert.deepEqual(activeMasteringProcessors(enabledMaster, "advanced", rack), ["LIMIT", "EQ", "OUT", "COMP", "LIMIT"]);
+});
+
+test("Premium sidechain and limiter link controls map to real unity-safe gain structures", () => {
+  assert.deepEqual(compressorSidechainMix({ enabled: false, frequencyHz: 500 }), { fullRange: 1, highPass: 0, lowBand: 0 });
+  assert.deepEqual(compressorSidechainMix({ enabled: true, frequencyHz: 500 }), { fullRange: 0, highPass: 1, lowBand: 1 });
+  assert.deepEqual(limiterStereoMatrix(0), { independent: 1, linked: 0 });
+  assert.deepEqual(limiterStereoMatrix(40), { independent: 0.6, linked: 0.4 });
+  assert.deepEqual(limiterStereoMatrix(100), { independent: 0, linked: 1 });
 });
 
 test("live MASTER controls schedule short ramps while audio is running to avoid zipper noise", () => {
@@ -220,6 +245,10 @@ test("the live graph connects one media source to direct, bypass, and processed 
   applyLiveMasteringSettings(graph, enabledMaster, { masteringPath: "advanced", advancedMastering: premiumRack });
   assert.equal(graph.rackSlotCount, 4);
   assert.equal(graph.advancedInput.connections[0].node, graph.processorSlots[0].input);
+  assert.equal(graph.processorSlots[0].lowShelf.connections[0].node, graph.processorSlots[0].lowMidBand);
+  assert.equal(graph.processorSlots[0].lowMidBand.connections[0].node, graph.processorSlots[0].highMidBand);
+  assert.equal(graph.processorSlots[0].highMidBand.connections[0].node, graph.processorSlots[0].highShelf);
+  assert.equal(graph.processorSlots[0].highShelf.connections[0].node, graph.processorSlots[0].eqOutputGain);
   assert.equal(graph.processorSlots[3].output.connections[0].node, graph.advancedProcessedGain);
   assert.equal(graph.processorSlots[4].output.connections.length, 0);
 

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { sourceKey } from "../lib/api.js";
 import { formatDuration } from "../lib/format.js";
 import { isTrackSequenced } from "../lib/sequence-tracks.js";
@@ -15,6 +15,7 @@ const isIndependentRowControl = (target) => target instanceof Element
 export function SequenceWorkspace({ album, libraryMap, revealPrivateFilenames, transitioningTrackId, currentTrackId, playing, renderingAvailable = true, onAlbumChange, onAddTracks, onPlayFrom, onTogglePlayback, onTransition, onExport, onRemoveFromSequence, onRestoreToSequence }) {
   const [draggedTrackId, setDraggedTrackId] = useState("");
   const [removeArmedTrackId, setRemoveArmedTrackId] = useState("");
+  const trackRowsRef = useRef(new Map());
   const tracks = useMemo(() => album.tracks.filter(isTrackSequenced), [album.tracks]);
   const unsequencedTracks = useMemo(() => album.tracks.filter((track) => !isTrackSequenced(track)), [album.tracks]);
   const resolveCandidate = (track) => track.candidates.find((candidate) => candidate.id === track.auditionCandidateId);
@@ -22,6 +23,17 @@ export function SequenceWorkspace({ album, libraryMap, revealPrivateFilenames, t
     const candidate = resolveCandidate(track);
     return candidate ? libraryMap.get(sourceKey(candidate.sourceRef)) : null;
   };
+
+  useEffect(() => {
+    const row = trackRowsRef.current.get(currentTrackId);
+    const scrollRegion = row?.closest(".sequence-scroll-region");
+    if (!row || !scrollRegion) return;
+    const rowBounds = row.getBoundingClientRect();
+    const regionBounds = scrollRegion.getBoundingClientRect();
+    if (rowBounds.top < regionBounds.top || rowBounds.bottom > regionBounds.bottom) {
+      row.scrollIntoView({ block: "nearest" });
+    }
+  }, [currentTrackId]);
 
   const moveTrack = (trackId, direction) => onAlbumChange((draft) => {
     const sequencePositions = draft.tracks.reduce((positions, track, index) => {
@@ -107,7 +119,11 @@ export function SequenceWorkspace({ album, libraryMap, revealPrivateFilenames, t
                 return (
                   <li
                     key={track.id}
-                    className={`sequence-track ${missing ? "is-missing" : "is-playable"} ${legacy ? "is-legacy" : ""} ${trackPlaying ? "is-playing" : ""} ${removeArmed ? "is-removal-armed" : ""}`}
+                    ref={(node) => {
+                      if (node) trackRowsRef.current.set(track.id, node);
+                      else trackRowsRef.current.delete(track.id);
+                    }}
+                    className={`sequence-track ${missing ? "is-missing" : "is-playable"} ${legacy ? "is-legacy" : ""} ${current ? "is-current" : ""} ${trackPlaying ? "is-playing" : ""} ${removeArmed ? "is-removal-armed" : ""}`}
                     draggable
                     onDragStart={() => setDraggedTrackId(track.id)}
                     onDragOver={(event) => event.preventDefault()}

@@ -1,7 +1,7 @@
 .app-shell {
   display: grid;
   grid-template-columns: 278px minmax(0, 1fr);
-  grid-template-rows: 68px minmax(0, 1fr) 78px 24px;
+  grid-template-rows: 68px minmax(0, 1fr) 78px;
   width: 100%;
   height: 100vh;
   overflow: hidden;

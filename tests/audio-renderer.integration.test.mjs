@@ -154,11 +154,14 @@ test("a short Premium rack print follows the patched order with oversampling and
   const sourceChecksum = await checksum(sourcePath);
   const limiter = createAdvancedProcessor(ADVANCED_PROCESSOR_TYPES.limiter, "limit-first");
   limiter.parameters.ceilingDbfs = -1.1;
-  limiter.parameters.oversample = 4;
+  limiter.parameters.oversample = 8;
   const output = createAdvancedProcessor(ADVANCED_PROCESSOR_TYPES.output, "output-second");
   output.parameters.outputGainDb = -2;
   const compressor = createAdvancedProcessor(ADVANCED_PROCESSOR_TYPES.compressor, "compressor-third");
   compressor.parameters.thresholdDb = -22;
+  compressor.parameters.sidechainEnabled = true;
+  compressor.parameters.sidechainFilterHz = 180;
+  limiter.parameters.stereoLinkPercent = 60;
   const advancedMastering = { ...createDefaultAdvancedMastering(), nodes: [limiter, output, compressor] };
   const album = {
     id: "premium-print",
@@ -177,7 +180,9 @@ test("a short Premium rack print follows the patched order with oversampling and
   const cue = await readFile(result.cuePath, "utf8");
   assert.equal(manifest.masteringPath, "advanced");
   assert.deepEqual(manifest.advancedMastering.nodes.map((node) => node.id), ["limit-first", "output-second", "compressor-third"]);
-  assert.equal(manifest.advancedMastering.nodes[0].parameters.oversample, 4);
+  assert.equal(manifest.advancedMastering.nodes[0].parameters.oversample, 8);
+  assert.equal(manifest.advancedMastering.nodes[0].parameters.stereoLinkPercent, 60);
+  assert.equal(manifest.advancedMastering.nodes[2].parameters.sidechainFilterHz, 180);
   assert.match(cue, /MASTER path: Premium rack: Precision Limiter → Master Output → Bus Compressor/);
 });
 

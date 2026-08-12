@@ -1,0 +1,306 @@
+/*
+ * Cross-workspace appearance and interaction contract.
+ * Photoreal faceplates, VU displays, waveforms, and analyzer screens remain
+ * dark instruments in both modes; their surrounding application chrome uses
+ * the semantic surfaces below.
+ */
+
+input,
+select,
+textarea {
+  caret-color: var(--lime);
+}
+
+.search-field:focus-within,
+.mastering-delivery-check:focus-within {
+  border-color: var(--focus);
+  box-shadow: 0 0 0 2px var(--ink), 0 0 0 4px var(--focus);
+}
+
+.search-field:focus-within input {
+  outline: 0;
+}
+
+.screen-settings-menu,
+.header-stats-popover,
+.modal,
+.recovery-card {
+  box-shadow: var(--shadow-elevated);
+}
+
+.manual-path-fallback,
+.saved-filter-bar,
+.settings-section,
+.asset-pane,
+.decision-module,
+.mastering-track-list,
+.mastering-editor,
+.mastering-program {
+  background-color: var(--surface-subtle);
+}
+
+.workspace-heading select,
+.track-source select,
+.library-filters input,
+.library-filters select,
+.saved-filter-bar input,
+.saved-filter-bar select,
+.root-form input,
+.decision-fields select,
+.candidate-notes textarea,
+.decision-fields textarea,
+.decision-module input,
+.decision-module select,
+.decision-module textarea,
+.modal-form input,
+.modal-form select,
+.master-select-field select,
+.mastering-number-field input,
+.album-release-date input {
+  background: var(--surface-control);
+}
+
+.primary-nav button:hover,
+.command-history button:hover:not(:disabled),
+.header-stat-button:hover,
+.screen-settings-option:hover,
+.header-stat-details > button:hover,
+.text-button:hover:not(:disabled),
+.icon-button:hover:not(:disabled),
+.panel-toggle:hover,
+.current-project-card:hover,
+.compact-rail-button:hover:not(:disabled),
+.compact-album-button:hover,
+.album-action-button:hover:not(:disabled),
+.audio-row:hover,
+.review-track-rail button:hover,
+.mastering-track-list button:hover,
+.mode-switch button:hover,
+.text-scale-steps button:hover,
+.color-theme-grid button:hover,
+.font-theme-grid button:hover,
+.transport-button:hover,
+.transport-playback-toggle:hover {
+  background-color: var(--surface-hover);
+}
+
+.text-button:active:not(:disabled),
+.primary-button:active:not(:disabled),
+.icon-button:active:not(:disabled),
+.panel-toggle:active:not(:disabled),
+.transport-button:active:not(:disabled),
+.transport-playback-toggle:active:not(:disabled),
+.primary-nav button:active:not(:disabled) {
+  background-color: var(--surface-pressed);
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+
+.mode-switch button.is-selected,
+.text-scale-steps button.is-selected,
+.color-theme-grid button.is-selected,
+.font-theme-grid button.is-selected,
+.header-stat-details > button.is-selected,
+.audio-row.is-selected,
+.candidate-review-list > li.is-selected,
+.saved-project-list li.is-active,
+.ending-mode-grid label.is-selected,
+.audio-export-form fieldset > label.is-selected {
+  background-color: var(--surface-selected);
+}
+
+.mode-switch button.is-selected,
+.text-scale-steps button.is-selected {
+  box-shadow: inset 0 -3px 0 var(--lime);
+}
+
+.review-track-rail button.is-active,
+.album-item-row.is-active,
+.mastering-track-list button.is-active {
+  background: var(--surface-selected);
+  color: var(--bone);
+  box-shadow: inset 3px 0 0 var(--lime);
+}
+
+.album-item-row.is-active .album-copy small,
+.album-item-row.is-active .album-state,
+.mastering-track-list button.is-active time {
+  color: var(--lime);
+}
+
+.album-item-row.is-active .album-action-button {
+  border-left-color: var(--line-soft);
+  color: var(--bone-muted);
+}
+
+.album-item-row.is-active .album-action-button:hover:not(:disabled) {
+  background: var(--surface-pressed);
+  color: var(--lime);
+}
+
+.mastering-track-list button.is-active small {
+  color: var(--bone-muted);
+}
+
+.sequence-track.is-current,
+.sequence-track.is-playing,
+.reference-ab-toggle button.is-active,
+.project-lifecycle-panel,
+.watch-status,
+.path-storage-note,
+.recovery-safety-note,
+.asset-storage-note,
+.online-privacy-note {
+  background-color: var(--surface-selected);
+}
+
+.sequence-track.is-removal-armed,
+.source-summary .library-import-status.is-error,
+.deletion-safety-note {
+  background-color: var(--surface-danger);
+}
+
+.sequence-transition-button.is-busy,
+.first-run-roadmap,
+.album-release-date.is-planned {
+  background-color: var(--surface-warning);
+}
+
+.mastering-tier-selector {
+  background: var(--surface-subtle);
+}
+
+.mastering-tier-selector button {
+  border: 1px solid transparent;
+  background: var(--surface-control);
+}
+
+.mastering-tier-selector button:hover,
+.mastering-tier-selector button:focus-visible {
+  border-color: var(--lime);
+  background: var(--surface-hover);
+}
+
+.mastering-tier-selector button.is-active {
+  border-color: color-mix(in srgb, var(--lime) 56%, var(--line));
+  background: linear-gradient(110deg, rgb(var(--lime-rgb) / 13%), transparent 55%), var(--surface-selected);
+}
+
+.native-path-field:focus-visible,
+.native-path-field--yellow:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.master-preset-controls {
+  border-color: var(--line-soft);
+  background: var(--surface-subtle);
+}
+
+.master-preset-controls details > summary,
+.master-preset-controls--inline details > summary {
+  background: var(--surface-control);
+}
+
+.master-preset-menu {
+  border-top-color: var(--line-soft);
+  background: var(--ink-raised);
+}
+
+.master-preset-controls select,
+.master-preset-controls input {
+  background: var(--surface-control);
+}
+
+.premium-unit-actions > button:focus-visible,
+.master-bus-help:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.modal-backdrop {
+  background: var(--overlay-scrim);
+}
+
+.album-release-date input {
+  color-scheme: inherit;
+}
+
+/* Keep permanent dark instrument displays legible when the application is light. */
+.header-master-meter,
+.master-metering-console,
+.digital-vu-panel,
+.master-spectrum-panel,
+.settings-curve,
+.analog-faceplate,
+.premium-mastering-rack {
+  --focus: #f1cd55;
+  color-scheme: dark;
+}
+
+html[data-mode="light"] .header-master-meter,
+html[data-mode="light"] .master-metering-console,
+html[data-mode="light"] .digital-vu-panel,
+html[data-mode="light"] .master-spectrum-panel {
+  color: var(--instrument-text);
+}
+
+html[data-mode="light"] .header-vu-channel > strong,
+html[data-mode="light"] .master-metering-console header small,
+html[data-mode="light"] .master-metering-status,
+html[data-mode="light"] .digital-vu-peak-value,
+html[data-mode="light"] .digital-vu-panel > p,
+html[data-mode="light"] .master-spectrum-panel figcaption,
+html[data-mode="light"] .analog-faceplate--output p {
+  color: var(--instrument-muted);
+}
+
+html[data-mode="light"] .master-spectrum-labels {
+  fill: rgb(232 223 195 / 58%);
+}
+
+html[data-mode="light"] .analog-faceplate .rotary-control {
+  color: var(--instrument-text);
+}
+
+html[data-mode="light"] .premium-mastering-rack {
+  border-color: #6f6a60;
+  box-shadow: 0 0 0 2px rgb(var(--bone-rgb) / 12%), inset 0 1px 0 rgb(255 255 255 / 7%), 0 18px 45px rgb(31 30 25 / 24%);
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --line: color-mix(in srgb, var(--bone) 72%, var(--ink));
+    --line-soft: color-mix(in srgb, var(--bone) 42%, var(--ink));
+  }
+
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  audio:focus-visible,
+  a[href]:focus-visible,
+  summary:focus-visible,
+  [tabindex]:not([tabindex="-1"]):focus-visible {
+    outline-width: 4px;
+  }
+}
+
+@media (forced-colors: active) {
+  button,
+  input,
+  select,
+  textarea,
+  summary,
+  [role="button"],
+  [role="slider"] {
+    forced-color-adjust: auto;
+  }
+
+  .is-active,
+  .is-selected,
+  [aria-current="page"],
+  [aria-pressed="true"] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+}

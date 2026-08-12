@@ -1,0 +1,393 @@
+/*
+ * Shared legibility pass
+ *
+ * This layer deliberately leaves the established application shell, tab order,
+ * workspace grids, and mastering rack composition intact. It only normalizes
+ * type, compact control targets, and supporting-copy rhythm across workspaces.
+ */
+
+:root {
+  --type-micro: 0.625rem;
+  --type-utility: 0.6875rem;
+  --type-control: 0.75rem;
+  --control-compact: 32px;
+}
+
+/* Shared chrome and status copy */
+button[data-tooltip]::after,
+.master-module-switch[data-tooltip]::after,
+.master-bus-help [role="tooltip"] {
+  font-size: var(--type-utility);
+  line-height: 1.4;
+}
+
+.screen-settings-menu small,
+.header-stats-popover > header small,
+.header-stat-details > button small {
+  font-size: var(--type-utility);
+}
+
+.screen-settings-text-size > span strong,
+.screen-settings-option strong,
+.screen-settings-text-size button,
+.screen-settings-text-size output,
+.header-stat-details > button strong {
+  font-size: var(--type-control);
+}
+
+.header-stat-details > button em,
+.transport-waveform-meta,
+.transport-waveform-meta strong,
+.transport-transition small {
+  font-size: var(--type-micro);
+}
+
+/* Sequence */
+.sequence-table-head {
+  min-height: 36px;
+  font-size: var(--type-utility);
+  letter-spacing: 0.055em;
+  line-height: 1.2;
+}
+
+.sequence-table-head span:nth-last-child(-n + 3) {
+  padding-right: 0.25rem;
+  padding-left: 0.25rem;
+  border-left: 1px solid var(--line-soft);
+  font-size: var(--type-micro);
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+
+.track-title small,
+.track-status small,
+.unsequenced-tracks li small {
+  font-size: var(--type-utility);
+  line-height: 1.3;
+}
+
+.track-source select {
+  font-size: var(--type-control);
+}
+
+.track-move > button {
+  width: 36px;
+  height: 36px;
+}
+
+/* Track Review and album decisions */
+.review-track-rail button strong,
+.review-track-rail button small,
+.candidate-identity small,
+.candidate-tech div,
+.candidate-flags li,
+.candidate-notes,
+.decision-fields label {
+  font-size: var(--type-utility);
+  line-height: 1.35;
+}
+
+.candidate-notes textarea,
+.decision-fields textarea,
+.decision-fields select {
+  font-size: var(--type-control);
+}
+
+.comparison-toggle small,
+.album-release-date > label,
+.album-release-date small,
+.version-list small,
+.comparison-queue small {
+  font-size: var(--type-utility);
+  line-height: 1.35;
+}
+
+/* Audio Library */
+.library-heading small,
+.saved-filter-bar label,
+.source-summary li small,
+.source-summary li strong,
+.watch-status span,
+.watch-status strong,
+.scan-summary dd,
+.selected-file-identity small,
+.selected-file-identity span,
+.selected-file > label {
+  font-size: var(--type-utility);
+  line-height: 1.3;
+}
+
+.library-filters input,
+.library-filters select,
+.saved-filter-bar input,
+.saved-filter-bar select,
+.selected-file select {
+  font-size: var(--type-control);
+}
+
+.audio-table-head,
+.audio-row {
+  font-size: var(--type-utility);
+}
+
+.audio-row {
+  min-height: 42px;
+  contain-intrinsic-size: auto 42px;
+}
+
+.audio-row .icon-button {
+  width: var(--control-compact);
+  height: var(--control-compact);
+}
+
+/* Assets */
+.assets-heading dd,
+.track-assets-heading label,
+.protected-asset-preview,
+.visual-asset-copy small,
+.candidate-asset-title small,
+.lyric-attachment-heading small,
+.lyric-file-row small {
+  font-size: var(--type-utility);
+  line-height: 1.35;
+}
+
+.asset-empty span {
+  font-size: var(--type-utility);
+  line-height: 1.35;
+}
+
+.track-assets-heading select,
+.asset-add-button,
+.visual-asset-actions .text-button,
+.lyric-file-row .text-button {
+  font-size: var(--type-control);
+}
+
+/* Settings */
+.project-lifecycle-panel small,
+.project-lifecycle-panel em,
+.appearance-group legend,
+.mode-switch strong,
+.color-theme-grid strong,
+.font-theme-grid strong,
+.mode-switch small,
+.color-theme-grid small,
+.font-theme-grid small,
+.appearance-resolution,
+.text-size-control small,
+.preview-kicker,
+.appearance-preview > p,
+.preview-track small,
+.preview-track em,
+.native-path-field small,
+.manual-path-fallback > summary,
+.root-list small,
+.root-list em,
+.root-form label {
+  font-size: var(--type-utility);
+  line-height: 1.35;
+}
+
+.text-scale-steps button,
+.appearance-preview > button,
+.preview-signals span {
+  min-height: var(--control-compact);
+  font-size: var(--type-utility);
+}
+
+/* Mastering workspace framing and A/B controls */
+.mastering-heading dd,
+.mastering-delivery-select,
+.mastering-delivery-check,
+.reference-ab-summary-copy small,
+.reference-ab-summary-state,
+.reference-ab-description,
+.reference-ab-source,
+.reference-ab-toggle button small,
+.reference-ab-status,
+.reference-ab-shortcuts,
+.mastering-tier-selector button small,
+.premium-rack-heading p {
+  font-size: var(--type-utility);
+  line-height: 1.4;
+}
+
+.mastering-delivery-select select,
+.reference-ab-summary-copy strong,
+.reference-ab-source select,
+.reference-ab-toggle button strong,
+.mastering-tier-selector > div:first-child strong,
+.mastering-tier-selector button > span,
+.mastering-tier-selector button strong {
+  font-size: var(--type-control);
+}
+
+.mastering-delivery-check input {
+  width: 17px;
+  height: 17px;
+}
+
+.reference-ab-summary {
+  min-height: 58px;
+}
+
+.reference-ab-status {
+  min-height: 32px;
+}
+
+/* Premium rack navigation and editable values. Decorative meter scales stay compact. */
+.premium-patch-bay > header > span,
+.premium-patch-bay > header strong,
+.premium-patch-bay > header small,
+.premium-patch-bay li strong,
+.premium-patch-bay li small,
+.premium-patch-bay > p,
+.premium-unit-heading strong,
+.premium-unit-heading small,
+.premium-brand small,
+.premium-oversample,
+.premium-oversample select,
+.premium-oversample small {
+  font-size: var(--type-micro);
+  line-height: 1.35;
+}
+
+.premium-badge,
+.premium-rack-master-actions > strong,
+.premium-meter-drawer > summary,
+.premium-meter-drawer > summary small,
+.premium-rack-toolbar label,
+.premium-rack-toolbar select,
+.premium-rack-toolbar button,
+.premium-plugin-boundary > span,
+.premium-plugin-boundary strong,
+.premium-plugin-boundary small {
+  font-size: var(--type-micro);
+  line-height: 1.35;
+}
+
+.premium-rack-toolbar select,
+.premium-rack-toolbar button {
+  min-height: var(--control-compact);
+}
+
+/* These are the working labels and live values attached to each hardware knob. */
+.premium-rack-unit .rotary-control:not(.premium-mock-control) .rotary-control-label,
+.premium-rack-unit .rotary-control:not(.premium-mock-control) output {
+  font-size: var(--type-micro);
+  line-height: 1.2;
+}
+
+.premium-unit-actions > button {
+  width: var(--control-compact);
+  height: var(--control-compact);
+}
+
+.master-preset-controls details > summary strong,
+.master-preset-controls details > summary small,
+.master-preset-summary-action,
+.master-preset-controls label,
+.master-preset-controls select,
+.master-preset-controls input,
+.master-preset-controls button,
+.master-preset-notice,
+.master-signal-flow,
+.master-metering-console header small,
+.master-metering-status,
+.master-metering-status button,
+.master-module > header > small,
+.manual-control-bank > summary strong,
+.manual-control-bank > summary small {
+  font-size: var(--type-micro);
+  line-height: 1.35;
+}
+
+.master-preset-controls select,
+.master-preset-controls input,
+.master-preset-controls button,
+.master-metering-status button {
+  min-height: var(--control-compact);
+}
+
+.master-metering-console h5,
+.digital-vu-panel > header > strong,
+.master-spectrum-panel > header > strong,
+.digital-vu-channel > strong,
+.digital-vu-channel output,
+.digital-vu-channel output small,
+.digital-vu-peak-value,
+.digital-vu-panel > p,
+.master-spectrum-panel figcaption,
+.master-module > header > div > span,
+.analog-faceplate--output p,
+.settings-curve figcaption,
+.settings-curve figcaption strong,
+.eq-band-bank > section > strong {
+  font-size: var(--type-micro);
+  line-height: 1.3;
+}
+
+/* Mastering editor, program, render, and delivery copy */
+.master-select-field,
+.track-level-fader,
+.mastering-track-list header small,
+.mastering-program header small,
+.mastering-track-list button small,
+.mastering-track-list time,
+.mastering-editor > header p,
+.waveform-editor-title p,
+.waveform-fade-handle > span,
+.waveform-ruler,
+.waveform-feedback,
+.waveform-readout,
+.waveform-readout strong,
+.waveform-help,
+.technical-analysis p,
+.technical-analysis dt,
+.mastering-section-title p,
+.mastering-number-field,
+.mastering-number-field small,
+.ending-mode-grid small,
+.ending-mode-grid label > em,
+.ending-result span,
+.mastering-program li small,
+.mastering-program time,
+.mastering-warning p,
+.program-total,
+.render-history header p,
+.render-history-status,
+.render-history-empty,
+.render-history li small,
+.render-compare label,
+.manifest-diff strong,
+.manifest-diff span,
+.delivery-profile-summary span,
+.delivery-profile-summary small,
+.audio-export-form fieldset small,
+.render-complete-mark small,
+.render-output-path,
+.render-output-path input {
+  font-size: var(--type-utility);
+  line-height: 1.4;
+}
+
+.master-select-field select,
+.mastering-number-field input,
+.render-compare select {
+  font-size: var(--type-control);
+}
+
+@media (max-width: 760px) {
+  /* Keep the responsive layout intact while preserving usable touch targets. */
+  .mastering-delivery-controls .primary-button,
+  .reference-ab-toggle button,
+  .mastering-tier-selector button,
+  .asset-add-button,
+  .visual-asset-actions .text-button,
+  .lyric-file-row .text-button,
+  .text-scale-steps button {
+    min-height: 44px;
+  }
+
+}
