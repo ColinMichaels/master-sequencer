@@ -13,4 +13,5 @@ data/projects/
 config/sequencer.local.json
 .DS_Store
 .idea/
+native/**/.build/
 npm-debug.log*

@@ -75,6 +75,20 @@ than a claim of working production login or synchronization. See
   containment are covered. True peak, dynamics, analog modeling, and production
   promotion remain later gates.
 
+### Gate 5 — memory-safe native DSP and host contract: passed 2026-08-12
+
+- A SwiftPM library implements contract v2 without unsafe pointer or foreign
+  memory code. Its control-thread self-test is compiled and executed.
+- The native golden runner is sample-identical to all four reviewed fixtures at
+  all four block sizes: 16 comparisons pass against the JavaScript authority.
+- The versioned host boundary defines bounded device requests, exact frame-based
+  latency accounting, fail-closed handshake compatibility, xrun counters, and
+  explicit device-loss recovery states with path-free telemetry.
+- This gate proves a memory-safe offline native kernel and engine contract. It
+  does not claim real-time Core Audio I/O, hot-plug recovery, WASM, or production
+  transport/print integration. See
+  [NATIVE-AUDIO-ENGINE-CONTRACT.md](./NATIVE-AUDIO-ENGINE-CONTRACT.md).
+
 ## Decision
 
 Build this as a branch of Project Sequencer, not a separate product fork.
@@ -215,8 +229,10 @@ this checkpoint.
 4. **Complete for JavaScript hosts:** expand shared DSP behind an opt-in
    laboratory flag, add golden audio fixtures, and compare AudioWorklet and
    Node/offline output. Native parity remains Gate 5.
-5. Move the proven kernel to a memory-safe native/WASM implementation, then add
-   device I/O, drop-out telemetry, latency accounting, and offline render.
+5. **Native kernel and host contract complete; real-time I/O remaining:** the
+   Swift implementation passes the current goldens, and dropout/latency/recovery
+   contracts are tested. Core Audio callbacks, hot-plug tests, WASM, and
+   production offline rendering remain promotion work.
 6. Bundle approved FFmpeg builds, sign/notarize the app, add updates, and only
    then start the isolated third-party plug-in host.
 

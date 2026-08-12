@@ -92,6 +92,10 @@ Native/DSP POC checkpoint on `codex/native-dsp-poc`:
   non-finite recovery, and versioned golden parity across multiple block sizes
   and sample rates. It is lab-gated and is not connected to the production
   transport or print path.
+- A SwiftPM native implementation now passes the complete contract-v2 golden
+  set at every verified block size. Device, latency, handshake, dropout, and
+  recovery contracts are defined and tested, but there is no Core Audio
+  callback, hot-plug runtime, WASM build, or production transport connection.
 - Packaging remains unsigned and uses installed FFmpeg. Google login, paid
   entitlements, native device I/O, true-peak DSP, and external plug-in hosting
   remain outside this checkpoint. See

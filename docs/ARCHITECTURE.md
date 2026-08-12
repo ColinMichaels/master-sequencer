@@ -119,6 +119,7 @@ baseline order references before disk state changes.
 | `src/lib/library-search.js` | Build the in-memory catalog index and define portable saved-filter records |
 | `src/lib/*.js` | Pure import, sequence, formatting, appearance, and mastering rules |
 | `src/dsp/*` | Opt-in shared processing contract and AudioWorklet adapter; not production authority yet |
+| `native/SharedDspEngine/*` | Swift contract-v2 kernel and golden parity runner; compiled offline proof, not real-time device authority |
 | `src/styles/*.css` | Tokens/base rules, shell chrome, workspace features, and responsive/motion rules |
 
 Autosave uses a short debounce for editing comfort, then puts each snapshot on a

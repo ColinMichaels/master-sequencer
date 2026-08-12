@@ -21,6 +21,7 @@
     "desktop:pack": "npm run build && electron-builder --dir",
     "dsp:smoke": "node scripts/shared-dsp-smoke.mjs",
     "dsp:golden": "node --test tests/shared-dsp.test.mjs tests/shared-dsp-golden.test.mjs",
+    "dsp:native:verify": "node scripts/verify-native-dsp.mjs",
     "check": "npm test && npm run build",
     "check:full": "npm run check && npm run test:browser && npm run test:browser:online"
   },

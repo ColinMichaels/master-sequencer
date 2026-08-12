@@ -77,8 +77,9 @@ version and review the fixtures; tests must never rewrite the expected hashes.
 
 ## Future compatibility gate
 
-Before a native or WASM replacement can claim parity, it must pass the current
-goldens and add frequency response, dynamics envelopes, channel linking,
-automation ramps, denormal handling, and device-loss recovery. Each
-authoritative print must record the DSP contract version and implementation
-fingerprint in its manifest.
+The Swift native implementation passes the current goldens but is not yet a
+production replacement. WASM must independently pass them. Promotion also
+requires frequency response, dynamics envelopes, channel linking, automation
+ramps, denormal handling, and device-loss recovery. Each authoritative print
+must record the DSP contract version and implementation fingerprint in its
+manifest.
