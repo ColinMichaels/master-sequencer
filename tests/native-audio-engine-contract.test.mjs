@@ -5,6 +5,7 @@ import {
   createNativeAudioLatencyReport,
   normalizeNativeAudioDeviceConfiguration,
   validateNativeAudioEngineHandshake,
+  validateNativeAudioHardwareProbe,
 } from "../src/lib/native-audio-engine-contract.js";
 
 test("native device requests normalize to bounded explicit configurations", () => {
@@ -89,4 +90,52 @@ test("native telemetry records dropouts, explicit device recovery, and no local 
   assert.equal(snapshot.counters.recoveredSamples, 2);
   assert.ok(snapshot.events.length <= 5);
   assert.equal(JSON.stringify(snapshot).includes("/Users/"), false);
+});
+
+test("query-only native hardware reports bind latency to a compatible engine handshake", () => {
+  const report = validateNativeAudioHardwareProbe({
+    schemaVersion: 1,
+    capturedAt: "2026-08-12T12:00:00.000Z",
+    handshake: {
+      protocolVersion: 1,
+      dspContractVersion: 2,
+      engineVersion: "0.2.0",
+      engineInstanceId: "engine-abcd1234",
+      implementationFingerprint: "1234567890abcdef1234567890abcdef",
+      capabilities: { offlineRender: true, realTimeOutput: false, deviceNotifications: false, maximumChannels: 2, supportedSampleRates: [48_000] },
+    },
+    defaultOutput: {
+      label: "System Default Output",
+      sampleRate: 48_000,
+      channels: 2,
+      presentationLatencySeconds: 0.01,
+      presentationLatencyFrames: 480,
+      interleaved: false,
+      accessMode: "query-only",
+    },
+  });
+  assert.equal(report.defaultOutput.presentationLatencyFrames, 480);
+  assert.equal(report.handshake.capabilities.realTimeOutput, false);
+  assert.throws(() => validateNativeAudioHardwareProbe({ ...report, defaultOutput: { ...report.defaultOutput, label: "/Users/private/device" } }), /label/);
+  assert.throws(() => validateNativeAudioHardwareProbe({ ...report, defaultOutput: { ...report.defaultOutput, presentationLatencyFrames: 400 } }), /do not match/);
+});
+
+test("query-only native hardware reports can represent no current output device", () => {
+  const report = validateNativeAudioHardwareProbe({
+    schemaVersion: 1,
+    capturedAt: "2026-08-12T12:00:00.000Z",
+    handshake: {
+      protocolVersion: 1,
+      dspContractVersion: 2,
+      engineVersion: "0.2.0",
+      engineInstanceId: "engine-abcd1234",
+      implementationFingerprint: "1234567890abcdef1234567890abcdef",
+      capabilities: { offlineRender: true, realTimeOutput: false, deviceNotifications: false, maximumChannels: 2, supportedSampleRates: [] },
+    },
+    defaultOutput: null,
+    reasonCode: "no-output-device",
+  });
+  assert.equal(report.defaultOutput, null);
+  assert.equal(report.reasonCode, "no-output-device");
+  assert.throws(() => validateNativeAudioHardwareProbe({ ...report, reasonCode: "unknown" }), /reason/);
 });

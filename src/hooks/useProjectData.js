@@ -8,6 +8,7 @@ export const useProjectData = () => {
   const [formats, setFormats] = useState([]);
   const [scan, setScan] = useState(null);
   const [watching, setWatching] = useState({ configured: false, enabled: false, watchedRootIds: [] });
+  const [nativeAudio, setNativeAudio] = useState({ schemaVersion: 1, configured: false, available: false, reasonCode: "loading" });
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [pickingAssets, setPickingAssets] = useState(false);
@@ -62,6 +63,7 @@ export const useProjectData = () => {
       setFormats(payload.supportedFormats);
       setScan(payload.scan || null);
       setWatching(payload.watching || { configured: false, enabled: false, watchedRootIds: [] });
+      setNativeAudio(payload.nativeAudio || { schemaVersion: 1, configured: false, available: false, reasonCode: api.onlineApp ? "browser-only" : "not-configured" });
       setRecovery(payload.recovery || { required: false });
       setProjects(payload.projects || []);
       setActiveProjectId(payload.activeProjectId || "");
@@ -371,6 +373,7 @@ export const useProjectData = () => {
     formats,
     scan,
     watching,
+    nativeAudio,
     loading,
     scanning,
     pickingAssets,

@@ -626,10 +626,12 @@ export const createOnlineAppApi = ({ storage, sourcePicker = pickBrowserAudioSou
       projects: publicProjects(workspace),
       activeProjectId: workspace.activeProjectId,
       recovery: { required: false },
+      nativeAudio: { schemaVersion: 1, configured: false, available: false, reasonCode: "browser-only" },
       supportedFormats: [...new Set(allLibrary().map((file) => file.extension))].sort(),
       ...libraryPayload(),
     };
   },
+  nativeAudioStatus: async () => ({ schemaVersion: 1, configured: false, available: false, reasonCode: "browser-only" }),
   saveState: async (state) => {
     const validated = validateState(state);
     const workspace = readWorkspace(storage);

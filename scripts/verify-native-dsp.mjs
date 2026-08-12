@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
-import { access, mkdir } from "node:fs/promises";
+import { access, chmod, copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { generateFixtureInput, loadSharedDspGoldenFixtures } from "../tests/helpers/shared-dsp-golden.mjs";
+import { validateNativeAudioHardwareProbe } from "../src/lib/native-audio-engine-contract.js";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const packagePath = path.join(repositoryRoot, "native", "SharedDspEngine");
@@ -13,6 +14,15 @@ const xcodeSwift = path.join(xcodeRoot, "Toolchains", "XcodeDefault.xctoolchain"
 const xcodeSdk = path.join(xcodeRoot, "Platforms", "MacOSX.platform", "Developer", "SDKs", "MacOSX.sdk");
 const scratchPath = process.env.PROJECT_SEQUENCER_SWIFT_SCRATCH || path.join(tmpdir(), "project-sequencer-native-dsp-swift");
 const cacheRoot = process.env.PROJECT_SEQUENCER_SWIFT_CACHE || path.join(tmpdir(), "project-sequencer-native-dsp-cache");
+const stageRequested = process.argv.includes("--stage");
+const stagingRoot = path.join(repositoryRoot, "desktop-resources", "staged");
+const stagedDirectory = path.join(stagingRoot, "native");
+const stagedManifestPath = path.join(stagingRoot, "native-audio-runtime-manifest.json");
+
+if (stageRequested) {
+  await rm(stagedDirectory, { recursive: true, force: true });
+  await rm(stagedManifestPath, { force: true });
+}
 
 await access(xcodeSwift).catch(() => {
   throw new Error("A complete Xcode Swift toolchain is required for native DSP verification.");
@@ -67,6 +77,41 @@ for (const fixture of fixtureSet.fixtures) {
   }
 }
 
+let hardwareProbe = null;
+let staging = null;
+if (process.argv.includes("--devices")) {
+  const probePath = path.join(binaryPath, "shared-dsp-device-probe");
+  const fingerprint = createHash("sha256").update(await readFile(probePath)).digest("hex");
+  const probe = spawnSync(probePath, [], {
+    encoding: "utf8",
+    env: { ...process.env, PROJECT_SEQUENCER_ENGINE_FINGERPRINT: fingerprint },
+  });
+  if (probe.status !== 0) throw new Error(probe.stderr || "Native audio device probe failed.");
+  hardwareProbe = validateNativeAudioHardwareProbe(JSON.parse(probe.stdout));
+  if (hardwareProbe.handshake.implementationFingerprint !== fingerprint) throw new Error("Native audio probe fingerprint does not match its compiled binary.");
+
+  if (stageRequested) {
+    const stagedProbePath = path.join(stagedDirectory, "shared-dsp-device-probe");
+    await mkdir(stagedDirectory, { recursive: true });
+    await copyFile(probePath, stagedProbePath);
+    await chmod(stagedProbePath, 0o755);
+    const manifest = {
+      schemaVersion: 1,
+      stagedAt: new Date().toISOString(),
+      binary: "native/shared-dsp-device-probe",
+      sha256: fingerprint,
+      protocolVersion: hardwareProbe.handshake.protocolVersion,
+      dspContractVersion: hardwareProbe.handshake.dspContractVersion,
+      engineVersion: hardwareProbe.handshake.engineVersion,
+      capability: "query-only-default-output-probe",
+    };
+    await writeFile(stagedManifestPath, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o644 });
+    staging = { binary: manifest.binary, manifest: "native-audio-runtime-manifest.json", sha256: fingerprint };
+  }
+} else if (stageRequested) {
+  throw new Error("Native audio staging requires the --devices verification gate.");
+}
+
 process.stdout.write(`${JSON.stringify({
   contractVersion: fixtureSet.contractVersion,
   implementation: "swift",
@@ -74,4 +119,6 @@ process.stdout.write(`${JSON.stringify({
   blockSizes: fixtureSet.blockSizes,
   comparisons,
   selfTest: selfTest.stdout.trim(),
+  ...(hardwareProbe ? { hardwareProbe } : {}),
+  ...(staging ? { staging } : {}),
 }, null, 2)}\n`);

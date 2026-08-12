@@ -9,6 +9,7 @@ import { addAudioSource, loadConfig, projectRoot, removeAudioSource } from "./co
 import { ENGINE_AUTH_HEADER, engineRequestIsAuthorized } from "./engine-auth.mjs";
 import { BASE_SECURITY_HEADERS, isStateChangingMethod, requestHostIsAllowed, requestOriginIsAllowed } from "./http-utils.mjs";
 import { contentTypeFor, sendJson, streamFile } from "./http-response.mjs";
+import { createNativeAudioService } from "./native-audio-service.mjs";
 import { chooseAudioPaths, chooseProjectAssetPaths, revealInFinder } from "./native-picker.mjs";
 import { createProjectAssetReferences } from "./project-assets.mjs";
 import { createPortableProjectBundle } from "./portable-project-bundle.mjs";
@@ -36,6 +37,11 @@ const previousConnectivity = new Map();
 const outputRoot = configuredPath("PROJECT_SEQUENCER_EXPORTS_PATH", path.join(projectRoot, "exports"));
 const waveformService = createWaveformService();
 const technicalAnalysisService = createTechnicalAnalysisService();
+const nativeAudioService = createNativeAudioService({
+  executablePath: process.env.PROJECT_SEQUENCER_NATIVE_AUDIO_PROBE_PATH
+    ? path.resolve(process.env.PROJECT_SEQUENCER_NATIVE_AUDIO_PROBE_PATH)
+    : "",
+});
 
 const publicFile = (file) => ({
   key: file.key,
@@ -152,6 +158,8 @@ const handleApi = createApiRouter({
   getLibraryFile: (key) => libraryByKey.get(key),
   getConfig: () => config,
   isScanning: () => Boolean(scanPromise),
+  nativeAudioConfigured: nativeAudioService.configured,
+  getNativeAudioStatus: () => nativeAudioService.status(),
   getWatchStatus: () => audioWatchService.status(),
   refreshLibrary,
   publicFile,

@@ -18,4 +18,6 @@ native/**/.build/
 desktop-resources/staged/bin/
 desktop-resources/staged/licenses/
 desktop-resources/staged/ffmpeg-runtime-manifest.json
+desktop-resources/staged/native/
+desktop-resources/staged/native-audio-runtime-manifest.json
 npm-debug.log*

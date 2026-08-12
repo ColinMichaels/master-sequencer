@@ -104,6 +104,31 @@ than a claim of working production login or synchronization. See
   it builds. It currently blocks because all three external prerequisites are
   absent. See [MACOS-DISTRIBUTION.md](./MACOS-DISTRIBUTION.md).
 
+### Gate 7 — packaged query-only Core Audio boundary: passed 2026-08-12
+
+- A fourth Swift product reads the current default-output format and device plus
+  safety latency through Core Audio properties. It never instantiates an
+  AudioUnit, opens a stream or callback, plays audio, or requests input access.
+- The binary must return protocol v1, shared-DSP contract v2, and the SHA-256 of
+  its own compiled executable. Incompatible, replaced, malformed, and crashed
+  probes fail closed without exposing paths, fingerprints, instance IDs, or raw
+  process errors through the local API.
+- `npm run native:stage` runs all 16 compiled golden comparisons plus the device
+  handshake before placing the binary and sanitized manifest in ignored desktop
+  staging. Packaging includes it optionally; normal browser and local playback
+  do not depend on it.
+- The packaged three-launch media lifecycle passed with the native probe present
+  and available on every launch. Rendered QA reported the system default output
+  at 48 kHz, two channels, and 144 combined device/safety latency frames, with
+  no console errors or horizontal overflow at 1280 px and 390 px widths.
+- A transient no-device condition was also reproduced. The initial AVAudioEngine
+  approach terminated in that state, so the implementation was replaced with
+  Core Audio property reads and now returns an explicit `no-output-device`
+  status without crashing.
+
+This gate proves discovery, packaging, authentication, UI status, and graceful
+absence. It still does not claim real-time native playback.
+
 ## Decision
 
 Build this as a branch of Project Sequencer, not a separate product fork.
@@ -142,7 +167,8 @@ Embedded local engine process (existing Node server, 127.0.0.1 only)
   |-- app-data project/config/index files
   |-- read-only access to explicitly registered audio
   |-- system FFmpeg + ffprobe
-  `-- app-data exports/ derivatives
+  |-- app-data exports/ derivatives
+  `-- optional fingerprinted Swift hardware probe (query-only)
 
 Shared DSP contract v2
   |-- AudioWorklet adapter for browser experiments
@@ -178,6 +204,11 @@ after the engine protocol, file lifecycle, and packaging risks are proven.
   loop for gain, smoothing, exact bypass, and a prototype sample-peak guard.
   Contract v2 also covers optional DC blocking, sample-rate reset, and recovery
   telemetry. The browser AudioWorklet and Node host use that same contract.
+- The optional staged Swift probe is discovered only from an explicit local
+  environment path or the packaged app resources. The Node service verifies its
+  fingerprinted handshake, publishes a path-free `/api/native-audio/status`,
+  and includes the same status in bootstrap. Settings labels this as a DSP lab
+  and states that established playback remains authoritative.
 - Unit and smoke checks cover tool-path injection, parameter bounds, exact
   bypass, block-size determinism, ceiling behavior, and the two-channel host.
 
@@ -195,6 +226,8 @@ Useful verification commands:
 
 ```bash
 npm run dsp:smoke
+npm run native:devices:verify
+npm run native:stage
 npm run desktop:smoke
 npm run desktop:pack
 ```
@@ -252,6 +285,11 @@ this checkpoint.
    supply Developer ID and notarization credentials, pass the strict audit on
    DMG/ZIP artifacts, then add update/rollback infrastructure. Only after those
    gates should work begin on an isolated third-party plug-in host.
+7. **Query-only hardware boundary complete; streaming remaining:** package the
+   fingerprinted Core Audio probe and publish only sanitized status. The next
+   promotion gate is a silent output callback with allocation/deadline telemetry,
+   explicit start/stop ownership, device-change recovery, and no connection to
+   production playback until those tests pass.
 
 The promotion gate for shared DSP is measurable parity and recovery—not its UI
 appearance. It must survive buffer-size changes, sample-rate changes, device

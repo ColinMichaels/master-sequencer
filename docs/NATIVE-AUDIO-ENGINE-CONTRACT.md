@@ -5,13 +5,14 @@ production real-time audio engine
 
 ## Compiled Swift package
 
-`native/SharedDspEngine` is a SwiftPM package with three products:
+`native/SharedDspEngine` is a SwiftPM package with four products:
 
 | Product | Purpose |
 | --- | --- |
 | `SharedDspEngine` | Memory-safe Swift implementation of shared DSP contract v2 |
 | `shared-dsp-self-test` | Compiled bounds, bypass, recovery, and sample-rate reset checks |
 | `shared-dsp-golden-runner` | Binary Float32 bridge used only for cross-language parity verification |
+| `shared-dsp-device-probe` | Query-only Core Audio bridge for the current default-output format and reported latency |
 
 The processing method performs no file, network, UI, logging, or explicit
 allocation work. Hosts own the input/output buffers. Reset and sample-rate
@@ -36,6 +37,27 @@ so the package uses a compiled self-test executable plus the stronger binary
 golden-parity verifier. This is an environment limitation, not a claim that a
 SwiftPM test suite passed.
 
+Run the hardware boundary separately:
+
+```bash
+npm run native:devices:verify
+npm run native:stage
+```
+
+The first command verifies the same compiled parity authority, fingerprints the
+probe binary, executes it, and requires an exact protocol/DSP/fingerprint
+handshake. The second repeats those gates before copying the verified executable
+and a path-free manifest into ignored desktop staging. It never stages audio.
+Staging clears any older native probe first, so a failed build or handshake
+cannot leave a stale executable for a later package command to pick up.
+
+The probe uses lower-level Core Audio property reads rather than constructing an
+`AVAudioEngine`. It does not instantiate an AudioUnit, start an engine or
+callback, play/record audio, or request microphone permission. A temporarily
+missing default device is a valid `no-output-device` report instead of a process
+crash. The DSP processing kernel itself remains free of file, network, logging,
+allocation, and foreign-memory work.
+
 ## Host protocol
 
 `src/lib/native-audio-engine-contract.js` defines the boundary that a later
@@ -51,6 +73,9 @@ signed local engine must implement:
 
 Handshake version drift fails closed. Device identifiers and engine telemetry
 are machine-local runtime data and must not enter project JSON or cloud sync.
+The local HTTP service also removes the binary path, implementation fingerprint,
+per-launch instance ID, and raw process errors before returning status to the
+UI.
 
 ## Latency authority
 
@@ -89,10 +114,10 @@ log stores reason codes and timestamps, never absolute paths or audio data.
 
 ## Remaining production work
 
-This checkpoint does not provide Core Audio/AVAudioEngine device enumeration,
-a hardware callback, aggregate-device support, hot-plug notifications, WASM,
-background service lifecycle, production IPC, or production offline printing.
-The Swift runner is a test bridge and is not packaged into the app. Production
+This checkpoint does not provide full device enumeration, a hardware callback,
+aggregate-device support, hot-plug notifications, WASM, a background service,
+production stream IPC, or native offline printing. The golden runner remains a
+test bridge. The query-only probe can be packaged into the POC, but production
 promotion still requires real device-loss tests, callback allocation profiling,
-latency measurement against hardware, native manifest fingerprints, and the
-same source-safe rendered-audio checks used by the existing FFmpeg path.
+measured loopback latency, Developer ID signing/notarization of the native code,
+and the same source-safe rendered-audio checks used by the existing FFmpeg path.

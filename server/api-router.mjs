@@ -35,6 +35,8 @@ export const createApiRouter = ({
   getLibraryFile,
   getConfig,
   isScanning,
+  nativeAudioConfigured,
+  getNativeAudioStatus,
   getWatchStatus,
   refreshLibrary,
   publicFile,
@@ -48,7 +50,11 @@ export const createApiRouter = ({
 }) => async (request, response, url) => {
   const library = getLibrary();
   if (request.method === "GET" && url.pathname === "/api/health") {
-    sendJson(response, 200, { ok: true, audioFiles: library.files.length, scanning: isScanning() });
+    sendJson(response, 200, { ok: true, audioFiles: library.files.length, scanning: isScanning(), nativeAudioConfigured });
+    return true;
+  }
+  if (request.method === "GET" && url.pathname === "/api/native-audio/status") {
+    sendJson(response, 200, await getNativeAudioStatus());
     return true;
   }
   if (request.method === "GET" && url.pathname === "/api/bootstrap") {
@@ -63,6 +69,7 @@ export const createApiRouter = ({
       scanning: isScanning(),
       scan: library.scan,
       watching: getWatchStatus(),
+      nativeAudio: await getNativeAudioStatus(),
       dataFiles: {
         state: "data/sequencer-state.json",
         recovery: "data/sequencer-state.last-known-good.json",

@@ -1,4 +1,4 @@
-export const runDesktopSmokePlan = async (plan = "bootstrap") => {
+export const runDesktopSmokePlan = async (plan = "bootstrap", { expectNativeAudio = false } = {}) => {
   const requireCondition = (condition, message) => {
     if (!condition) throw new Error(message);
   };
@@ -72,21 +72,31 @@ export const runDesktopSmokePlan = async (plan = "bootstrap") => {
 
   const bootstrap = (await jsonRequest("/api/bootstrap")).body;
   requireCondition(bootstrap.state && Array.isArray(bootstrap.library), "Desktop bootstrap returned an invalid payload.");
+  requireCondition(bootstrap.nativeAudio && typeof bootstrap.nativeAudio.available === "boolean", "Desktop bootstrap omitted native-audio status.");
+  const nativeAudioText = JSON.stringify(bootstrap.nativeAudio);
+  requireCondition(!nativeAudioText.includes("implementationFingerprint") && !nativeAudioText.includes("engineInstanceId") && !/\/(?:Users|private|var\/folders)\//.test(nativeAudioText), "Native-audio status exposed private engine details or a local path.");
+  if (expectNativeAudio) {
+    requireCondition(bootstrap.nativeAudio.configured && bootstrap.nativeAudio.probeReady, "The packaged native-audio probe was present but did not pass its runtime handshake.");
+    requireCondition(bootstrap.nativeAudio.mode === "query-only", "The native-audio POC exceeded its query-only capability boundary.");
+    if (bootstrap.nativeAudio.available) requireCondition(bootstrap.nativeAudio.defaultOutput?.accessMode === "query-only", "The native output report exceeded its query-only capability boundary.");
+    else requireCondition(bootstrap.nativeAudio.reasonCode === "no-output-device", "The verified native probe returned an unknown output-device state.");
+  }
+  const nativeAudioAvailable = bootstrap.nativeAudio.available;
 
-  if (plan === "bootstrap") return { plan, libraryFiles: bootstrap.library.length };
+  if (plan === "bootstrap") return { plan, libraryFiles: bootstrap.library.length, nativeAudioAvailable };
 
   if (plan === "media-initial") {
     await verifyMediaServices(bootstrap);
     const render = await createAndVerifyPrint(bootstrap);
     await persistMarker(bootstrap);
-    return { plan, libraryFiles: bootstrap.library.length, renderId: render.id, audioName: render.audioName };
+    return { plan, libraryFiles: bootstrap.library.length, renderId: render.id, audioName: render.audioName, nativeAudioAvailable };
   }
 
   if (plan === "media-offline") {
     verifyPersistedMarker(bootstrap);
     requireCondition(bootstrap.library.length === 0, "Offline desktop root unexpectedly retained indexed media.");
     requireCondition(bootstrap.roots.some((root) => root.connected === false), "Missing desktop media root was not reported offline.");
-    return { plan, offlineRoots: bootstrap.roots.filter((root) => !root.connected).length };
+    return { plan, offlineRoots: bootstrap.roots.filter((root) => !root.connected).length, nativeAudioAvailable };
   }
 
   if (plan === "media-reconnect") {
@@ -95,7 +105,7 @@ export const runDesktopSmokePlan = async (plan = "bootstrap") => {
     requireCondition(bootstrap.roots.some((root) => root.connected === true), "Restored desktop media root did not reconnect.");
     const jobs = (await jsonRequest("/api/render-jobs")).body.jobs;
     requireCondition(jobs.some((job) => job.status === "completed" && job.recovered), "Documented render history was not recovered after relaunch.");
-    return { plan, libraryFiles: bootstrap.library.length, recoveredRenders: jobs.filter((job) => job.recovered).length };
+    return { plan, libraryFiles: bootstrap.library.length, recoveredRenders: jobs.filter((job) => job.recovered).length, nativeAudioAvailable };
   }
 
   throw new Error(`Unknown desktop smoke plan: ${plan}`);

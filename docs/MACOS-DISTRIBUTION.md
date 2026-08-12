@@ -27,12 +27,26 @@ npm run desktop:audit
 
 The audit inspects the outer signature, hardened-runtime flag, nested Electron
 helpers/frameworks/native modules, stapled ticket, Gatekeeper result, bundled
-FFmpeg executables, portable approval manifest, and license directory. The
+FFmpeg executables, portable approval manifest, license directory, and the
+optional native-audio probe. The
 normal audit returns a report even when local-only. Add
 `-- --require-distribution` to make any release blocker fail the command.
 
 The local POC may use explicitly configured or installed FFmpeg. That is not a
 distribution mechanism.
+
+The optional query-only native-audio POC is staged with:
+
+```bash
+npm run native:stage
+```
+
+This command compiles the Swift package, passes the self-test and all 16 golden
+comparisons, queries or gracefully reports absence of the current default
+output, verifies the binary fingerprint handshake, and writes only an ignored
+binary plus sanitized manifest. A distribution build that includes it must sign
+that nested executable with the same Developer ID team; the strict release
+audit rejects missing or invalid nested signatures.
 
 ## Approve and stage FFmpeg
 
@@ -112,6 +126,8 @@ Intel/Apple Silicon testing remain separate product-release gates.
 
 - Packaged arm64 app: built successfully.
 - Packaged three-launch media lifecycle: passed.
+- Optional Swift hardware probe: packaged; fingerprint handshake and path-free
+  bootstrap status passed across all three launches.
 - Valid Developer ID identities on this Mac: zero.
 - Signature: ad-hoc/linker only; not Developer ID.
 - Hardened-runtime proof on a Developer ID signature: absent.

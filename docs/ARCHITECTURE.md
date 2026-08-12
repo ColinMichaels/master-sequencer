@@ -99,6 +99,7 @@ Every feature must preserve these rules:
 | `server/native-picker.mjs` | Register paths selected by the native macOS picker without copying files |
 | `server/tool-paths.mjs` | Resolve injected FFmpeg/ffprobe executables for local and packaged runtimes |
 | `server/shared-dsp-host.mjs` | Node adapter for the versioned shared-DSP portability prototype |
+| `server/native-audio-service.mjs` | Execute the optional fingerprinted Swift hardware probe and publish only sanitized query-only status |
 
 The state and configuration stores serialize writes before replacing their
 target file. This prevents overlapping requests from sharing a temporary write
@@ -119,8 +120,8 @@ baseline order references before disk state changes.
 | `src/lib/library-search.js` | Build the in-memory catalog index and define portable saved-filter records |
 | `src/lib/*.js` | Pure import, sequence, formatting, appearance, and mastering rules |
 | `src/dsp/*` | Opt-in shared processing contract and AudioWorklet adapter; not production authority yet |
-| `native/SharedDspEngine/*` | Swift contract-v2 kernel and golden parity runner; compiled offline proof, not real-time device authority |
-| `desktop-resources/staged/*` | Ignored, approval-gated FFmpeg runtime and licenses copied into distribution builds only |
+| `native/SharedDspEngine/*` | Swift contract-v2 kernel, golden parity tools, and query-only Core Audio probe; not real-time device authority |
+| `desktop-resources/staged/*` | Ignored FFmpeg distribution artifacts and optional verified native-audio probe copied into desktop builds |
 | `src/styles/*.css` | Tokens/base rules, shell chrome, workspace features, and responsive/motion rules |
 
 Autosave uses a short debounce for editing comfort, then puts each snapshot on a
@@ -159,6 +160,15 @@ remains compatible when no engine token is configured.
 Responses deny framing, disable MIME sniffing, use a same-origin resource
 policy, and apply a restrictive content security policy. User-supplied SVG
 assets receive an additional sandbox policy.
+
+The optional native-audio executable is never selected from the shell `PATH`.
+The desktop shell accepts only an explicit local path or its packaged resources
+location. The service hashes the executable before every probe, requires that
+exact fingerprint in the versioned handshake, and strips binary paths,
+fingerprints, instance IDs, and process errors from HTTP responses. The current
+capability is query-only and cannot become playback authority through the
+status endpoint. Concurrent requests share one probe and status is cached
+briefly so a local page cannot create an unbounded child-process loop.
 
 Audio delivery supports single HTTP byte ranges, including suffix ranges used
 by media clients. Malformed, multiple, reversed, and out-of-bounds ranges return

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { access, readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -40,7 +41,7 @@ const collectNestedCode = async (directory, relative = "") => {
         continue;
       }
       results.push(...await collectNestedCode(absolutePath, relativePath));
-    } else if (/\.(dylib|node)$/.test(entry.name) || relativePath.startsWith(path.join("Contents", "MacOS"))) {
+    } else if (/\.(dylib|node)$/.test(entry.name) || relativePath.startsWith(path.join("Contents", "MacOS")) || relativePath === path.join("Contents", "Resources", "native", "shared-dsp-device-probe")) {
       results.push(relativePath);
     }
   }
@@ -60,6 +61,24 @@ for (const name of ["ffmpeg", "ffprobe"]) {
   } catch {
     bundledTools[name] = { present: false, executable: false, version: "" };
   }
+}
+
+let nativeAudioProbe = { present: false, executable: false, signed: false, manifest: false, fingerprintMatch: false };
+try {
+  const probePath = path.join(resourcesPath, "native", "shared-dsp-device-probe");
+  const details = await stat(probePath);
+  const signatureCheck = run("codesign", ["--verify", "--strict", probePath]);
+  const manifest = JSON.parse(await readFile(path.join(resourcesPath, "native-audio-runtime-manifest.json"), "utf8"));
+  const fingerprint = createHash("sha256").update(await readFile(probePath)).digest("hex");
+  nativeAudioProbe = {
+    present: details.isFile(),
+    executable: Boolean(details.mode & 0o111),
+    signed: signatureCheck.ok,
+    manifest: manifest?.binary === "native/shared-dsp-device-probe" && manifest?.capability === "query-only-default-output-probe",
+    fingerprintMatch: manifest?.sha256 === fingerprint,
+  };
+} catch {
+  nativeAudioProbe = { present: false, executable: false, signed: false, manifest: false, fingerprintMatch: false };
 }
 
 let ffmpegManifest = null;
@@ -102,6 +121,7 @@ const report = {
   gatekeeper: { accepted: gatekeeper.ok, detail: gatekeeper.output.split("\n").at(-1) || "" },
   notarization: { stapledTicket: stapler.ok, detail: stapler.output.split("\n").at(-1) || "" },
   ffmpeg: { tools: bundledTools, manifest: ffmpegManifest ? { approvalReference: ffmpegManifest.approvalReference, licenseSpdx: ffmpegManifest.licenseSpdx } : null, licenseNotices },
+  nativeAudio: nativeAudioProbe,
 };
 process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 if (requireDistribution && !assessment.distributionReady) process.exitCode = 1;

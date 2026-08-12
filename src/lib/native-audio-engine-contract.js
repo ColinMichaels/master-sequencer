@@ -85,6 +85,44 @@ export const validateNativeAudioEngineHandshake = (handshake) => {
   };
 };
 
+export const validateNativeAudioHardwareProbe = (report) => {
+  if (!report || typeof report !== "object" || report.schemaVersion !== 1) throw new Error("Native audio hardware report is invalid.");
+  const capturedAt = typeof report.capturedAt === "string" && Number.isFinite(Date.parse(report.capturedAt)) ? new Date(report.capturedAt).toISOString() : "";
+  if (!capturedAt) throw new Error("Native audio hardware capture time is invalid.");
+  const handshake = validateNativeAudioEngineHandshake(report.handshake);
+  if (handshake.capabilities.realTimeOutput) throw new Error("A query-only hardware probe cannot claim real-time output.");
+  const output = report.defaultOutput;
+  if (output == null) {
+    if (report.reasonCode !== "no-output-device") throw new Error("Native output unavailability reason is invalid.");
+    return { schemaVersion: 1, capturedAt, handshake, defaultOutput: null, reasonCode: "no-output-device" };
+  }
+  if (!output || typeof output !== "object") throw new Error("Native default output report is missing.");
+  const label = cleanIdentifier(output.label, "");
+  if (!label || label.startsWith("/") || /^[A-Za-z]:[\\/]/.test(label)) throw new Error("Native output label is invalid.");
+  const sampleRate = finiteNumber(output.sampleRate, 0, 8_000, 384_000);
+  const channels = integerInRange(output.channels, 0, 1, 32);
+  const presentationLatencySeconds = finiteNumber(output.presentationLatencySeconds, -1, 0, 10);
+  const presentationLatencyFrames = integerInRange(output.presentationLatencyFrames, -1, 0, 3_840_000);
+  if (!sampleRate || !channels || presentationLatencySeconds < 0 || presentationLatencyFrames < 0) throw new Error("Native output format or latency is invalid.");
+  if (Math.abs(presentationLatencyFrames - Math.round(presentationLatencySeconds * sampleRate)) > 1) throw new Error("Native output latency frames do not match its sample rate and seconds.");
+  if (output.accessMode !== "query-only") throw new Error("Native hardware probe must remain query-only.");
+  return {
+    schemaVersion: 1,
+    capturedAt,
+    handshake,
+    defaultOutput: {
+      label,
+      sampleRate,
+      channels,
+      presentationLatencySeconds,
+      presentationLatencyFrames,
+      interleaved: Boolean(output.interleaved),
+      accessMode: "query-only",
+    },
+    reasonCode: null,
+  };
+};
+
 const TRANSITIONS = Object.freeze({
   stopped: new Set(["starting"]),
   starting: new Set(["running", "failed", "stopped"]),
