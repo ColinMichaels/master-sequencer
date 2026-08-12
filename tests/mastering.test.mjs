@@ -194,8 +194,19 @@ test("Premium sidechain and stereo-link controls produce real print filters", ()
   limiter.parameters.stereoLinkPercent = 40;
   const processed = buildAdvancedMasteringFilters({ ...createDefaultAdvancedMastering(), nodes: [compressor, limiter] });
 
-  assert.match(processed.filters.join(","), /asplit=2\[compressor_program\]\[compressor_detector\].*highpass=f=180:p=2.*sidechaincompress=threshold=/);
-  assert.match(processed.filters.join(","), /asplit=2\[linked_in\]\[independent_in\].*channelsplit=channel_layout=stereo.*amix=inputs=2:normalize=0/);
+  assert.match(processed.filters.join(","), /asplit=2\[plugin_0_program\]\[plugin_0_detector\].*highpass=f=180:p=2.*sidechaincompress=threshold=/);
+  assert.match(processed.filters.join(","), /asplit=2\[plugin_1_linked_in\]\[plugin_1_independent_in\].*channelsplit=channel_layout=stereo.*amix=inputs=2:normalize=0/);
+});
+
+test("repeated independent limiter instances receive collision-free FFmpeg labels", () => {
+  const first = createAdvancedProcessor(ADVANCED_PROCESSOR_TYPES.limiter, "limiter-first");
+  const second = createAdvancedProcessor(ADVANCED_PROCESSOR_TYPES.limiter, "limiter-second");
+  first.parameters.stereoLinkPercent = 25;
+  second.parameters.stereoLinkPercent = 75;
+  const graph = buildRenderGraph([{ sourceDuration: 1, mastering: {} }], { masteringPath: "advanced", advancedMastering: { ...createDefaultAdvancedMastering(), nodes: [first, second] } });
+  assert.match(graph.filterComplex, /plugin_0_linked_in/);
+  assert.match(graph.filterComplex, /plugin_1_linked_in/);
+  assert.doesNotMatch(graph.filterComplex, /\[linked_in\]|\[left_limited\]/);
 });
 
 test("legacy Premium controls gain complete faceplate parameters without losing the existing mid-band setting", () => {
@@ -213,7 +224,7 @@ test("legacy Premium controls gain complete faceplate parameters without losing 
   assert.deepEqual(normalized.nodes[0].parameters.lowMidBand, { frequencyHz: 400, gainDb: 0, q: 1 });
   assert.deepEqual(normalized.nodes[0].parameters.highMidBand, { frequencyHz: 9_400, gainDb: -2, q: 1.4 });
   assert.equal(normalized.nodes[0].parameters.outputGainDb, 0);
-  assert.equal(normalized.nodes[1].parameters.oversample, 4);
+  assert.equal(normalized.nodes[1].parameters.oversample, 1);
   assert.equal(normalized.nodes[1].parameters.stereoLinkPercent, 100);
 });
 

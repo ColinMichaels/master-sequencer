@@ -22,7 +22,7 @@ const fileForTrack = (track, libraryMap) => {
 
 const timeLabel = (value, precise = false) => value <= 0 ? (precise ? "0:00.000" : "0:00") : formatDuration(value, precise);
 
-export function MasteringWorkspace({ album, libraryMap, presets, renderingAvailable = true, revealPrivateFilenames = false, protectedSourceKeys, activeComparison, onAlbumChange, onPreview, onReferenceCompare, previewingTrackId, onOpenExport, onTrackFocus, onPreviewChapter, onPlayFrom, onTogglePlayback, onSeekTrack, currentTrackId, currentTime, onSavePreset, onLoadPreset, onDeletePreset, meteringRef, meteringAvailable, playing, liveProcessing, monitorLabel }) {
+export function MasteringWorkspace({ album, libraryMap, presets, renderingAvailable = true, revealPrivateFilenames = false, protectedSourceKeys, activeComparison, onAlbumChange, onPreview, onReferenceCompare, previewingTrackId, onOpenExport, onTrackFocus, onPreviewChapter, onPlayFrom, onTogglePlayback, onSeekTrack, currentTrackId, currentTime, onSavePreset, onLoadPreset, onDeletePreset, meteringRef, meteringAvailable, playing, liveProcessing, monitorLabel, monitorMode = "stereo", onMonitorModeChange }) {
   const tracks = useMemo(() => sequenceTracks(album), [album]);
   const [selectedTrackId, setSelectedTrackId] = useState(tracks[0]?.id || "");
   const pendingPlaybackTrackId = useRef("");
@@ -161,7 +161,7 @@ export function MasteringWorkspace({ album, libraryMap, presets, renderingAvaila
       </section>
 
       {masteringPath === "advanced"
-        ? <AdvancedMasteringRack rack={advancedMastering} onChange={updateAdvancedMastering} meteringRef={meteringRef} meteringAvailable={meteringAvailable} playing={playing} liveProcessing={liveProcessing} monitorLabel={monitorLabel} />
+        ? <AdvancedMasteringRack rack={advancedMastering} onChange={updateAdvancedMastering} meteringRef={meteringRef} meteringAvailable={meteringAvailable} playing={playing} liveProcessing={liveProcessing} monitorLabel={monitorLabel} monitorMode={monitorMode} onMonitorModeChange={onMonitorModeChange} />
         : <MasterBusControls bus={masterBus} presets={presets} onChange={updateMasterBus} onReset={resetMasterBus} onSavePreset={onSavePreset} onLoadPreset={onLoadPreset} onDeletePreset={onDeletePreset} meteringRef={meteringRef} meteringAvailable={meteringAvailable} playing={playing} liveProcessing={liveProcessing} monitorLabel={monitorLabel} />}
 
       <div className="mastering-columns">

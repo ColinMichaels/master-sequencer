@@ -1,12 +1,27 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { activeMasteringProcessors, applyLiveMasteringSettings, comparisonPlaybackStart, compressorGainReductionDb, compressorSidechainMix, createLiveMasteringGraph, decibelsToGain, equalizerLiveImpact, limiterStereoMatrix, masterMonitorRouting, playbackBypassesMastering } from "../src/lib/live-mastering.js";
+import { activeMasteringProcessors, applyLiveMasteringSettings, comparisonPlaybackStart, compressorGainReductionDb, compressorSidechainMix, createLiveMasteringGraph, decibelsToGain, equalizerLiveImpact, limiterStereoMatrix, masterMonitorMatrix, masterMonitorRouting, playbackBypassesMastering, setMasterMonitorMode } from "../src/lib/live-mastering.js";
 import { ADVANCED_PROCESSOR_TYPES, createAdvancedProcessor, createDefaultAdvancedMastering } from "../src/lib/advanced-mastering.js";
 
 const parameter = () => ({ value: 0 });
 const filter = () => ({ type: "", frequency: parameter(), gain: parameter(), Q: parameter() });
 const gain = () => ({ gain: parameter() });
 const compressor = () => ({ threshold: parameter(), ratio: parameter(), knee: parameter(), attack: parameter(), release: parameter() });
+const delay = () => ({ delayTime: parameter() });
+const premiumSlot = () => ({
+  eqEncodeLeftToLeft: gain(), eqEncodeLeftToRight: gain(), eqEncodeRightToLeft: gain(), eqEncodeRightToRight: gain(),
+  lowShelf: filter(), lowMidBand: filter(), highMidBand: filter(), highShelf: filter(), lowShelfRight: filter(), lowMidBandRight: filter(), highMidBandRight: filter(), highShelfRight: filter(),
+  eqDecodeLeftToLeft: gain(), eqDecodeLeftToRight: gain(), eqDecodeRightToLeft: gain(), eqDecodeRightToRight: gain(), eqOutputGain: gain(),
+  compressorEncodeLeftToLeft: gain(), compressorEncodeLeftToRight: gain(), compressorEncodeRightToLeft: gain(), compressorEncodeRightToRight: gain(), compressorProcessedLeft: gain(), compressorProcessedRight: gain(), compressorOriginalLeft: gain(), compressorOriginalRight: gain(), compressorDecodeLeftToLeft: gain(), compressorDecodeLeftToRight: gain(), compressorDecodeRightToLeft: gain(), compressorDecodeRightToRight: gain(),
+  compressorDry: gain(), compressorFullRange: gain(), compressorSidechainFilter: filter(), compressorSidechainGain: gain(), compressorLowBandFilter: filter(), compressorLowBandGain: gain(), compressor: compressor(), makeupGain: gain(), compressorWet: gain(), outputGain: gain(), limiter: compressor(), limiterLeft: compressor(), limiterRight: compressor(), limiterIndependentGain: gain(), limiterLinkedGain: gain(),
+  fieldLeftToLeft: gain(), fieldLeftToRight: gain(), fieldRightToLeft: gain(), fieldRightToRight: gain(),
+  colorDry: gain(), colorWet: gain(), colorDrive: gain(), colorFilter: filter(), colorShaper: {}, colorOutput: gain(),
+  phaseEncodeLeftToLeft: gain(), phaseEncodeLeftToRight: gain(), phaseEncodeRightToLeft: gain(), phaseEncodeRightToRight: gain(), phaseDecodeLeftToLeft: gain(), phaseDecodeLeftToRight: gain(), phaseDecodeRightToLeft: gain(), phaseDecodeRightToRight: gain(), phaseLeftDry: gain(), phaseLeftWet: gain(), phaseRightDry: gain(), phaseRightWet: gain(), phaseLeftDelay: delay(), phaseRightDelay: delay(), phaseLeftAllpass: filter(), phaseRightAllpass: filter(), phaseLeftPolarity: gain(), phaseRightPolarity: gain(),
+  hfDry: gain(), hfProcessed: gain(), hfLow: filter(), hfHigh: filter(), hfCompressor: compressor(), hfOutput: gain(),
+  ambienceDry: gain(), ambienceWet: gain(), ambienceDelay: delay(), ambienceLowCut: filter(), ambienceDamping: filter(), ambienceConvolver: {},
+  transientBase: gain(), transientAttackFilter: filter(), transientSustainFilter: filter(), transientAttackGain: gain(), transientSustainGain: gain(), transientOutput: gain(),
+  phaserDry: gain(), phaserWet: gain(), phaserLfo: { frequency: parameter() }, phaserModulation: gain(), phaserFeedback: gain(), phaserFilters: [filter(), filter(), filter(), filter()],
+});
 const settingsGraph = () => ({
   directGain: gain(),
   trackGain: gain(),
@@ -81,8 +96,7 @@ test("raw library and rendered previews bypass live processing to prevent altere
 
 test("Premium live processing assigns each rack position and meter in movable serial order", () => {
   const graph = settingsGraph();
-  const slot = () => ({ lowShelf: filter(), lowMidBand: filter(), highMidBand: filter(), highShelf: filter(), eqOutputGain: gain(), compressorDry: gain(), compressorFullRange: gain(), compressorSidechainFilter: filter(), compressorSidechainGain: gain(), compressorLowBandFilter: filter(), compressorLowBandGain: gain(), compressor: compressor(), makeupGain: gain(), compressorWet: gain(), outputGain: gain(), limiter: compressor(), limiterLeft: compressor(), limiterRight: compressor(), limiterIndependentGain: gain(), limiterLinkedGain: gain() });
-  graph.processorSlots = [slot(), slot(), slot(), slot(), slot()];
+  graph.processorSlots = [premiumSlot(), premiumSlot(), premiumSlot(), premiumSlot(), premiumSlot()];
   const limiter = createAdvancedProcessor(ADVANCED_PROCESSOR_TYPES.limiter, "limit-1");
   limiter.parameters.ceilingDbfs = -1.4;
   const eq = createAdvancedProcessor(ADVANCED_PROCESSOR_TYPES.eq, "eq-1");
@@ -129,6 +143,55 @@ test("Premium sidechain and limiter link controls map to real unity-safe gain st
   assert.deepEqual(limiterStereoMatrix(0), { independent: 1, linked: 0 });
   assert.deepEqual(limiterStereoMatrix(40), { independent: 0.6, linked: 0.4 });
   assert.deepEqual(limiterStereoMatrix(100), { independent: 0, linked: 1 });
+});
+
+test("Premium Mid/Side EQ and compression isolate the selected encoded channel during live audition", () => {
+  const graph = settingsGraph();
+  graph.processorSlots = [premiumSlot(), premiumSlot()];
+  const eq = createAdvancedProcessor(ADVANCED_PROCESSOR_TYPES.eq, "eq-side");
+  eq.parameters.channelMode = "side";
+  eq.parameters.lowMidBand.gainDb = -2.25;
+  const compressorUnit = createAdvancedProcessor(ADVANCED_PROCESSOR_TYPES.compressor, "compressor-mid");
+  compressorUnit.parameters.channelMode = "mid";
+  const rack = { ...createDefaultAdvancedMastering(), nodes: [eq, compressorUnit] };
+
+  applyLiveMasteringSettings(graph, enabledMaster, { masteringPath: "advanced", advancedMastering: rack });
+
+  assert.deepEqual([
+    graph.processorSlots[0].eqEncodeLeftToLeft.gain.value,
+    graph.processorSlots[0].eqEncodeLeftToRight.gain.value,
+    graph.processorSlots[0].eqEncodeRightToLeft.gain.value,
+    graph.processorSlots[0].eqEncodeRightToRight.gain.value,
+  ], [0.5, 0.5, 0.5, -0.5]);
+  assert.equal(graph.processorSlots[0].lowMidBand.gain.value, 0);
+  assert.equal(graph.processorSlots[0].lowMidBandRight.gain.value, -2.25);
+  assert.deepEqual([
+    graph.processorSlots[0].eqDecodeLeftToLeft.gain.value,
+    graph.processorSlots[0].eqDecodeLeftToRight.gain.value,
+    graph.processorSlots[0].eqDecodeRightToLeft.gain.value,
+    graph.processorSlots[0].eqDecodeRightToRight.gain.value,
+  ], [1, 1, 1, -1]);
+  assert.deepEqual([
+    graph.processorSlots[1].compressorProcessedLeft.gain.value,
+    graph.processorSlots[1].compressorProcessedRight.gain.value,
+    graph.processorSlots[1].compressorOriginalLeft.gain.value,
+    graph.processorSlots[1].compressorOriginalRight.gain.value,
+  ], [1, 0, 0, 1]);
+  assert.deepEqual([
+    graph.processorSlots[1].compressorDecodeLeftToLeft.gain.value,
+    graph.processorSlots[1].compressorDecodeLeftToRight.gain.value,
+    graph.processorSlots[1].compressorDecodeRightToLeft.gain.value,
+    graph.processorSlots[1].compressorDecodeRightToRight.gain.value,
+  ], [1, 1, 1, -1]);
+});
+
+test("stereo monitor modes use explicit audition-only matrices", () => {
+  assert.deepEqual(masterMonitorMatrix("stereo"), { leftToLeft: 1, leftToRight: 0, rightToLeft: 0, rightToRight: 1 });
+  assert.deepEqual(masterMonitorMatrix("mono"), { leftToLeft: 0.5, leftToRight: 0.5, rightToLeft: 0.5, rightToRight: 0.5 });
+  assert.deepEqual(masterMonitorMatrix("side"), { leftToLeft: 0.5, leftToRight: 0.5, rightToLeft: -0.5, rightToRight: -0.5 });
+  const graph = { context: {}, monitorLeftToLeft: gain(), monitorLeftToRight: gain(), monitorRightToLeft: gain(), monitorRightToRight: gain() };
+  assert.equal(setMasterMonitorMode(graph, "side"), "side");
+  assert.deepEqual([graph.monitorLeftToLeft.gain.value, graph.monitorLeftToRight.gain.value, graph.monitorRightToLeft.gain.value, graph.monitorRightToRight.gain.value], [0.5, 0.5, -0.5, -0.5]);
 });
 
 test("live MASTER controls schedule short ramps while audio is running to avoid zipper noise", () => {
@@ -205,6 +268,7 @@ test("the live graph connects one media source to direct, bypass, and processed 
       this.knee = parameter();
       this.attack = parameter();
       this.release = parameter();
+      this.delayTime = parameter();
     }
     connect(node, output = 0, input = 0) { this.connections.push({ node, output, input }); return node; }
     disconnect() { this.connections = []; }
@@ -215,6 +279,11 @@ test("the live graph connects one media source to direct, bypass, and processed 
     createGain() { return new FakeNode("gain"); }
     createBiquadFilter() { return new FakeNode("filter"); }
     createDynamicsCompressor() { return new FakeNode("compressor"); }
+    createWaveShaper() { return new FakeNode("waveshaper"); }
+    createDelay() { return new FakeNode("delay"); }
+    createConvolver() { return new FakeNode("convolver"); }
+    createOscillator() { const node = new FakeNode("oscillator"); node.start = () => { node.started = true; }; return node; }
+    createBuffer(channels, length) { return { getChannelData: () => new Float32Array(length) }; }
     createAnalyser() { return new FakeNode("analyser"); }
     createChannelSplitter() { return new FakeNode("splitter"); }
     createChannelMerger() { return new FakeNode("merger"); }
@@ -233,6 +302,8 @@ test("the live graph connects one media source to direct, bypass, and processed 
   assert.equal(graph.masterOutput.connections[0].node, graph.frequencyAnalyser);
   assert.equal(graph.frequencyAnalyser.connections[0].node, graph.channelSplitter);
   assert.deepEqual(graph.channelSplitter.connections.map(({ node, output }) => [node, output]), [[graph.leftAnalyser, 0], [graph.rightAnalyser, 1]]);
+  assert.deepEqual(graph.leftAnalyser.connections.map(({ node, input }) => [node, input]), [[graph.monitorLeftToLeft, 0], [graph.monitorLeftToRight, 0]]);
+  assert.deepEqual(graph.rightAnalyser.connections.map(({ node, input }) => [node, input]), [[graph.monitorRightToLeft, 0], [graph.monitorRightToRight, 0]]);
   assert.deepEqual(graph.channelMerger.connections, [{ node: graph.context.destination, output: 0, input: 0 }]);
   assert.equal(graph.frequencyAnalyser.fftSize, 2_048);
   assert.equal(graph.frequencyAnalyser.smoothingTimeConstant, 0.76);
@@ -245,10 +316,15 @@ test("the live graph connects one media source to direct, bypass, and processed 
   applyLiveMasteringSettings(graph, enabledMaster, { masteringPath: "advanced", advancedMastering: premiumRack });
   assert.equal(graph.rackSlotCount, 4);
   assert.equal(graph.advancedInput.connections[0].node, graph.processorSlots[0].input);
+  assert.equal(graph.processorSlots[0].input.connections[0].node, graph.processorSlots[0].eqEncodeSplitter);
+  assert.deepEqual(graph.processorSlots[0].eqProcessSplitter.connections.map(({ node, output }) => [node, output]), [[graph.processorSlots[0].lowShelf, 0], [graph.processorSlots[0].lowShelfRight, 1]]);
   assert.equal(graph.processorSlots[0].lowShelf.connections[0].node, graph.processorSlots[0].lowMidBand);
   assert.equal(graph.processorSlots[0].lowMidBand.connections[0].node, graph.processorSlots[0].highMidBand);
   assert.equal(graph.processorSlots[0].highMidBand.connections[0].node, graph.processorSlots[0].highShelf);
-  assert.equal(graph.processorSlots[0].highShelf.connections[0].node, graph.processorSlots[0].eqOutputGain);
+  assert.equal(graph.processorSlots[0].highShelf.connections[0].node, graph.processorSlots[0].eqProcessMerger);
+  assert.equal(graph.processorSlots[0].highShelfRight.connections[0].node, graph.processorSlots[0].eqProcessMerger);
+  assert.equal(graph.processorSlots[0].eqDecodeMerger.connections[0].node, graph.processorSlots[0].eqOutputGain);
+  assert.equal(graph.processorSlots[0].compressorDecodeMerger.connections[0].node, graph.processorSlots[0].outputGain);
   assert.equal(graph.processorSlots[3].output.connections[0].node, graph.advancedProcessedGain);
   assert.equal(graph.processorSlots[4].output.connections.length, 0);
 

@@ -3,8 +3,10 @@ import {
   MASTER_METER_FLOOR_DB,
   MASTER_SPECTRUM_FLOOR_DB,
   calculateSignalLevel,
+  calculateStereoCorrelation,
   meterPosition,
   sampleLogSpectrum,
+  sampleVectorscope,
 } from "../lib/master-metering.js";
 
 const EMPTY_SPECTRUM = Array.from({ length: 64 }, (_, index) => ({
@@ -20,6 +22,8 @@ const EMPTY_FRAME = {
   rightPeakDb: MASTER_METER_FLOOR_DB,
   leftPeakHoldDb: MASTER_METER_FLOOR_DB,
   rightPeakHoldDb: MASTER_METER_FLOOR_DB,
+  correlation: 0,
+  vectorscope: [],
   spectrum: EMPTY_SPECTRUM,
 };
 
@@ -149,7 +153,7 @@ function CompactMasterMonitor({ frame, clipping, mode, onModeChange, onOpenMaste
   );
 }
 
-export const MasterOutputMeters = memo(function MasterOutputMeters({ meteringRef, available, playing, monitorLabel, monitorRouting = "raw", effectsActive = false, compact = false, onOpenMastering }) {
+export const MasterOutputMeters = memo(function MasterOutputMeters({ meteringRef, available, playing, monitorLabel, monitorRouting = "raw", effectsActive = false, compact = false, onOpenMastering, monitorMode = "stereo", onMonitorModeChange }) {
   const [frame, setFrame] = useState(EMPTY_FRAME);
   const [compactMode, setCompactMode] = useState("vu");
   const [peakResetVersion, setPeakResetVersion] = useState(0);
@@ -207,6 +211,8 @@ export const MasterOutputMeters = memo(function MasterOutputMeters({ meteringRef
         rightPeakDb: right.peakDb,
         leftPeakHoldDb: holdPeak("left", left.peakDb),
         rightPeakHoldDb: holdPeak("right", right.peakDb),
+        correlation: calculateStereoCorrelation(leftSamples, rightSamples),
+        vectorscope: compact ? [] : sampleVectorscope(leftSamples, rightSamples),
         spectrum: frequencyMagnitudes ? sampleLogSpectrum(frequencyMagnitudes, meter.sampleRate, meter.frequencyAnalyser.fftSize) : EMPTY_SPECTRUM,
       });
     };
@@ -251,6 +257,10 @@ export const MasterOutputMeters = memo(function MasterOutputMeters({ meteringRef
         <div><span>05</span><div><h4 id="master-metering-title">Master Output Monitor</h4><small>{monitorLabel || stateLabel}</small></div></div>
         <div className="master-metering-status"><i aria-hidden="true" /><span>{clipping ? "Peak clip" : stateLabel}</span><button type="button" onClick={resetPeaks}>Reset peaks</button></div>
       </header>
+      <div className="master-monitor-modes" role="group" aria-label="Master monitor audition mode">
+        {[{ id: "stereo", label: "ST", name: "Stereo" }, { id: "mono", label: "MONO", name: "Mono sum" }, { id: "mid", label: "M", name: "Mid only" }, { id: "side", label: "S", name: "Side only" }].map((option) => <button key={option.id} type="button" className={monitorMode === option.id ? "is-active" : ""} aria-pressed={monitorMode === option.id} aria-label={`Monitor ${option.name}`} onClick={() => onMonitorModeChange?.(option.id)}>{option.label}<small>{option.name}</small></button>)}
+        <p>Monitor selection changes audition output only. It is never written into a master print.</p>
+      </div>
       <div className="master-metering-grid">
         <section className="digital-vu-panel" aria-labelledby="digital-vu-title">
           <header><div><h5 id="digital-vu-title">Digital Master VU</h5><small>RMS level · sample peak hold</small></div><strong>0 VU = −18 dBFS</strong></header>
@@ -279,6 +289,20 @@ export const MasterOutputMeters = memo(function MasterOutputMeters({ meteringRef
             </g>
           </svg>
           <figcaption><span>Sub</span><span>Bass</span><span>Low mids</span><span>Presence</span><span>Air</span></figcaption>
+        </figure>
+
+        <figure className={`master-vectorscope-panel ${frame.correlation < 0 ? "has-negative-correlation" : ""}`} data-correlation={frame.correlation.toFixed(3)}>
+          <header><div><h5>Stereo Field</h5><small>Vectorscope · phase correlation</small></div><strong>{frame.active ? frame.correlation.toFixed(2) : "Awaiting signal"}</strong></header>
+          <div className="master-vectorscope-wrap">
+            <svg viewBox="0 0 200 200" role="img" aria-label={frame.active ? `Stereo vectorscope with correlation ${frame.correlation.toFixed(2)}.` : "Stereo vectorscope awaiting master output."}>
+              <g className="master-vectorscope-grid" aria-hidden="true"><line x1="100" y1="8" x2="100" y2="192" /><line x1="8" y1="100" x2="192" y2="100" /><line x1="35" y1="35" x2="165" y2="165" /><line x1="165" y1="35" x2="35" y2="165" /><circle cx="100" cy="100" r="72" /></g>
+              <g className="master-vectorscope-points" aria-hidden="true">{frame.vectorscope.map((point, index) => <circle key={index} cx={100 + point.x * 84} cy={100 - point.y * 84} r="1.7" />)}</g>
+            </svg>
+            <div className="master-correlation-meter" role="meter" aria-label="Stereo phase correlation" aria-valuemin="-1" aria-valuemax="1" aria-valuenow={frame.correlation.toFixed(2)} aria-valuetext={`${frame.correlation.toFixed(2)} correlation${frame.correlation < 0 ? "; negative phase relationship" : ""}`}>
+              <span>−1</span><i><b style={{ left: `${(frame.correlation + 1) * 50}%` }} /></i><span>+1</span>
+            </div>
+          </div>
+          <figcaption>{frame.correlation < 0 ? "Negative correlation: verify the master in mono before approval." : "Positive correlation indicates a more mono-compatible stereo relationship."}</figcaption>
         </figure>
       </div>
     </section>

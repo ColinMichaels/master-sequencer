@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, sourceKey } from "../lib/api.js";
 import { normalizeMastering } from "../lib/mastering.js";
-import { applyLiveMasteringSettings, comparisonPlaybackStart, createLiveMasteringGraph, playbackBypassesMastering } from "../lib/live-mastering.js";
+import { applyLiveMasteringSettings, comparisonPlaybackStart, createLiveMasteringGraph, normalizeMasterMonitorMode, playbackBypassesMastering, setMasterMonitorMode } from "../lib/live-mastering.js";
 
 export const useTransport = ({ libraryMap, masterBus, masteringPath = "basic", advancedMastering, liveTracks = [] }) => {
   const audioRef = useRef(null);
@@ -18,6 +18,7 @@ export const useTransport = ({ libraryMap, masterBus, masteringPath = "basic", a
   const [currentTime, setCurrentTime] = useState(0);
   const [mediaDuration, setMediaDuration] = useState(0);
   const [liveMasteringAvailable, setLiveMasteringAvailable] = useState(null);
+  const [monitorMode, setMonitorModeState] = useState("stereo");
   const mode = useRef("idle");
   const queue = useRef([]);
   const queueCursor = useRef(0);
@@ -70,7 +71,9 @@ export const useTransport = ({ libraryMap, masterBus, masteringPath = "basic", a
         leftAnalyser: audioGraph.current.leftAnalyser,
         rightAnalyser: audioGraph.current.rightAnalyser,
         sampleRate: audioGraph.current.context.sampleRate,
+        monitorMode,
       } : null;
+      if (audioGraph.current) setMasterMonitorMode(audioGraph.current, monitorMode);
       updateAudioGraph();
       setLiveMasteringAvailable(Boolean(audioGraph.current));
       return audioGraph.current;
@@ -78,7 +81,14 @@ export const useTransport = ({ libraryMap, masterBus, masteringPath = "basic", a
       setLiveMasteringAvailable(false);
       return null;
     }
-  }, [updateAudioGraph]);
+  }, [monitorMode, updateAudioGraph]);
+
+  const setMonitorMode = useCallback((value) => {
+    const normalized = normalizeMasterMonitorMode(value);
+    setMonitorModeState(normalized);
+    if (audioGraph.current) setMasterMonitorMode(audioGraph.current, normalized);
+    if (meteringRef.current) meteringRef.current.monitorMode = normalized;
+  }, []);
 
   const resumeAudioGraph = useCallback((graph = audioGraph.current) => {
     const context = graph?.context;
@@ -373,5 +383,5 @@ export const useTransport = ({ libraryMap, masterBus, masteringPath = "basic", a
     onError: handleError,
   }), [handleEnded, handleError, resumeAudioGraph, suspendAudioGraph]);
 
-  return { audioRef, audioHandlers, meteringRef, current, status, setStatus, playing, currentTime, mediaDuration, liveMasteringAvailable, fileForTrack, previewFile, previewRendered, previewMasteringComparison, playSequence, navigateSequence, previewChapter, stop, togglePlayback, seek };
+  return { audioRef, audioHandlers, meteringRef, current, status, setStatus, playing, currentTime, mediaDuration, liveMasteringAvailable, monitorMode, setMonitorMode, fileForTrack, previewFile, previewRendered, previewMasteringComparison, playSequence, navigateSequence, previewChapter, stop, togglePlayback, seek };
 };

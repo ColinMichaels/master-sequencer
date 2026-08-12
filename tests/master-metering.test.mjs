@@ -4,8 +4,10 @@ import {
   MASTER_METER_FLOOR_DB,
   amplitudeToDecibels,
   calculateSignalLevel,
+  calculateStereoCorrelation,
   meterPosition,
   sampleLogSpectrum,
+  sampleVectorscope,
 } from "../src/lib/master-metering.js";
 
 test("digital master metering reports RMS and sample peak in dBFS", () => {
@@ -18,6 +20,17 @@ test("digital master metering reports RMS and sample peak in dBFS", () => {
   assert.equal(meterPosition(-60), 0);
   assert.equal(meterPosition(-18), 0.7);
   assert.equal(meterPosition(0), 1);
+});
+
+test("stereo metering distinguishes mono-compatible, independent, and inverted channels", () => {
+  const left = Float32Array.from([0, 0.5, 1, 0.5, 0, -0.5, -1, -0.5]);
+  const same = Float32Array.from(left);
+  const inverted = Float32Array.from(left, (value) => -value);
+  assert.ok(calculateStereoCorrelation(left, same) > 0.999);
+  assert.ok(calculateStereoCorrelation(left, inverted) < -0.999);
+  const points = sampleVectorscope(left, same, { points: 4 });
+  assert.equal(points.length, 4);
+  assert.ok(points.every((point) => Number.isFinite(point.x) && Number.isFinite(point.y) && Math.abs(point.x) <= 1 && Math.abs(point.y) <= 1));
 });
 
 test("frequency analysis samples logarithmic bands and keeps the strongest FFT bin", () => {

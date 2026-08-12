@@ -179,33 +179,74 @@ export const buildMasterBusFilters = (masterBus = {}) => {
   return { settings, filters };
 };
 
+// Mid/Side targeting is rendered as an explicit split and rejoin. This keeps
+// the unselected component bit-for-bit on the bypass branch and prevents a
+// nominal channel-mode setting from accidentally processing the full stereo bus.
+const channelModeFilter = (mode, filter, tag) => {
+  if (!filter) return "";
+  if (mode === "stereo") return filter;
+  const selected = mode === "side" ? "side" : "mid";
+  const other = selected === "mid" ? "side" : "mid";
+  return `stereotools=mode=lr>ms,channelsplit=channel_layout=stereo[${tag}_mid][${tag}_side];[${tag}_${selected}]${filter}[${tag}_${selected}_processed];[${tag}_${other}]anull[${tag}_${other}_processed];[${tag}_mid_processed][${tag}_side_processed]join=inputs=2:channel_layout=stereo,stereotools=mode=ms>lr`;
+};
+
+const targetChannelFilter = (target, filter, tag) => {
+  if (!filter) return "";
+  const midSide = target === "mid" || target === "side";
+  const first = midSide ? "stereotools=mode=lr>ms," : "";
+  const second = midSide ? ",stereotools=mode=ms>lr" : "";
+  const selected = target === "left" || target === "mid" ? "left" : "right";
+  const other = selected === "left" ? "right" : "left";
+  return `${first}channelsplit=channel_layout=stereo[${tag}_left][${tag}_right];[${tag}_${selected}]${filter}[${tag}_${selected}_processed];[${tag}_${other}]anull[${tag}_${other}_processed];[${tag}_left_processed][${tag}_right_processed]join=inputs=2:channel_layout=stereo${second}`;
+};
+
+const parallelFilter = (filter, mix, tag) => {
+  const wet = Math.max(0, Math.min(1, mix));
+  if (!filter || wet <= 0) return "";
+  if (wet >= 1) return filter;
+  return `asplit=2[${tag}_dry][${tag}_wet];[${tag}_dry]volume=${seconds(1 - wet)}[${tag}_dry_out];[${tag}_wet]${filter},volume=${seconds(wet)}[${tag}_wet_out];[${tag}_dry_out][${tag}_wet_out]amix=inputs=2:normalize=0`;
+};
+
+const eqFilter = (parameters) => [
+  parameters.lowShelf.gainDb !== 0 && `lowshelf=f=${seconds(parameters.lowShelf.frequencyHz)}:g=${seconds(parameters.lowShelf.gainDb)}:p=2`,
+  parameters.lowMidBand.gainDb !== 0 && `equalizer=f=${seconds(parameters.lowMidBand.frequencyHz)}:t=q:w=${seconds(parameters.lowMidBand.q)}:g=${seconds(parameters.lowMidBand.gainDb)}`,
+  parameters.highMidBand.gainDb !== 0 && `equalizer=f=${seconds(parameters.highMidBand.frequencyHz)}:t=q:w=${seconds(parameters.highMidBand.q)}:g=${seconds(parameters.highMidBand.gainDb)}`,
+  parameters.highShelf.gainDb !== 0 && `highshelf=f=${seconds(parameters.highShelf.frequencyHz)}:g=${seconds(parameters.highShelf.gainDb)}:p=2`,
+  parameters.outputGainDb !== 0 && `volume=${seconds(parameters.outputGainDb)}dB`,
+].filter(Boolean).join(",");
+
+const compressorFilter = (parameters) => [
+  `acompressor=threshold=${decibelsToAmplitude(parameters.thresholdDb)}`,
+  `ratio=${seconds(parameters.ratio)}`,
+  `attack=${seconds(parameters.attackMs)}`,
+  `release=${seconds(parameters.releaseMs)}`,
+  `knee=${seconds(parameters.knee)}`,
+  `makeup=${decibelsToAmplitude(parameters.makeupGainDb)}`,
+  `mix=${seconds(parameters.mix)}`,
+  `link=${parameters.link}`,
+  `detection=${parameters.detection}`,
+].join(":");
+
+const ambienceImpulseExpression = (decaySeconds, offset = 0) => {
+  const tones = [149, 211, 307, 431].map((frequency, index) => `sin(2*PI*${frequency + offset * (index + 1)}*t)`).join("+");
+  return `if(eq(n,0),1,0.055*exp(-6*t/${seconds(decaySeconds)})*(${tones}))`;
+};
+
 export const buildAdvancedMasteringFilters = (advancedMastering = {}) => {
   const settings = normalizeAdvancedMastering(advancedMastering);
   const filters = [];
   if (settings.bypass) return { settings, filters };
-  for (const node of settings.nodes) {
-    if (node.bypass) continue;
+  for (const [index, node] of settings.nodes.entries()) {
+    if (node.bypass || node.unavailable) continue;
     const parameters = node.parameters;
+    const tag = `plugin_${index}`;
     if (node.typeId === ADVANCED_PROCESSOR_TYPES.eq) {
-      if (parameters.lowShelf.gainDb !== 0) filters.push(`lowshelf=f=${seconds(parameters.lowShelf.frequencyHz)}:g=${seconds(parameters.lowShelf.gainDb)}:p=2`);
-      if (parameters.lowMidBand.gainDb !== 0) filters.push(`equalizer=f=${seconds(parameters.lowMidBand.frequencyHz)}:t=q:w=${seconds(parameters.lowMidBand.q)}:g=${seconds(parameters.lowMidBand.gainDb)}`);
-      if (parameters.highMidBand.gainDb !== 0) filters.push(`equalizer=f=${seconds(parameters.highMidBand.frequencyHz)}:t=q:w=${seconds(parameters.highMidBand.q)}:g=${seconds(parameters.highMidBand.gainDb)}`);
-      if (parameters.highShelf.gainDb !== 0) filters.push(`highshelf=f=${seconds(parameters.highShelf.frequencyHz)}:g=${seconds(parameters.highShelf.gainDb)}:p=2`);
-      if (parameters.outputGainDb !== 0) filters.push(`volume=${seconds(parameters.outputGainDb)}dB`);
+      const filter = channelModeFilter(parameters.channelMode, eqFilter(parameters), tag);
+      if (filter) filters.push(filter);
     } else if (node.typeId === ADVANCED_PROCESSOR_TYPES.compressor) {
-      const compressorFilter = [
-        `acompressor=threshold=${decibelsToAmplitude(parameters.thresholdDb)}`,
-        `ratio=${seconds(parameters.ratio)}`,
-        `attack=${seconds(parameters.attackMs)}`,
-        `release=${seconds(parameters.releaseMs)}`,
-        `knee=${seconds(parameters.knee)}`,
-        `makeup=${decibelsToAmplitude(parameters.makeupGainDb)}`,
-        `mix=${seconds(parameters.mix)}`,
-        `link=${parameters.link}`,
-        `detection=${parameters.detection}`,
-      ].join(":");
-      if (parameters.sidechainEnabled) filters.push(`asplit=2[compressor_program][compressor_detector];[compressor_detector]highpass=f=${seconds(parameters.sidechainFilterHz)}:p=2[compressor_sc];[compressor_program][compressor_sc]sidechaincompress=${compressorFilter.slice("acompressor=".length)}`);
-      else filters.push(compressorFilter);
+      const core = compressorFilter(parameters);
+      if (parameters.sidechainEnabled && parameters.channelMode === "stereo") filters.push(`asplit=2[${tag}_program][${tag}_detector];[${tag}_detector]highpass=f=${seconds(parameters.sidechainFilterHz)}:p=2[${tag}_sc];[${tag}_program][${tag}_sc]sidechaincompress=${core.slice("acompressor=".length)}`);
+      else filters.push(channelModeFilter(parameters.channelMode, core, tag));
     } else if (node.typeId === ADVANCED_PROCESSOR_TYPES.output) {
       if (parameters.outputGainDb !== 0) filters.push(`volume=${seconds(parameters.outputGainDb)}dB`);
     } else if (node.typeId === ADVANCED_PROCESSOR_TYPES.limiter) {
@@ -218,13 +259,58 @@ export const buildAdvancedMasteringFilters = (advancedMastering = {}) => {
         "latency=true",
       ].join(":");
       if (parameters.stereoLinkPercent >= 99.5) filters.push(limiterFilter);
-      else if (parameters.stereoLinkPercent <= 0.5) filters.push(`channelsplit=channel_layout=stereo[left][right];[left]${limiterFilter}[left_limited];[right]${limiterFilter}[right_limited];[left_limited][right_limited]join=inputs=2:channel_layout=stereo`);
+      else if (parameters.stereoLinkPercent <= 0.5) filters.push(`channelsplit=channel_layout=stereo[${tag}_left][${tag}_right];[${tag}_left]${limiterFilter}[${tag}_left_limited];[${tag}_right]${limiterFilter}[${tag}_right_limited];[${tag}_left_limited][${tag}_right_limited]join=inputs=2:channel_layout=stereo`);
       else {
         const linkedMix = seconds(parameters.stereoLinkPercent / 100);
         const independentMix = seconds(1 - parameters.stereoLinkPercent / 100);
-        filters.push(`asplit=2[linked_in][independent_in];[linked_in]${limiterFilter},volume=${linkedMix}[linked_limited];[independent_in]channelsplit=channel_layout=stereo[left][right];[left]${limiterFilter}[left_limited];[right]${limiterFilter}[right_limited];[left_limited][right_limited]join=inputs=2:channel_layout=stereo,volume=${independentMix}[independent_limited];[linked_limited][independent_limited]amix=inputs=2:normalize=0`);
+        filters.push(`asplit=2[${tag}_linked_in][${tag}_independent_in];[${tag}_linked_in]${limiterFilter},volume=${linkedMix}[${tag}_linked_limited];[${tag}_independent_in]channelsplit=channel_layout=stereo[${tag}_left][${tag}_right];[${tag}_left]${limiterFilter}[${tag}_left_limited];[${tag}_right]${limiterFilter}[${tag}_right_limited];[${tag}_left_limited][${tag}_right_limited]join=inputs=2:channel_layout=stereo,volume=${independentMix}[${tag}_independent_limited];[${tag}_linked_limited][${tag}_independent_limited]amix=inputs=2:normalize=0`);
       }
       if (parameters.oversample > 1) filters.push("aresample=48000");
+    } else if (node.typeId === ADVANCED_PROCESSOR_TYPES.stereoField) {
+      const midGain = decibelsToAmplitude(parameters.depthDb);
+      const sideGain = decibelsToAmplitude(parameters.widthDb);
+      filters.push(`stereotools=mode=lr>ms,channelsplit=channel_layout=stereo[${tag}_mid][${tag}_side];[${tag}_mid]volume=${midGain}[${tag}_mid_out];[${tag}_side]asplit=2[${tag}_side_low][${tag}_side_high];[${tag}_side_low]lowpass=f=${seconds(parameters.monoBelowHz)}:p=2,volume=0[${tag}_side_low_out];[${tag}_side_high]highpass=f=${seconds(parameters.monoBelowHz)}:p=2,lowshelf=f=${seconds(parameters.spaceFrequencyHz)}:g=${seconds(parameters.spaceDb)}:p=2,volume=${sideGain}[${tag}_side_high_out];[${tag}_side_low_out][${tag}_side_high_out]amix=inputs=2:normalize=0[${tag}_side_out];[${tag}_mid_out][${tag}_side_out]join=inputs=2:channel_layout=stereo,stereotools=mode=ms>lr:balance_out=${seconds(parameters.balance)}`);
+    } else if (node.typeId === ADVANCED_PROCESSOR_TYPES.harmonicColor) {
+      if (parameters.mix > 0 && parameters.driveDb > 0) {
+        const threshold = Math.max(0.08, decibelsToAmplitude(-parameters.driveDb));
+        const clipType = parameters.evenAmount > parameters.oddAmount ? "exp" : "tanh";
+        const color = `highshelf=f=${seconds(parameters.colorFrequencyHz)}:g=${seconds(parameters.driveDb * 0.3)}:p=2,volume=${seconds(parameters.driveDb)}dB,asoftclip=type=${clipType}:threshold=${threshold}:output=${decibelsToAmplitude(-parameters.driveDb)}:oversample=${parameters.oversample}${parameters.outputGainDb ? `,volume=${seconds(parameters.outputGainDb)}dB` : ""}`;
+        filters.push(parallelFilter(channelModeFilter(parameters.channelMode, color, `${tag}_mode`), parameters.mix, tag));
+      } else if (parameters.outputGainDb !== 0) filters.push(`volume=${seconds(parameters.outputGainDb)}dB`);
+    } else if (node.typeId === ADVANCED_PROCESSOR_TYPES.phaseAlignment) {
+      const phaseMix = Math.abs(parameters.shift) * parameters.mix;
+      const core = [
+        parameters.shift !== 0 && `allpass=f=${seconds(parameters.centerFrequencyHz)}:t=q:w=${seconds(parameters.q)}:mix=${seconds(Math.abs(parameters.shift))}`,
+        parameters.delaySamples > 0 && `adelay=delays=${seconds(parameters.delaySamples)}S:all=1`,
+        parameters.polarityInvert && "volume=-1",
+      ].filter(Boolean).join(",");
+      if (core) filters.push(targetChannelFilter(parameters.target, parallelFilter(core, Math.max(phaseMix, parameters.delaySamples > 0 || parameters.polarityInvert ? parameters.mix : 0), `${tag}_mix`), tag));
+    } else if (node.typeId === ADVANCED_PROCESSOR_TYPES.hfSmoother) {
+      if (parameters.mix > 0) filters.push(`asplit=3[${tag}_dry][${tag}_low][${tag}_high];[${tag}_dry]volume=${seconds(1 - parameters.mix)}[${tag}_dry_out];[${tag}_low]lowpass=f=${seconds(parameters.frequencyHz)}:p=2[${tag}_low_out];[${tag}_high]highpass=f=${seconds(parameters.frequencyHz)}:p=2,acompressor=threshold=${decibelsToAmplitude(parameters.thresholdDb)}:ratio=${seconds(parameters.ratio)}:attack=${seconds(parameters.attackMs)}:release=${seconds(parameters.releaseMs)}:knee=3:mix=1[${tag}_high_out];[${tag}_low_out][${tag}_high_out]amix=inputs=2:normalize=0,volume=${seconds(parameters.mix)}[${tag}_processed];[${tag}_dry_out][${tag}_processed]amix=inputs=2:normalize=0${parameters.outputGainDb ? `,volume=${seconds(parameters.outputGainDb)}dB` : ""}`);
+      else if (parameters.outputGainDb !== 0) filters.push(`volume=${seconds(parameters.outputGainDb)}dB`);
+    } else if (node.typeId === ADVANCED_PROCESSOR_TYPES.ambience) {
+      const wet = parameters.wetPercent / 100;
+      if (wet > 0) {
+        const dry = 1 - wet;
+        const irLeft = ambienceImpulseExpression(parameters.decaySeconds, parameters.model === "plate" ? 23 : 0);
+        const irRight = ambienceImpulseExpression(parameters.decaySeconds, parameters.model === "chamber" ? 17 : 11);
+        const rightDelay = Math.max(0, Math.round(parameters.preDelayMs + (parameters.widthPercent - 100) * 0.08));
+        filters.push(`asplit=2[${tag}_dry][${tag}_program];aevalsrc=exprs='${irLeft}|${irRight}':s=48000:d=${seconds(parameters.decaySeconds)}[${tag}_ir];[${tag}_dry]volume=${seconds(dry)}[${tag}_dry_out];[${tag}_program]adelay=delays=${seconds(parameters.preDelayMs)}|${seconds(rightDelay)},highpass=f=${seconds(parameters.lowCutHz)}:p=2,lowpass=f=${seconds(parameters.dampingHz)}:p=2[${tag}_prepared];[${tag}_prepared][${tag}_ir]afir=dry=0:wet=1:gtype=peak:irfmt=input:maxir=${seconds(parameters.decaySeconds)},volume=${seconds(wet)}[${tag}_wet_out];[${tag}_dry_out][${tag}_wet_out]amix=inputs=2:normalize=0`);
+      }
+    } else if (node.typeId === ADVANCED_PROCESSOR_TYPES.transientShaper) {
+      if (parameters.attackDb !== 0 || parameters.sustainDb !== 0 || parameters.outputGainDb !== 0) {
+        const attackDelta = decibelsToAmplitude(parameters.attackDb) - 1;
+        const sustainDelta = decibelsToAmplitude(parameters.sustainDb) - 1;
+        const focus = parameters.mode === "focused" ? parameters.focusFrequencyHz : 80;
+        filters.push(`asplit=3[${tag}_base][${tag}_attack][${tag}_sustain];[${tag}_attack]highpass=f=${seconds(focus)}:p=2,agate=mode=upward:range=0.2:threshold=0.08:ratio=2:attack=0.5:release=45,volume=${seconds(attackDelta)}[${tag}_attack_out];[${tag}_sustain]lowpass=f=${seconds(Math.max(400, focus * 4))}:p=2,acompressor=threshold=0.1:ratio=1.5:attack=80:release=450:mix=1,volume=${seconds(sustainDelta)}[${tag}_sustain_out];[${tag}_base][${tag}_attack_out][${tag}_sustain_out]amix=inputs=3:normalize=0${parameters.outputGainDb ? `,volume=${seconds(parameters.outputGainDb)}dB` : ""}`);
+      }
+    } else if (node.typeId === ADVANCED_PROCESSOR_TYPES.creativePhaser) {
+      if (parameters.mix > 0 && parameters.depth > 0) {
+        const delay = Math.min(5, Math.max(0.1, parameters.depth * 5));
+        const decay = Math.min(0.8, Math.abs(parameters.feedback));
+        const phaser = `aphaser=in_gain=1:out_gain=1:delay=${seconds(delay)}:decay=${seconds(decay)}:speed=${seconds(Math.max(0.1, parameters.rateHz))}:type=sinusoidal`;
+        filters.push(parallelFilter(phaser, parameters.mix, tag));
+      }
     }
   }
   return { settings, filters };

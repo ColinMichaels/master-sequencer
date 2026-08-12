@@ -66,7 +66,7 @@ test("first-time visitors see help once and can reopen app instructions from qui
 test("bootstrap renders the project and protected sources remain masked", async ({ page, request }) => {
   await expect(page.locator(".layout-preview")).toHaveCount(0);
   const bootstrap = await (await request.get("/api/bootstrap")).json();
-  expect(bootstrap.state.schemaVersion).toBe(6);
+  expect(bootstrap.state.schemaVersion).toBe(7);
   expect(bootstrap.library).toHaveLength(4);
   expect(bootstrap.library.some((file) => file.name === "Hidden Coda.wav")).toBeFalsy();
   expect(bootstrap.library.some((file) => file.name === "[Private source file]")).toBeTruthy();
@@ -215,7 +215,7 @@ test("Premium mastering patches repeated equipment in the same saved order used 
   await page.getByRole("button", { name: "Mastering", exact: true }).click();
   await page.getByRole("button", { name: /PREMIUM Analog Rack/ }).click();
 
-  const rack = page.getByRole("region", { name: "Advanced Mastering Rack" });
+  const rack = page.getByRole("region", { name: "Advanced Mastering Plug-in Rack" });
   const patchButtons = rack.locator(".premium-patch-bay li button");
   await expect(rack).toBeVisible();
   await expect(rack.locator(".premium-rack-unit")).toHaveCount(4);
@@ -319,9 +319,9 @@ test("Premium mastering patches repeated equipment in the same saved order used 
   await compressorThreshold.fill("-38");
   await expect(compressorThreshold).toHaveValue("-38");
   await rack.getByRole("slider", { name: "Output level graphical control", exact: true }).fill("-1.5");
-  await rack.getByLabel("Equipment to add", { exact: true }).selectOption("sequencer.precision-limiter");
-  const addToRack = rack.getByRole("button", { name: "Add to end of rack", exact: true });
-  await expect(addToRack).toHaveAttribute("data-tooltip", "Add to end of rack");
+  await rack.getByLabel("Plug-in to add", { exact: true }).selectOption("sequencer.precision-limiter");
+  const addToRack = rack.getByRole("button", { name: "Add plug-in to end of rack", exact: true });
+  await expect(addToRack).toHaveAttribute("data-tooltip", "Add plug-in to end of rack");
   await expect(addToRack.locator(":scope > .icon")).toBeVisible();
   await expect(addToRack.locator(":scope > :not(.icon):not(.sr-only)")).toHaveCount(0);
   const addToRackBox = await addToRack.boundingBox();
