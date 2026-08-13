@@ -111,7 +111,10 @@ Free web / Pro native boundary, current limitations, and packaging roadmap.
   four color themes with four font pairings. Disconnect sources, rescan, keep
   protected filenames masked, and export/import the complete Project Sequencer
   JSON record. Export an optional portable bundle containing project JSON and
-  source checksums only; it never copies media.
+  source checksums only; it never copies media. A packaged POC also exposes a
+  **Native Engine Lab** with a muted generated-fixture check and an explicitly
+  acknowledged three-second, -30 dB generated test tone. Neither mode can read
+  indexed media or route the project transport.
 
 The application shell uses compact icon tabs and transport actions with
 accessible hover/focus labels. The Albums rail can be collapsed when more

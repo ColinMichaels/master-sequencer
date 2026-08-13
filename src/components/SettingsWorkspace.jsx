@@ -2,8 +2,9 @@ import React, { useRef, useState } from "react";
 import { FolderIcon, LockIcon, MusicIcon, PlusIcon, RefreshIcon, TrashIcon } from "./Icons.jsx";
 import { AppearanceSettings } from "./AppearanceSettings.jsx";
 import { ProjectIdentityForm } from "./ProjectIdentityForm.jsx";
+import { NativeEngineLab } from "./NativeEngineLab.jsx";
 
-export function SettingsWorkspace({ state, roots, scan, watching, nativeAudio, scanning, onlineApp = false, projectArtistName, currentProject, projects, projectBusy, revealPrivateFilenames, appearance, resolvedMode, onProjectIdentityChange, onAppearanceChange, onTogglePrivate, onAddRoot, onRemoveRoot, onReconnectRoot, onChooseSources, onRescan, onImportState, onOpenProjects, onNewProject, onExportBundle }) {
+export function SettingsWorkspace({ state, roots, scan, watching, nativeAudio, nativeAudioLab, scanning, onlineApp = false, projectArtistName, currentProject, projects, projectBusy, revealPrivateFilenames, appearance, resolvedMode, onProjectIdentityChange, onAppearanceChange, onTogglePrivate, onAddRoot, onRemoveRoot, onReconnectRoot, onChooseSources, onRescan, onImportState, onOpenProjects, onNewProject, onExportBundle, onStartNativeAudioLab, onStopNativeAudioLab }) {
   const [folderPath, setFolderPath] = useState("");
   const [folderLabel, setFolderLabel] = useState("");
   const [importError, setImportError] = useState("");
@@ -51,6 +52,7 @@ export function SettingsWorkspace({ state, roots, scan, watching, nativeAudio, s
         </div>
       </section>
       <AppearanceSettings appearance={appearance} resolvedMode={resolvedMode} onChange={onAppearanceChange} />
+      {!onlineApp && <NativeEngineLab hardware={nativeAudio} lab={nativeAudioLab} onStart={onStartNativeAudioLab} onStop={onStopNativeAudioLab} />}
       <div className="settings-columns">
         <section className="settings-section">
           <div className="settings-section-heading"><h3>{onlineApp ? "Browser Audio" : "Audio Paths"}</h3><button type="button" className="text-button" disabled={scanning} title={onlineApp ? "Refresh device audio whose browser permission is still active" : "Rescan every configured source"} onClick={onRescan}><RefreshIcon /> {scanning ? "Scanning…" : onlineApp ? "Refresh" : "Rescan All"}</button></div>

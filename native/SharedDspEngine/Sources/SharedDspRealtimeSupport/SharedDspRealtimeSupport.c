@@ -28,6 +28,15 @@ typedef struct {
     uint64_t recoveredSamples;
 } PSRealtimeShadow;
 
+typedef struct {
+    int enabled;
+    int interleaved;
+    uint32_t channels;
+    uint64_t totalFrames;
+    uint32_t fadeFrames;
+    float gainLinear;
+} PSRealtimePreview;
+
 struct PSRealtimeMetrics {
     _Atomic uint64_t callbacks;
     _Atomic uint64_t renderedFrames;
@@ -49,6 +58,7 @@ struct PSRealtimeMetrics {
     _Atomic uint64_t ticksPerFrame;
     _Atomic uint32_t expectedFrames;
     PSRealtimeShadow shadow;
+    PSRealtimePreview preview;
 };
 
 static uint64_t ps_seconds_to_host_ticks(double seconds) {
@@ -108,6 +118,28 @@ void ps_realtime_metrics_configure_shadow(PSRealtimeMetrics *metrics, int enable
     shadow->lastAppliedOutputGainDb = PS_SHADOW_INITIAL_OUTPUT_GAIN_DB;
     shadow->currentGain = pow(10.0, (PS_SHADOW_INPUT_GAIN_DB + (double)PS_SHADOW_INITIAL_OUTPUT_GAIN_DB) / 20.0);
     shadow->targetGain = shadow->currentGain;
+}
+
+void ps_realtime_metrics_configure_preview(
+    PSRealtimeMetrics *metrics,
+    int enabled,
+    uint32_t channels,
+    int interleaved,
+    uint64_t totalFrames,
+    uint32_t fadeFrames,
+    float gainLinear
+) {
+    if (!metrics) return;
+    PSRealtimePreview *preview = &metrics->preview;
+    memset(preview, 0, sizeof(*preview));
+    if (!enabled || channels == 0 || channels > 32 || totalFrames == 0 || fadeFrames == 0
+        || !isfinite(gainLinear) || gainLinear <= 0.0f || gainLinear > 1.0f) return;
+    preview->enabled = 1;
+    preview->interleaved = interleaved ? 1 : 0;
+    preview->channels = channels;
+    preview->totalFrames = totalFrames;
+    preview->fadeFrames = fadeFrames;
+    preview->gainLinear = gainLinear;
 }
 
 void ps_realtime_publish_shadow_output_gain(PSRealtimeMetrics *metrics, uint32_t generation, float outputGainDb) {
@@ -198,14 +230,56 @@ int ps_realtime_shadow_parameter_word_is_lock_free(const PSRealtimeMetrics *metr
     return metrics && atomic_is_lock_free(&metrics->shadowParameterWord);
 }
 
-static int32_t ps_realtime_shadow_process(PSRealtimeShadow *shadow, uint32_t frameCount, uint64_t parameterWord) {
+static int ps_preview_buffers_are_valid(const PSRealtimePreview *preview, const AudioBufferList *ioData, uint32_t frameCount) {
+    if (!preview || !preview->enabled) return 1;
+    if (!ioData || ioData->mNumberBuffers == 0) return 0;
+    if (preview->interleaved) {
+        const AudioBuffer *buffer = &ioData->mBuffers[0];
+        uint32_t bufferChannels = buffer->mNumberChannels;
+        uint64_t requiredSamples = (uint64_t)frameCount * (uint64_t)bufferChannels;
+        return buffer->mData && bufferChannels >= preview->channels
+            && (uint64_t)buffer->mDataByteSize >= requiredSamples * sizeof(float);
+    }
+    if (ioData->mNumberBuffers < preview->channels) return 0;
+    for (uint32_t channel = 0; channel < preview->channels; channel += 1) {
+        const AudioBuffer *buffer = &ioData->mBuffers[channel];
+        if (!buffer->mData || buffer->mNumberChannels != 1
+            || (uint64_t)buffer->mDataByteSize < (uint64_t)frameCount * sizeof(float)) return 0;
+    }
+    return 1;
+}
+
+static void ps_write_preview_sample(
+    const PSRealtimePreview *preview,
+    AudioBufferList *ioData,
+    uint64_t outputFrame,
+    uint32_t callbackFrame,
+    uint32_t channel,
+    float sample
+) {
+    if (!preview || !preview->enabled || outputFrame >= preview->totalFrames || channel >= preview->channels) return;
+    uint64_t remainingFrames = preview->totalFrames - outputFrame;
+    float fadeIn = outputFrame >= preview->fadeFrames ? 1.0f : (float)outputFrame / (float)preview->fadeFrames;
+    float fadeOut = remainingFrames > preview->fadeFrames ? 1.0f : (float)remainingFrames / (float)preview->fadeFrames;
+    float output = sample * preview->gainLinear * fminf(fadeIn, fadeOut);
+    if (preview->interleaved) {
+        AudioBuffer *buffer = &ioData->mBuffers[0];
+        ((float *)buffer->mData)[(uint64_t)callbackFrame * buffer->mNumberChannels + channel] = output;
+    } else {
+        ((float *)ioData->mBuffers[channel].mData)[callbackFrame] = output;
+    }
+}
+
+static int32_t ps_realtime_shadow_process(PSRealtimeMetrics *metrics, uint32_t frameCount, uint64_t parameterWord, AudioBufferList *ioData) {
+    PSRealtimeShadow *shadow = metrics ? &metrics->shadow : NULL;
+    PSRealtimePreview *preview = metrics ? &metrics->preview : NULL;
     uint32_t generation = (uint32_t)(parameterWord >> 32);
     uint32_t gainBits = (uint32_t)(parameterWord & UINT64_C(0xffffffff));
     float outputGainDb = 0;
     memcpy(&outputGainDb, &gainBits, sizeof(outputGainDb));
     if (!shadow || !shadow->enabled || frameCount == 0 || frameCount > PS_SHADOW_MAXIMUM_CALLBACK_FRAMES
         || generation == 0 || !isfinite(outputGainDb) || outputGainDb < -48.0f || outputGainDb > 12.0f
-        || generation < shadow->lastAppliedGeneration) return 1;
+        || generation < shadow->lastAppliedGeneration || !ps_preview_buffers_are_valid(preview, ioData, frameCount)) return 1;
 
     if (generation > shadow->lastAppliedGeneration) {
         shadow->targetGain = pow(10.0, (PS_SHADOW_INPUT_GAIN_DB + (double)outputGainDb) / 20.0);
@@ -229,6 +303,7 @@ static int32_t ps_realtime_shadow_process(PSRealtimeShadow *shadow, uint32_t fra
             if (frame < captureCount) {
                 shadow->capturedOutput[channel][shadow->capturedFrames + frame] = processed;
             }
+            ps_write_preview_sample(preview, ioData, shadow->processedFrames + frame, frame, channel, processed);
         }
         shadow->fixtureCursor += 1;
         if (shadow->fixtureCursor == PS_SHADOW_FIXTURE_FRAMES) shadow->fixtureCursor = 0;
@@ -251,9 +326,16 @@ OSStatus ps_silence_render_callback(
     if (!metrics || !ioData) return noErr;
     uint64_t startedAt = mach_absolute_time();
 
+    if (metrics->preview.enabled) {
+        for (UInt32 index = 0; index < ioData->mNumberBuffers; index += 1) {
+            AudioBuffer *buffer = &ioData->mBuffers[index];
+            if (buffer->mData && buffer->mDataByteSize > 0) memset(buffer->mData, 0, buffer->mDataByteSize);
+        }
+    }
+
     if (metrics->shadow.enabled) {
         uint64_t parameterWord = atomic_load_explicit(&metrics->shadowParameterWord, memory_order_acquire);
-        int32_t shadowStatus = ps_realtime_shadow_process(&metrics->shadow, inNumberFrames, parameterWord);
+        int32_t shadowStatus = ps_realtime_shadow_process(metrics, inNumberFrames, parameterWord, ioData);
         if (shadowStatus == 0) {
             atomic_fetch_add_explicit(&metrics->shadowCallbacks, 1, memory_order_relaxed);
             atomic_fetch_add_explicit(&metrics->shadowFrames, inNumberFrames, memory_order_relaxed);
@@ -262,11 +344,14 @@ OSStatus ps_silence_render_callback(
         }
     }
 
-    // Shadow processing never receives ioData. Hardware buffers are zeroed only
-    // after it completes, preserving an explicit muted-output boundary.
-    for (UInt32 index = 0; index < ioData->mNumberBuffers; index += 1) {
-        AudioBuffer *buffer = &ioData->mBuffers[index];
-        if (buffer->mData && buffer->mDataByteSize > 0) memset(buffer->mData, 0, buffer->mDataByteSize);
+    // Every normal laboratory mode zero-fills only after shadow processing. The
+    // explicit preview mode pre-zeroes all channels, then writes only its two
+    // generated fixture channels through the fixed attenuation and fades above.
+    if (!metrics->preview.enabled) {
+        for (UInt32 index = 0; index < ioData->mNumberBuffers; index += 1) {
+            AudioBuffer *buffer = &ioData->mBuffers[index];
+            if (buffer->mData && buffer->mDataByteSize > 0) memset(buffer->mData, 0, buffer->mDataByteSize);
+        }
     }
 
     atomic_fetch_add_explicit(&metrics->callbacks, 1, memory_order_relaxed);

@@ -77,3 +77,10 @@ test("folder selection indexes nested supported audio and ignores other files", 
   await expect(page.getByRole("row", { name: /Nested Mix\.wav/ })).toBeVisible();
   await expect(page.getByText("Session Notes.txt", { exact: true })).toHaveCount(0);
 });
+
+test("free web Settings omits native engine controls", async ({ page }) => {
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Browser Audio" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Native Engine Lab" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Play 3-second test tone" })).toHaveCount(0);
+});

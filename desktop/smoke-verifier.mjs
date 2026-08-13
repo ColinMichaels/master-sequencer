@@ -1,4 +1,4 @@
-export const runDesktopSmokePlan = async (plan = "bootstrap", { expectNativeAudio = false } = {}) => {
+export const runDesktopSmokePlan = async (plan = "bootstrap", { expectNativeAudio = false, expectNativeAudioLab = false } = {}) => {
   const requireCondition = (condition, message) => {
     if (!condition) throw new Error(message);
   };
@@ -82,6 +82,10 @@ export const runDesktopSmokePlan = async (plan = "bootstrap", { expectNativeAudi
     else requireCondition(bootstrap.nativeAudio.reasonCode === "no-output-device", "The verified native probe returned an unknown output-device state.");
   }
   const nativeAudioAvailable = bootstrap.nativeAudio.available;
+  requireCondition(bootstrap.nativeAudioLab && typeof bootstrap.nativeAudioLab.running === "boolean", "Desktop bootstrap omitted native-audio lab status.");
+  const nativeAudioLabText = JSON.stringify(bootstrap.nativeAudioLab);
+  requireCondition(!nativeAudioLabText.includes("implementationFingerprint") && !nativeAudioLabText.includes("engineInstanceId") && !/\/(?:Users|private|var\/folders)\//.test(nativeAudioLabText), "Native-audio lab status exposed private engine details or a local path.");
+  if (expectNativeAudioLab) requireCondition(bootstrap.nativeAudioLab.configured && bootstrap.nativeAudioLab.state === "idle", "The packaged native-audio lab was not ready at startup.");
 
   if (plan === "bootstrap") return { plan, libraryFiles: bootstrap.library.length, nativeAudioAvailable };
 

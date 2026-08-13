@@ -120,7 +120,7 @@ baseline order references before disk state changes.
 | `src/lib/library-search.js` | Build the in-memory catalog index and define portable saved-filter records |
 | `src/lib/*.js` | Pure import, sequence, formatting, appearance, and mastering rules |
 | `src/dsp/*` | Opt-in shared processing contract and AudioWorklet adapter; not production authority yet |
-| `native/SharedDspEngine/*` | Swift contract-v2 kernel, golden tools, query-only probe, and isolated muted-shadow/stress AudioUnit laboratory with atomic parameter handoff; not production device authority |
+| `native/SharedDspEngine/*` | Swift contract-v2 kernel, golden tools, query-only probe, and isolated generated-fixture AudioUnit laboratory with muted/stress and double-opt-in audible modes; not production device authority |
 | `desktop-resources/staged/*` | Ignored FFmpeg artifacts and optional verified native-audio executables copied into desktop builds |
 | `src/styles/*.css` | Tokens/base rules, shell chrome, workspace features, and responsive/motion rules |
 
@@ -171,18 +171,21 @@ capability is query-only and cannot become playback authority through the
 status endpoint. Concurrent requests share one probe and status is cached
 briefly so a local page cannot create an unbounded child-process loop.
 
-The silence/shadow executable is packaged as inert laboratory code. No server
-route, renderer action, bootstrap, or transport path launches it. Its explicit
-verification command owns the AudioUnit lifecycle, registers default-device,
-sample-rate, and processor-overload listeners, writes only zeros into host buffers, and emits
-path-free evidence after stopping. A small C module contains the necessary
+The generated-fixture executable is packaged as inert laboratory code and does
+not auto-start. The local server can launch it only through the Settings lab;
+transport cannot invoke it. The single-owner service fingerprints every run,
+caps process output, rejects concurrency, and publishes only path-free state.
+A muted check performs one simulated recovery and zero-fills hardware. An
+audible check requires explicit UI acknowledgement plus two child-process flags,
+runs for three seconds at a fixed -30 dB, fades both edges, and has a visible
+process-level Stop control. Both modes reject microphone, source-media,
+project-path, and production-playback access. A small C module contains the necessary
 host-buffer pointers, fixed-capacity generated shadow state, and lock-free
 atomics. In muted-shadow mode the callback remains entirely in C and runs only
 pre-generated golden samples through the reviewed gain slice before zeroing the
 hardware buffers. The checked Swift kernel remains the offline reference and
 never receives `AudioBufferList`, and
-the executable still has no source-media, local API, Settings, or transport
-connection. Stress mode carries a generation plus one bounded Float32 value in
+the executable still has no source-media or transport connection. Stress mode carries a generation plus one bounded Float32 value in
 a single release/acquire 64-bit mailbox word and proves two parameter changes
 across recovery. An additional explicit CLI-only mode snapshots and restores
 the current default output and nominal rate around controlled system changes;

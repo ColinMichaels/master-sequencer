@@ -226,6 +226,7 @@ export const validateNativeSilentStreamReport = (report) => {
 export const validateNativeShadowStreamReport = (report) => {
   const mode = report?.mode;
   if (!report || !["muted-shadow-output-lab", "muted-shadow-stress-lab", "muted-shadow-hardware-transition-lab"].includes(mode)) throw new Error("Native muted-shadow mode is invalid.");
+  if (report.preview != null) throw new Error("Native muted-shadow report cannot claim an audible preview.");
   const streamReport = validateNativeSilentStreamReport({ ...report, mode: "silent-output-lab" });
   if (report.isolation?.shadowInput !== "generated-golden-only") throw new Error("Native muted-shadow input isolation is invalid.");
   if (!streamReport.available) {
@@ -294,6 +295,47 @@ export const validateNativeShadowStreamReport = (report) => {
         coherent: true,
       },
     },
+  };
+};
+
+export const validateNativeAudiblePreviewReport = (report) => {
+  if (!report || report.mode !== "generated-tone-audible-lab") throw new Error("Native audible-preview mode is invalid.");
+  const normalized = validateNativeShadowStreamReport({
+    ...report,
+    mode: "muted-shadow-output-lab",
+    isolation: { ...report.isolation, audioContent: "silence-only" },
+    shadow: report.shadow ? { ...report.shadow, hardwareOutputZeroFilledAfterShadow: true } : null,
+    preview: null,
+  });
+  if (report.isolation?.audioContent !== "generated-fixture-preview"
+      || report.isolation?.shadowInput !== "generated-golden-only"
+      || report.isolation?.inputAccess !== false
+      || report.isolation?.sourceMediaAccess !== false
+      || report.isolation?.productionPlaybackConnected !== false) {
+    throw new Error("Native audible-preview isolation boundary is invalid.");
+  }
+  if (report.stress != null || report.hardwareTransitions != null || normalized.recovery.simulatedDeviceChange || normalized.lifecycle.recoveries !== 0) {
+    throw new Error("Native audible-preview lifecycle exceeded its bounded laboratory mode.");
+  }
+  if (normalized.available && report.shadow?.hardwareOutputZeroFilledAfterShadow !== false) throw new Error("Native audible-preview hardware output declaration is invalid.");
+  const preview = report.preview;
+  if (!preview || preview.authorization !== "explicit-cli-double-opt-in" || preview.source !== "generated-golden-only" || preview.hardwareOutput !== "attenuated-generated-fixture") {
+    throw new Error("Native audible-preview authorization is invalid.");
+  }
+  const gainDb = Number(preview.gainDb);
+  const requestedDurationMs = cleanNonnegativeNumber(preview.requestedDurationMs, "preview duration", 5_000);
+  const maximumDurationMs = cleanNonnegativeNumber(preview.maximumDurationMs, "preview maximum duration", 5_000);
+  const fadeMs = cleanNonnegativeNumber(preview.fadeMs, "preview fade", 1_000);
+  if (gainDb !== -30 || requestedDurationMs < 100 || maximumDurationMs !== 5_000 || requestedDurationMs > maximumDurationMs || fadeMs !== 20) {
+    throw new Error("Native audible-preview safety bounds are invalid.");
+  }
+  if (normalized.available && normalized.stream.requestedDurationMs !== requestedDurationMs) throw new Error("Native audible-preview duration evidence is inconsistent.");
+  return {
+    ...normalized,
+    mode: "generated-tone-audible-lab",
+    isolation: { ...normalized.isolation, audioContent: "generated-fixture-preview", shadowInput: "generated-golden-only" },
+    shadow: normalized.shadow ? { ...normalized.shadow, hardwareOutputZeroFilledAfterShadow: false } : null,
+    preview: { authorization: "explicit-cli-double-opt-in", source: "generated-golden-only", hardwareOutput: "attenuated-generated-fixture", gainDb, requestedDurationMs, maximumDurationMs, fadeMs },
   };
 };
 

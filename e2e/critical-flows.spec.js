@@ -428,6 +428,16 @@ test("page title follows the active tab, album, track, and saved project", async
   await expect(page).toHaveTitle("Sequence | Next Album | Fixture Artist — Fixture Album");
 });
 
+test("Settings explains the native engine lab boundary when no packaged engine is configured", async ({ page }) => {
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const lab = page.getByRole("region", { name: "Native Engine Lab" });
+  await expect(lab).toBeVisible();
+  await expect(lab.getByText("Not included", { exact: true })).toBeVisible();
+  await expect(lab.getByText("This build has no installable native lab.")).toBeVisible();
+  await expect(lab.getByRole("button", { name: "Run muted check" })).toHaveCount(0);
+  await expect(lab.getByText(/no microphone, no indexed source, no project path, no transport routing, and no upload/i)).toBeVisible();
+});
+
 test("number row and numeric keypad shortcuts switch primary views without hijacking editing or dialogs", async ({ page }) => {
   const navigation = page.getByRole("navigation", { name: "Project views" });
   const sequence = navigation.getByRole("button", { name: "Sequence", exact: true });

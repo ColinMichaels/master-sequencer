@@ -10,6 +10,7 @@ import { ENGINE_AUTH_HEADER, engineRequestIsAuthorized } from "./engine-auth.mjs
 import { BASE_SECURITY_HEADERS, isStateChangingMethod, requestHostIsAllowed, requestOriginIsAllowed } from "./http-utils.mjs";
 import { contentTypeFor, sendJson, streamFile } from "./http-response.mjs";
 import { createNativeAudioService } from "./native-audio-service.mjs";
+import { createNativeAudioLabService } from "./native-audio-lab-service.mjs";
 import { chooseAudioPaths, chooseProjectAssetPaths, revealInFinder } from "./native-picker.mjs";
 import { createProjectAssetReferences } from "./project-assets.mjs";
 import { createPortableProjectBundle } from "./portable-project-bundle.mjs";
@@ -40,6 +41,11 @@ const technicalAnalysisService = createTechnicalAnalysisService();
 const nativeAudioService = createNativeAudioService({
   executablePath: process.env.PROJECT_SEQUENCER_NATIVE_AUDIO_PROBE_PATH
     ? path.resolve(process.env.PROJECT_SEQUENCER_NATIVE_AUDIO_PROBE_PATH)
+    : "",
+});
+const nativeAudioLabService = createNativeAudioLabService({
+  executablePath: process.env.PROJECT_SEQUENCER_NATIVE_AUDIO_LAB_PATH
+    ? path.resolve(process.env.PROJECT_SEQUENCER_NATIVE_AUDIO_LAB_PATH)
     : "",
 });
 
@@ -160,6 +166,9 @@ const handleApi = createApiRouter({
   isScanning: () => Boolean(scanPromise),
   nativeAudioConfigured: nativeAudioService.configured,
   getNativeAudioStatus: () => nativeAudioService.status(),
+  getNativeAudioLabStatus: () => nativeAudioLabService.status(),
+  startNativeAudioLab: (details) => nativeAudioLabService.start(details),
+  stopNativeAudioLab: () => nativeAudioLabService.stop(),
   getWatchStatus: () => audioWatchService.status(),
   refreshLibrary,
   publicFile,
@@ -245,6 +254,7 @@ const shutdown = async () => {
   if (shuttingDown) return;
   shuttingDown = true;
   renderJobs.shutdown();
+  nativeAudioLabService.shutdown();
   audioWatchService.close();
   await vite?.close();
   server.close(() => process.exit(0));

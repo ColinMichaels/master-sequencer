@@ -56,6 +56,12 @@ const resolveNativeAudioProbe = (explicitPath, appRoot) => [
   path.join(appRoot, "desktop-resources", "staged", "native", "shared-dsp-device-probe"),
 ].filter(Boolean).find(executableExists) || "";
 
+const resolveNativeAudioLab = (explicitPath, appRoot) => [
+  explicitPath?.trim() ? path.resolve(explicitPath.trim()) : "",
+  path.join(process.resourcesPath, "native", "shared-dsp-silent-stream"),
+  path.join(appRoot, "desktop-resources", "staged", "native", "shared-dsp-silent-stream"),
+].filter(Boolean).find(executableExists) || "";
+
 const reservePort = () => new Promise((resolve, reject) => {
   const probe = net.createServer();
   probe.unref();
@@ -113,6 +119,7 @@ const startLocalEngine = async () => {
   const ffmpeg = resolveMediaTool("ffmpeg", process.env.PROJECT_SEQUENCER_FFMPEG_PATH);
   const ffprobe = resolveMediaTool("ffprobe", process.env.PROJECT_SEQUENCER_FFPROBE_PATH);
   const nativeAudioProbe = resolveNativeAudioProbe(process.env.PROJECT_SEQUENCER_NATIVE_AUDIO_PROBE_PATH, paths.appRoot);
+  const nativeAudioLab = resolveNativeAudioLab(process.env.PROJECT_SEQUENCER_NATIVE_AUDIO_LAB_PATH, paths.appRoot);
   if (!ffmpeg || !ffprobe) {
     throw new Error("Project Sequencer requires FFmpeg and ffprobe. Install them or set PROJECT_SEQUENCER_FFMPEG_PATH and PROJECT_SEQUENCER_FFPROBE_PATH.");
   }
@@ -134,6 +141,7 @@ const startLocalEngine = async () => {
     PROJECT_SEQUENCER_FFPROBE_PATH: ffprobe,
     PROJECT_SEQUENCER_ENGINE_TOKEN: engineToken,
     ...(nativeAudioProbe ? { PROJECT_SEQUENCER_NATIVE_AUDIO_PROBE_PATH: nativeAudioProbe } : {}),
+    ...(nativeAudioLab ? { PROJECT_SEQUENCER_NATIVE_AUDIO_LAB_PATH: nativeAudioLab } : {}),
   };
 
   serverProcess = spawn(process.execPath, [serverEntry], {
@@ -151,7 +159,7 @@ const startLocalEngine = async () => {
   await waitForServer(url, engineToken);
   const anonymousResponse = await fetch(`${url}/api/health`, { signal: AbortSignal.timeout(1_000) });
   if (anonymousResponse.status !== 401) throw new Error("Local engine started without enforcing its per-launch credential.");
-  return { url, engineToken, ffmpeg, ffprobe, nativeAudioProbe, userRoot: paths.userRoot };
+  return { url, engineToken, ffmpeg, ffprobe, nativeAudioProbe, nativeAudioLab, userRoot: paths.userRoot };
 };
 
 const createAuthenticatedRendererSession = (engine) => {
@@ -197,7 +205,7 @@ const createWindow = async (engine) => {
 
   if (smokeMode) {
     const smokePlan = process.env.PROJECT_SEQUENCER_DESKTOP_SMOKE_PLAN?.trim() || "bootstrap";
-    const smokeOptions = { expectNativeAudio: Boolean(engine.nativeAudioProbe) };
+    const smokeOptions = { expectNativeAudio: Boolean(engine.nativeAudioProbe), expectNativeAudioLab: Boolean(engine.nativeAudioLab) };
     const result = await mainWindow.webContents.executeJavaScript(`(${runDesktopSmokePlan.toString()})(${JSON.stringify(smokePlan)}, ${JSON.stringify(smokeOptions)})`);
     process.stdout.write(`Desktop smoke passed: ${JSON.stringify(result)}; ${engine.url}; FFmpeg ${engine.ffmpeg}; data ${engine.userRoot}\n`);
     app.quit();

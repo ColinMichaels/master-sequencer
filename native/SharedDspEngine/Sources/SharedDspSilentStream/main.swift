@@ -23,11 +23,21 @@ private struct Handshake: Encodable {
 }
 
 private struct Isolation: Encodable {
-    let audioContent = "silence-only"
+    let audioContent: String
     let inputAccess = false
     let sourceMediaAccess = false
     let productionPlaybackConnected = false
     let shadowInput: String
+}
+
+private struct PreviewEvidence: Encodable {
+    let authorization = "explicit-cli-double-opt-in"
+    let source = "generated-golden-only"
+    let hardwareOutput = "attenuated-generated-fixture"
+    let gainDb: Double
+    let requestedDurationMs: Double
+    let maximumDurationMs: Double
+    let fadeMs: Double
 }
 
 private struct Lifecycle: Encodable {
@@ -156,6 +166,7 @@ private struct SilentStreamReport: Encodable {
     let shadow: ShadowEvidence?
     let stress: StressEvidence?
     let hardwareTransitions: HardwareTransitionEvidence?
+    let preview: PreviewEvidence?
 }
 
 private enum EngineState: String {
@@ -480,15 +491,19 @@ private final class SilentOutputEngine {
 
     let metrics: OpaquePointer
     let shadowEnabled: Bool
+    let audiblePreviewEnabled: Bool
+    let requestedDurationMs: Double
     private var audioUnit: AudioUnit?
     private var outputDevice = kAudioObjectUnknown
     private var defaultListenerRegistered = false
     private var overloadListenerRegistered = false
     private var sampleRateListenerRegistered = false
 
-    init(metrics: OpaquePointer, shadowEnabled: Bool) {
+    init(metrics: OpaquePointer, shadowEnabled: Bool, audiblePreviewEnabled: Bool, requestedDurationMs: Double) {
         self.metrics = metrics
         self.shadowEnabled = shadowEnabled
+        self.audiblePreviewEnabled = audiblePreviewEnabled
+        self.requestedDurationMs = requestedDurationMs
         ps_realtime_metrics_configure_shadow(metrics, shadowEnabled ? 1 : 0)
         if shadowEnabled {
             lastPublishedGeneration = 1
@@ -586,6 +601,21 @@ private final class SilentOutputEngine {
             }
             sampleRate = format.mSampleRate
             channels = Int(format.mChannelsPerFrame)
+            if audiblePreviewEnabled {
+                let floatPcm = format.mFormatID == kAudioFormatLinearPCM
+                    && (format.mFormatFlags & kAudioFormatFlagIsFloat) != 0
+                    && format.mBitsPerChannel == 32
+                guard floatPcm, channels >= 2 else {
+                    throw EngineError.invalidArgument("audible preview requires a Float32 output with at least two channels")
+                }
+                let interleaved = (format.mFormatFlags & kAudioFormatFlagIsNonInterleaved) == 0
+                let totalFrames = UInt64((requestedDurationMs * sampleRate / 1_000).rounded(.up))
+                let fadeFrames = UInt32(max(1, (20 * sampleRate / 1_000).rounded(.up)))
+                let previewGain = Float(pow(10, -30.0 / 20.0))
+                ps_realtime_metrics_configure_preview(metrics, 1, UInt32(channels), interleaved ? 1 : 0, totalFrames, fadeFrames, previewGain)
+            } else {
+                ps_realtime_metrics_configure_preview(metrics, 0, 0, 0, 0, 0, 0)
+            }
 
             var maximumFrames: UInt32 = 0
             var maximumFramesSize = UInt32(MemoryLayout<UInt32>.size)
@@ -712,15 +742,22 @@ do {
     }
     let stressEnabled = CommandLine.arguments.contains("--stress")
     let hardwareTransitionsEnabled = CommandLine.arguments.contains("--hardware-transitions")
+    let audiblePreviewEnabled = CommandLine.arguments.contains("--audible-preview")
     if hardwareTransitionsEnabled && !CommandLine.arguments.contains("--allow-system-audio-mutation") {
         throw EngineError.invalidArgument("--hardware-transitions requires --allow-system-audio-mutation")
     }
-    let durationMs = try boundedMilliseconds("--duration-ms", default: hardwareTransitionsEnabled ? 10_000 : stressEnabled ? 10_000 : 750, minimum: 100, maximum: 60_000)
+    if audiblePreviewEnabled && !CommandLine.arguments.contains("--allow-audible-output") {
+        throw EngineError.invalidArgument("--audible-preview requires --allow-audible-output")
+    }
+    if audiblePreviewEnabled && (stressEnabled || hardwareTransitionsEnabled) {
+        throw EngineError.invalidArgument("audible preview cannot be combined with stress or hardware transitions")
+    }
+    let durationMs = try boundedMilliseconds("--duration-ms", default: audiblePreviewEnabled ? 3_000 : hardwareTransitionsEnabled ? 10_000 : stressEnabled ? 10_000 : 750, minimum: 100, maximum: audiblePreviewEnabled ? 5_000 : 60_000)
     let simulateAtMs = try boundedMilliseconds("--simulate-device-change-ms", default: stressEnabled ? 5_000 : 250, minimum: 50, maximum: 59_000)
-    let shadowEnabled = CommandLine.arguments.contains("--shadow") || stressEnabled || hardwareTransitionsEnabled
-    let reportMode = hardwareTransitionsEnabled ? "muted-shadow-hardware-transition-lab" : stressEnabled ? "muted-shadow-stress-lab" : shadowEnabled ? "muted-shadow-output-lab" : "silent-output-lab"
-    let isolation = Isolation(shadowInput: shadowEnabled ? "generated-golden-only" : "disabled")
-    if !hardwareTransitionsEnabled && simulateAtMs >= durationMs - 50 {
+    let shadowEnabled = CommandLine.arguments.contains("--shadow") || stressEnabled || hardwareTransitionsEnabled || audiblePreviewEnabled
+    let reportMode = audiblePreviewEnabled ? "generated-tone-audible-lab" : hardwareTransitionsEnabled ? "muted-shadow-hardware-transition-lab" : stressEnabled ? "muted-shadow-stress-lab" : shadowEnabled ? "muted-shadow-output-lab" : "silent-output-lab"
+    let isolation = Isolation(audioContent: audiblePreviewEnabled ? "generated-fixture-preview" : "silence-only", shadowInput: shadowEnabled ? "generated-golden-only" : "disabled")
+    if !hardwareTransitionsEnabled && !audiblePreviewEnabled && simulateAtMs >= durationMs - 50 {
         throw EngineError.invalidArgument("simulated device change must leave at least 50 milliseconds for recovery")
     }
     if hardwareTransitionsEnabled && durationMs < 9_000 {
@@ -738,7 +775,7 @@ do {
         let handshake = Handshake(
             protocolVersion: 1,
             dspContractVersion: sharedDspContractVersion,
-            engineVersion: "0.6.0",
+            engineVersion: "0.7.0",
             engineInstanceId: UUID().uuidString.lowercased(),
             implementationFingerprint: fingerprint.lowercased(),
             capabilities: Capabilities(offlineRender: true, realTimeOutput: true, deviceNotifications: true, maximumChannels: 2, supportedSampleRates: [])
@@ -755,7 +792,8 @@ do {
             stream: nil,
             shadow: nil,
             stress: stressEnabled ? StressEvidence(targetDurationMs: durationMs, parameterChangesRequested: 2, parameterChangesCompleted: 0, simulatedRecoveryAtMs: simulateAtMs, systemAudioConfigurationChanged: false) : nil,
-            hardwareTransitions: nil
+            hardwareTransitions: nil,
+            preview: audiblePreviewEnabled ? PreviewEvidence(gainDb: -30, requestedDurationMs: durationMs, maximumDurationMs: 5_000, fadeMs: 20) : nil
         ))
         exit(0)
     }
@@ -764,7 +802,7 @@ do {
     let hardwareController = hardwareTransitionsEnabled ? try HardwareTransitionController(baselineDevice: startingDefaultOutput, baselineSampleRate: startingNominalSampleRate) : nil
     defer { hardwareController?.restoreAll() }
 
-    let engine = SilentOutputEngine(metrics: metrics, shadowEnabled: shadowEnabled)
+    let engine = SilentOutputEngine(metrics: metrics, shadowEnabled: shadowEnabled, audiblePreviewEnabled: audiblePreviewEnabled, requestedDurationMs: durationMs)
     defer { engine.forceCleanup() }
     let startedAt = Date()
     var simulated = false
@@ -808,7 +846,7 @@ do {
             try engine.publishShadowOutputGain(generation: 2, outputGainDb: -6)
             parameterChangesCompleted = 1
         }
-        if !hardwareTransitionsEnabled && !simulated && elapsedMs >= simulateAtMs {
+        if !hardwareTransitionsEnabled && !audiblePreviewEnabled && !simulated && elapsedMs >= simulateAtMs {
             ps_realtime_metrics_record_device_change(metrics)
             simulated = true
         }
@@ -872,7 +910,7 @@ do {
     let handshake = Handshake(
         protocolVersion: 1,
         dspContractVersion: sharedDspContractVersion,
-        engineVersion: "0.6.0",
+        engineVersion: "0.7.0",
         engineInstanceId: UUID().uuidString.lowercased(),
         implementationFingerprint: fingerprint.lowercased(),
         capabilities: Capabilities(
@@ -912,7 +950,7 @@ do {
             capturedFrames: Int(ps_realtime_shadow_captured_frames(metrics)),
             recoveredSamples: Int(ps_realtime_shadow_recovered_samples(metrics)),
             failures: ps_realtime_shadow_failures(metrics),
-            hardwareOutputZeroFilledAfterShadow: true,
+            hardwareOutputZeroFilledAfterShadow: !audiblePreviewEnabled,
             parameterHandoff: ParameterHandoffEvidence(
                 lockFree: ps_realtime_shadow_parameter_word_is_lock_free(metrics) == 1,
                 publishedUpdates: ps_realtime_shadow_parameter_publishes(metrics),
@@ -976,7 +1014,8 @@ do {
             simulatedRecoveryAtMs: simulateAtMs,
             systemAudioConfigurationChanged: systemAudioConfigurationChanged
         ) : nil,
-        hardwareTransitions: hardwareController?.evidence()
+        hardwareTransitions: hardwareController?.evidence(),
+        preview: audiblePreviewEnabled ? PreviewEvidence(gainDb: -30, requestedDurationMs: durationMs, maximumDurationMs: 5_000, fadeMs: 20) : nil
     ))
 } catch {
     FileHandle.standardError.write(Data("shared-dsp-silent-stream: \(error)\n".utf8))

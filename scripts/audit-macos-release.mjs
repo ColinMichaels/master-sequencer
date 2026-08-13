@@ -68,7 +68,7 @@ try {
   const manifest = JSON.parse(await readFile(path.join(resourcesPath, "native-audio-runtime-manifest.json"), "utf8"));
   const expectedBinaries = {
     deviceProbe: { name: "shared-dsp-device-probe", capability: "query-only-default-output-probe" },
-    silentStream: { name: "shared-dsp-silent-stream", capability: "silence-muted-shadow-stress-and-opt-in-hardware-transition-lab" },
+    silentStream: { name: "shared-dsp-silent-stream", capability: "silence-muted-shadow-stress-hardware-and-opt-in-generated-audible-lab" },
   };
   const binaries = {};
   for (const [key, expected] of Object.entries(expectedBinaries)) {

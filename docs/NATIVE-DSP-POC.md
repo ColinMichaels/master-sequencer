@@ -244,6 +244,34 @@ work, but not the physical hot-plug requirement. Project audio remains prohibite
 until loss/reconnection is repeated with removable hardware and the broader
 production gates pass.
 
+### Gate 12 — Settings-visible generated engine lab: passed 2026-08-12
+
+- Settings now shows whether the packaged lab is ready and can run one muted
+  golden/recovery check or one explicitly acknowledged three-second audible
+  generated-tone preview. An active run always exposes **Stop native output
+  now**; no run starts during bootstrap.
+- The localhost service owns the child process, rejects overlapping starts,
+  fingerprints the executable per run, caps output, and strips paths,
+  fingerprints, instance IDs, and raw errors. Its API has no project file,
+  media key, input device, or transport parameter.
+- Native audible mode requires both `--audible-preview` and
+  `--allow-audible-output`, caps duration at five seconds, applies fixed -30 dB
+  attenuation and 20 ms fades, pre-zeros every hardware buffer, and writes only
+  the two generated golden channels.
+- The reproducible 750 ms audible verifier passed at 48 kHz stereo with 46
+  callbacks, 23,552 frames, exact golden parity, zero callback issues, and a
+  0.0269 ms longest callback. The complete three-second Settings run also
+  matched the golden with zero callback issues, and the UI successfully stopped
+  a separate audible run early.
+- Desktop and 390 px rendered checks passed, the production page logged no
+  console warnings/errors, all local and free-web browser regressions passed,
+  and the packaged three-launch smoke confirmed the native lab is embedded and
+  idle at startup.
+
+This gate makes the engine observable and briefly audible without connecting
+indexed media. It is still a laboratory control, not the Pro production
+transport.
+
 ## Decision
 
 Build this as a branch of Project Sequencer, not a separate product fork.
@@ -285,7 +313,7 @@ Embedded local engine process (existing Node server, 127.0.0.1 only)
   |-- app-data exports/ derivatives
   `-- optional fingerprinted Swift hardware tools
       |-- query-only default-output probe
-      `-- explicit silence-only callback lab (never auto-started)
+      `-- explicit generated-fixture callback lab (never auto-started)
 
 Shared DSP contract v2
   |-- AudioWorklet adapter for browser experiments
@@ -326,9 +354,13 @@ after the engine protocol, file lifecycle, and packaging risks are proven.
   fingerprinted handshake, publishes a path-free `/api/native-audio/status`,
   and includes the same status in bootstrap. Settings labels this as a DSP lab
   and states that established playback remains authoritative.
-- The staged silent-stream executable is not launched by bootstrap, the local
-  API, Settings, or transport. It runs only through the explicit verification
-  command and remains disconnected from indexed media and shared DSP playback.
+- The staged stream executable remains inert at bootstrap and is never used by
+  transport. Settings can ask the server-owned lab service to run either a
+  750 ms muted golden/recovery check or a double-opt-in three-second generated
+  tone at -30 dB. Runs are single-owner, process-bounded, stoppable, and
+  disconnected from indexed media, project paths, microphone input, and normal
+  playback. HTTP status is sanitized and contains no executable path,
+  fingerprint, engine instance ID, or raw child-process error.
 - Unit and smoke checks cover tool-path injection, parameter bounds, exact
   bypass, block-size determinism, ceiling behavior, and the two-channel host.
 
@@ -349,6 +381,7 @@ npm run dsp:smoke
 npm run native:devices:verify
 npm run native:realtime:verify
 npm run native:hardware:verify
+npm run native:audible:verify # intentionally emits a 750 ms generated tone
 npm run native:stage
 npm run desktop:smoke
 npm run desktop:pack
@@ -421,6 +454,10 @@ this checkpoint.
     default-output plus 48/44.1 kHz transitions restore safely. Repeat true loss
     and reconnection when removable physical output hardware is attached before
     any user-selected audio enters this path.
+12. **Generated-fixture UI lab complete:** Settings owns consent, run state,
+    emergency stop, and path-free callback metrics for a muted check and a
+    safety-limited audible preview. This is observable engine evidence, not
+    project playback or permission to route indexed sources.
 
 The promotion gate for shared DSP is measurable parity and recovery—not its UI
 appearance. It must survive buffer-size changes, sample-rate changes, device

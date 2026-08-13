@@ -5,6 +5,7 @@ import {
   createNativeAudioLatencyReport,
   normalizeNativeAudioDeviceConfiguration,
   validateNativeAudioEngineHandshake,
+  validateNativeAudiblePreviewReport,
   validateNativeAudioHardwareProbe,
   validateNativeHardwareTransitionReport,
   validateNativeShadowStreamReport,
@@ -240,6 +241,33 @@ test("muted native shadow reports reject checksum drift, missing callback work, 
   assert.throws(() => validateNativeShadowStreamReport({ ...valid, shadow: { ...valid.shadow, actualSha256: "0".repeat(64) } }), /checksum/);
   assert.throws(() => validateNativeShadowStreamReport({ ...valid, shadow: { ...valid.shadow, processedCallbacks: 69 } }), /inconsistent/);
   assert.throws(() => validateNativeShadowStreamReport({ ...valid, shadow: { ...valid.shadow, hardwareOutputZeroFilledAfterShadow: false } }), /hardware output/);
+});
+
+test("audible native preview accepts only the bounded generated fixture with double opt-in evidence", () => {
+  const valid = {
+    schemaVersion: 1,
+    capturedAt: "2026-08-12T12:00:00.000Z",
+    mode: "generated-tone-audible-lab",
+    available: true,
+    reasonCode: null,
+    handshake: { protocolVersion: 1, dspContractVersion: 2, engineVersion: "0.7.0", engineInstanceId: "engine-abcd1234", implementationFingerprint: "1234567890abcdef1234567890abcdef", capabilities: { offlineRender: true, realTimeOutput: true, deviceNotifications: true, maximumChannels: 2, supportedSampleRates: [48_000] } },
+    isolation: { audioContent: "generated-fixture-preview", inputAccess: false, sourceMediaAccess: false, productionPlaybackConnected: false, shadowInput: "generated-golden-only" },
+    lifecycle: { startRequests: 1, starts: 1, stopRequests: 1, stops: 1, recoveryRequests: 0, recoveries: 0, invalidTransitions: 0, finalState: "stopped" },
+    recovery: { defaultDeviceListener: true, processorOverloadListener: true, sampleRateListener: true, simulatedDeviceChange: false, deviceChangesObserved: 0, sampleRateChangesObserved: 0 },
+    stream: { sampleRate: 48_000, channels: 2, maximumFramesPerSlice: 512, requestedDurationMs: 3_000, observedDurationMs: 3_010, callbacks: 281, renderedFrames: 143_872, frameMismatches: 0, deadlineMisses: 0, timingGapXruns: 0, renderErrors: 0, processorOverloads: 0, longestCallbackMs: 0.09, lockFreeTelemetry: true },
+    shadow: { fixtureId: "dual-tone-gain", fixtureSampleRate: 48_000, fixtureFrames: 4_096, generatedInput: true, checksumAlgorithm: "sha256-float32le-v1", expectedSha256: "74d25b2c630082715417bc8f213357752cfc56f439d6f930ac2dd7fdbde9b995", actualSha256: "74d25b2c630082715417bc8f213357752cfc56f439d6f930ac2dd7fdbde9b995", checksumMatch: true, processedCallbacks: 281, processedFrames: 143_872, kernelProcessedFrames: 143_872, capturedFrames: 4_096, recoveredSamples: 0, failures: 0, hardwareOutputZeroFilledAfterShadow: false, parameterHandoff: { mailbox: "atomic-u64-generation-float32", lockFree: true, publishedUpdates: 1, appliedUpdates: 1, lastPublishedGeneration: 1, lastAppliedGeneration: 1, lastPublishedOutputGainDb: -0.75, lastAppliedOutputGainDb: -0.75, coherent: true } },
+    stress: null,
+    hardwareTransitions: null,
+    preview: { authorization: "explicit-cli-double-opt-in", source: "generated-golden-only", hardwareOutput: "attenuated-generated-fixture", gainDb: -30, requestedDurationMs: 3_000, maximumDurationMs: 5_000, fadeMs: 20 },
+  };
+  const report = validateNativeAudiblePreviewReport(valid);
+  assert.equal(report.preview.gainDb, -30);
+  assert.equal(report.isolation.sourceMediaAccess, false);
+  assert.equal(report.shadow.checksumMatch, true);
+  assert.throws(() => validateNativeAudiblePreviewReport({ ...valid, preview: { ...valid.preview, gainDb: -12 } }), /safety bounds/);
+  assert.throws(() => validateNativeAudiblePreviewReport({ ...valid, isolation: { ...valid.isolation, sourceMediaAccess: true } }), /isolation/);
+  assert.throws(() => validateNativeAudiblePreviewReport({ ...valid, preview: { ...valid.preview, authorization: "implicit" } }), /authorization/);
+  assert.throws(() => validateNativeAudiblePreviewReport({ ...valid, shadow: { ...valid.shadow, hardwareOutputZeroFilledAfterShadow: true } }), /hardware output/);
 });
 
 test("muted native shadow reports preserve a path-free no-output-device state", () => {

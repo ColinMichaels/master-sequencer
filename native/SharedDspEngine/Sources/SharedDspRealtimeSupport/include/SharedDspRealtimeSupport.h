@@ -15,6 +15,15 @@ PSRealtimeMetrics *ps_realtime_metrics_create(void);
 void ps_realtime_metrics_destroy(PSRealtimeMetrics *metrics);
 void ps_realtime_metrics_configure(PSRealtimeMetrics *metrics, uint32_t expectedFrames, double sampleRate);
 void ps_realtime_metrics_configure_shadow(PSRealtimeMetrics *metrics, int enabled);
+void ps_realtime_metrics_configure_preview(
+    PSRealtimeMetrics *metrics,
+    int enabled,
+    uint32_t channels,
+    int interleaved,
+    uint64_t totalFrames,
+    uint32_t fadeFrames,
+    float gainLinear
+);
 void ps_realtime_publish_shadow_output_gain(PSRealtimeMetrics *metrics, uint32_t generation, float outputGainDb);
 void ps_realtime_metrics_reset_timing(PSRealtimeMetrics *metrics);
 void ps_realtime_metrics_record_device_change(PSRealtimeMetrics *metrics);

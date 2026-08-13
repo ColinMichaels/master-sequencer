@@ -5,7 +5,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { generateFixtureInput, loadSharedDspGoldenFixtures } from "../tests/helpers/shared-dsp-golden.mjs";
-import { validateNativeAudioHardwareProbe, validateNativeHardwareTransitionReport, validateNativeShadowStreamReport, validateNativeSilentStreamReport, validateNativeStressStreamReport } from "../src/lib/native-audio-engine-contract.js";
+import { validateNativeAudioHardwareProbe, validateNativeAudiblePreviewReport, validateNativeHardwareTransitionReport, validateNativeShadowStreamReport, validateNativeSilentStreamReport, validateNativeStressStreamReport } from "../src/lib/native-audio-engine-contract.js";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const packagePath = path.join(repositoryRoot, "native", "SharedDspEngine");
@@ -53,7 +53,12 @@ const runSwift = (subcommand, extraArguments = []) => {
   return result.stdout.trim();
 };
 
-runSwift("build", ["--configuration", buildConfiguration]);
+runSwift("build", ["--configuration", buildConfiguration, "--product", "shared-dsp-self-test"]);
+runSwift("build", ["--configuration", buildConfiguration, "--product", "shared-dsp-golden-runner"]);
+if (process.argv.includes("--devices")) runSwift("build", ["--configuration", buildConfiguration, "--product", "shared-dsp-device-probe"]);
+if (["--realtime", "--shadow", "--stress", "--hardware-transitions", "--audible-preview"].some((flag) => process.argv.includes(flag))) {
+  runSwift("build", ["--configuration", buildConfiguration, "--product", "shared-dsp-silent-stream"]);
+}
 const binaryPath = runSwift("build", ["--configuration", buildConfiguration, "--show-bin-path"]);
 const selfTest = spawnSync(path.join(binaryPath, "shared-dsp-self-test"), [], { encoding: "utf8" });
 if (selfTest.status !== 0) throw new Error(selfTest.stderr || selfTest.stdout || "Native DSP self-test failed.");
@@ -83,6 +88,7 @@ let realtimeTrials = null;
 let shadowTrials = null;
 let stressTrials = null;
 let hardwareTransitionTrial = null;
+let audiblePreviewTrial = null;
 let staging = null;
 const stagingEntries = {};
 if (process.argv.includes("--devices")) {
@@ -263,8 +269,8 @@ if (process.argv.includes("--stress")) {
       ...stagingEntries.silentStream,
       path: "native/shared-dsp-silent-stream",
       sha256: fingerprint,
-      capability: "silence-muted-shadow-stress-and-opt-in-hardware-transition-lab",
-      engineVersion: "0.6.0",
+      capability: "silence-muted-shadow-stress-hardware-and-opt-in-generated-audible-lab",
+      engineVersion: "0.7.0",
       stressTrials: stressTrials.length,
     };
   }
@@ -306,6 +312,35 @@ if (process.argv.includes("--hardware-transitions")) {
   };
 }
 
+if (process.argv.includes("--audible-preview")) {
+  const streamPath = path.join(binaryPath, "shared-dsp-silent-stream");
+  const fingerprint = createHash("sha256").update(await readFile(streamPath)).digest("hex");
+  const stream = spawnSync(streamPath, ["--audible-preview", "--allow-audible-output", "--duration-ms", "750"], {
+    encoding: "utf8",
+    timeout: 15_000,
+    env: { ...process.env, PROJECT_SEQUENCER_ENGINE_FINGERPRINT: fingerprint },
+  });
+  if (stream.status !== 0) throw new Error(stream.stderr || "Native audible-preview trial failed.");
+  const report = validateNativeAudiblePreviewReport(JSON.parse(stream.stdout));
+  if (!report.available) throw new Error("Native audible-preview verification requires a current default output device.");
+  if (report.handshake.implementationFingerprint !== fingerprint) throw new Error("Native audible-preview fingerprint does not match its compiled binary.");
+  if (report.stream.frameMismatches || report.stream.deadlineMisses || report.stream.timingGapXruns || report.stream.renderErrors || report.stream.processorOverloads) {
+    throw new Error("Native audible-preview trial reported callback, timing, or overload failures.");
+  }
+  audiblePreviewTrial = {
+    sampleRate: report.stream.sampleRate,
+    channels: report.stream.channels,
+    requestedDurationMs: report.preview.requestedDurationMs,
+    callbacks: report.stream.callbacks,
+    renderedFrames: report.stream.renderedFrames,
+    longestCallbackMs: report.stream.longestCallbackMs,
+    checksumMatch: report.shadow.checksumMatch,
+    callbackIssues: 0,
+    hardwareOutput: report.preview.hardwareOutput,
+    gainDb: report.preview.gainDb,
+  };
+}
+
 if (stageRequested) {
   if (!stagingEntries.deviceProbe || !stagingEntries.silentStream?.silenceTrials || !stagingEntries.silentStream?.shadowTrials || !stagingEntries.silentStream?.stressTrials) throw new Error("Native audio staging requires --devices, --realtime, --shadow, and --stress verification gates.");
   const manifest = {
@@ -337,5 +372,6 @@ process.stdout.write(`${JSON.stringify({
   ...(shadowTrials ? { shadowTrials } : {}),
   ...(stressTrials ? { stressTrials } : {}),
   ...(hardwareTransitionTrial ? { hardwareTransitionTrial } : {}),
+  ...(audiblePreviewTrial ? { audiblePreviewTrial } : {}),
   ...(staging ? { staging } : {}),
 }, null, 2)}\n`);

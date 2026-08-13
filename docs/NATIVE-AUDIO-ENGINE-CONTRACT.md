@@ -1,8 +1,9 @@
 # Native audio engine contract
 
 Status: compiled memory-safe DSP/offline proof plus allocation-safe muted
-real-time shadow, atomic parameter handoff, stress, and controlled hardware
-transition evidence; not a production audio engine
+real-time shadow, atomic parameter handoff, stress, controlled hardware
+transition evidence, and a bounded Settings-visible generated preview; not a
+production audio engine
 
 ## Compiled Swift package
 
@@ -14,7 +15,7 @@ transition evidence; not a production audio engine
 | `shared-dsp-self-test` | Compiled bounds, bypass, recovery, and sample-rate reset checks |
 | `shared-dsp-golden-runner` | Binary Float32 bridge used only for cross-language parity verification |
 | `shared-dsp-device-probe` | Query-only Core Audio bridge for the current default-output format and reported latency |
-| `shared-dsp-silent-stream` | Explicit silence-only and muted shared-DSP AudioUnit laboratory |
+| `shared-dsp-silent-stream` | Explicit muted and double-opt-in audible generated-fixture AudioUnit laboratory |
 
 The offline/reference processing method performs no file, network, UI, logging,
 or explicit allocation work. Hosts own its input/output buffers. Reset and
@@ -49,6 +50,7 @@ npm run native:realtime:verify
 npm run native:shadow:verify
 npm run native:stress:verify
 npm run native:hardware:verify
+npm run native:audible:verify
 npm run native:stage
 ```
 
@@ -66,6 +68,10 @@ Swift runtime entry. It never stages audio or automatically runs the
 system-mutation gate.
 Staging clears any older native probe first, so a failed build or handshake
 cannot leave a stale executable for a later package command to pick up.
+
+`native:audible:verify` is deliberately excluded from automatic staging because
+it emits a 750 ms generated tone. It must be invoked explicitly on a machine
+whose current output can be heard or measured.
 
 The probe uses lower-level Core Audio property reads rather than constructing an
 `AVAudioEngine`. It does not instantiate an AudioUnit, start an engine or
@@ -197,6 +203,29 @@ The machine had no removable physical
 output, so actual cable/device removal was unavailable and is explicitly
 reported rather than inferred from the aggregate switch.
 
+## Settings-visible generated preview boundary
+
+The packaged app resolves `shared-dsp-silent-stream` only from an explicit path
+or its own resources and passes that path privately to the localhost engine.
+The Settings **Native Engine Lab** can start one child process at a time. A
+muted run executes the existing golden/recovery proof. An audible run requires
+an acknowledged control plus native `--audible-preview` and
+`--allow-audible-output` flags, is capped at five seconds, and uses a fixed
+-30 dB gain with 20 ms edge fades. The UI preset is three seconds.
+
+The audible callback first zeros every host buffer, then writes at most the two
+channels of the already-generated golden fixture. It never opens a file or an
+input device. Extra output channels remain zero. Killing the owned child is the
+emergency-stop boundary. The server hashes the executable for every run,
+validates the protocol, fingerprint, golden checksum, duration and safety
+declarations, caps captured output, and returns only sanitized metrics.
+
+On the 2026-08-12 Apple Silicon run, a 500 ms direct preview and the complete
+three-second Settings preview both reached the 48 kHz stereo output, matched the
+exact golden, and reported zero callback issues. Settings also stopped an
+audible run early through the process-level emergency control. These are
+generated-tone observations on one machine, not production media routing.
+
 ## Latency authority
 
 Latency is recorded in integer frames first. Milliseconds are derived display
@@ -234,8 +263,9 @@ log stores reason codes and timestamps, never absolute paths or audio data.
 
 ## Remaining production work
 
-This checkpoint does not route project audio or shared-DSP output into hardware
-buffers. It also does not provide production device selection, aggregate-device
+This checkpoint does not route project audio into native hardware buffers. Its
+only audible shared-DSP output is the bounded generated lab fixture. It also
+does not provide production device selection, aggregate-device
 management, completed physical hot-plug evidence, WASM, a background service, production stream
 IPC, or native offline printing. The golden runner remains a test bridge. The
 query-only and laboratory binaries can be packaged into the POC, but promotion
