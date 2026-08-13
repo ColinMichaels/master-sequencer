@@ -1,5 +1,6 @@
 import { normalizeMasterBus } from "./mastering.js";
 import { ADVANCED_PROCESSOR_TYPES, ADVANCED_RACK_MAX_PROCESSORS, activeAdvancedProcessors, normalizeAdvancedMastering, normalizeMasteringPath } from "./advanced-mastering.js";
+import { liveEnvelopeGainAt } from "./live-sequence.js";
 
 const clamp = (value, minimum, maximum) => Math.min(maximum, Math.max(minimum, value));
 
@@ -141,6 +142,37 @@ export const comparisonPlaybackStart = ({ baseStart = 0, elapsed = 0, duration =
   const requestedStart = safeBaseStart + Math.max(0, Number(elapsed) || 0);
   const latestStart = Math.max(safeBaseStart, (Number(duration) || 0) - 0.2);
   return requestedStart <= latestStart ? requestedStart : safeBaseStart;
+};
+
+export const applyLivePlaybackEnvelope = (graph, settings, sourceTime = 0, options = {}) => {
+  const parameter = graph?.envelopeGain?.gain;
+  const context = graph?.context;
+  if (!parameter) return 1;
+  const now = Number.isFinite(Number(context?.currentTime)) ? Number(context.currentTime) : 0;
+  const start = Math.max(settings?.trimStart || 0, Number(sourceTime) || 0);
+  const end = Math.max(start, settings?.trimEnd || start);
+  const duration = end - start;
+  const gainOptions = {
+    crossfadeStart: Number.isFinite(options.crossfadeStart) ? options.crossfadeStart : null,
+    crossfadeDuration: Math.max(0, Number(options.crossfadeDuration) || 0),
+  };
+  const initialGain = settings ? liveEnvelopeGainAt(settings, start, gainOptions) : 1;
+
+  parameter.cancelScheduledValues?.(now);
+  if (!settings || duration <= 0.01 || typeof parameter.setValueCurveAtTime !== "function") {
+    if (typeof parameter.setValueAtTime === "function") parameter.setValueAtTime(initialGain, now);
+    else parameter.value = initialGain;
+    return initialGain;
+  }
+
+  const pointCount = clamp(Math.ceil(duration * 30), 32, 2_048);
+  const curve = Float32Array.from({ length: pointCount }, (_, index) => {
+    const time = start + (duration * index) / (pointCount - 1);
+    return liveEnvelopeGainAt(settings, time, gainOptions);
+  });
+  parameter.setValueAtTime?.(curve[0], now);
+  parameter.setValueCurveAtTime(curve, now, duration);
+  return initialGain;
 };
 
 export const applyLiveMasteringSettings = (graph, masterBus = {}, options = {}) => {
@@ -736,6 +768,7 @@ export const createLiveMasteringGraph = (audio, AudioContextClass) => {
   if (!audio || !AudioContextClass) return null;
   const context = new AudioContextClass();
   const source = context.createMediaElementSource(audio);
+  const envelopeGain = context.createGain();
   const directGain = context.createGain();
   const trackGain = context.createGain();
   const bypassGain = context.createGain();
@@ -773,8 +806,9 @@ export const createLiveMasteringGraph = (audio, AudioContextClass) => {
   configureAnalyser(leftAnalyser, { fftSize: 1_024 });
   configureAnalyser(rightAnalyser, { fftSize: 1_024 });
 
-  source.connect(directGain).connect(masterOutput);
-  source.connect(trackGain);
+  source.connect(envelopeGain);
+  envelopeGain.connect(directGain).connect(masterOutput);
+  envelopeGain.connect(trackGain);
   trackGain.connect(bypassGain).connect(masterOutput);
   trackGain.connect(eqInputAnalyser).connect(lowShelf).connect(midBand).connect(highShelf);
   highShelf.connect(compressorDry).connect(compressorSum);
@@ -797,6 +831,7 @@ export const createLiveMasteringGraph = (audio, AudioContextClass) => {
   return {
     context,
     source,
+    envelopeGain,
     directGain,
     trackGain,
     bypassGain,

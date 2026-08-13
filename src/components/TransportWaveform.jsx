@@ -3,7 +3,7 @@ import { api } from "../lib/api.js";
 import { formatDuration } from "../lib/format.js";
 import { masteringSummary, normalizeMastering } from "../lib/mastering.js";
 import { waveformPath } from "../lib/waveform.js";
-import { PauseIcon, PlayIcon } from "./Icons.jsx";
+import { AfterTrackPlayIcon, PauseIcon } from "./Icons.jsx";
 import { TransitionCurve } from "./TransitionCurve.jsx";
 
 const clamp = (value, minimum, maximum) => Math.min(maximum, Math.max(minimum, value));
@@ -12,8 +12,9 @@ const timeLabel = (value) => value > 0 ? formatDuration(value, true) : "0:00";
 
 export function TransportWaveform({
   playbackButtonRef,
-  audioRef,
+  audioRefs,
   audioHandlers,
+  activeDeck,
   file,
   trackTitle,
   mastering,
@@ -21,9 +22,11 @@ export function TransportWaveform({
   currentTime,
   mediaDuration,
   liveMasteringLabel,
+  afterTrackMode,
   playing,
   hasCurrentMedia,
   renderedPreview,
+  modeButtonProps,
   onTogglePlayback,
   onStartPlayback,
   onSeek,
@@ -80,13 +83,24 @@ export function TransportWaveform({
 
   const toggle = () => hasCurrentMedia ? onTogglePlayback() : onStartPlayback();
   const toggleLabel = playing ? "Pause playback" : hasCurrentMedia ? "Resume playback" : "Play available tracks";
+  const { onClick: onModeButtonClick, ...modeButtonAttributes } = modeButtonProps || {};
   const editSummary = masteringSummary(settings);
 
   return (
     <div className="transport-player">
-      <audio ref={audioRef} crossOrigin="anonymous" preload="metadata" className="transport-audio-source" {...audioHandlers} />
-      <button ref={playbackButtonRef} type="button" className="transport-playback-toggle" onClick={toggle} aria-label={toggleLabel} aria-keyshortcuts="Space" data-tooltip={toggleLabel}>
-        {playing ? <PauseIcon /> : <PlayIcon />}
+      {[0, 1].map((deckIndex) => (
+        <audio
+          key={deckIndex}
+          ref={audioRefs[deckIndex]}
+          crossOrigin="anonymous"
+          preload="auto"
+          className={deckIndex === activeDeck ? "transport-audio-source" : "transport-audio-deck"}
+          data-audio-deck={deckIndex}
+          {...audioHandlers[deckIndex]}
+        />
+      ))}
+      <button ref={playbackButtonRef} type="button" className="transport-playback-toggle" onClick={onModeButtonClick || toggle} aria-label={toggleLabel} aria-keyshortcuts="Space ArrowDown" data-tooltip={`${toggleLabel} · Hold for playback style`} data-after-track-mode={afterTrackMode} {...modeButtonAttributes}>
+        {playing ? <PauseIcon /> : <AfterTrackPlayIcon mode={afterTrackMode} size={22} />}
       </button>
       <div className="transport-waveform-stack">
         <div className="transport-waveform-meta">

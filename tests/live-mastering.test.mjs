@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { activeMasteringProcessors, applyLiveMasteringSettings, comparisonPlaybackStart, compressorGainReductionDb, compressorSidechainMix, createLiveMasteringGraph, decibelsToGain, equalizerLiveImpact, limiterStereoMatrix, masterMonitorMatrix, masterMonitorRouting, playbackBypassesMastering, setMasterMonitorMode } from "../src/lib/live-mastering.js";
+import { activeMasteringProcessors, applyLiveMasteringSettings, applyLivePlaybackEnvelope, comparisonPlaybackStart, compressorGainReductionDb, compressorSidechainMix, createLiveMasteringGraph, decibelsToGain, equalizerLiveImpact, limiterStereoMatrix, masterMonitorMatrix, masterMonitorRouting, playbackBypassesMastering, setMasterMonitorMode } from "../src/lib/live-mastering.js";
 import { ADVANCED_PROCESSOR_TYPES, createAdvancedProcessor, createDefaultAdvancedMastering } from "../src/lib/advanced-mastering.js";
 
 const parameter = () => ({ value: 0 });
@@ -210,6 +210,29 @@ test("live MASTER controls schedule short ramps while audio is running to avoid 
   assert.deepEqual(scheduled[1], ["target", decibelsToGain(-1), 4.25, 0.012]);
 });
 
+test("live playback envelopes schedule the saved fade shape from the current source time", () => {
+  const scheduled = [];
+  const graph = {
+    context: { currentTime: 4 },
+    envelopeGain: { gain: {
+      cancelScheduledValues: (time) => scheduled.push(["cancel", time]),
+      setValueAtTime: (value, time) => scheduled.push(["value", value, time]),
+      setValueCurveAtTime: (curve, time, duration) => scheduled.push(["curve", curve, time, duration]),
+    } },
+  };
+  const settings = { trimStart: 2, trimEnd: 12, duration: 10, fadeIn: 2, endMode: "fade", endDuration: 2, gapAfter: 0, gainDb: 0 };
+
+  applyLivePlaybackEnvelope(graph, settings, 3);
+
+  assert.deepEqual(scheduled[0], ["cancel", 4]);
+  assert.equal(scheduled[1][0], "value");
+  assert.ok(scheduled[1][1] > 0.7 && scheduled[1][1] < 0.71);
+  assert.equal(scheduled[2][0], "curve");
+  assert.equal(scheduled[2][2], 4);
+  assert.equal(scheduled[2][3], 9);
+  assert.ok(scheduled[2][1][scheduled[2][1].length - 1] < 0.000001);
+});
+
 test("reference playback is explicitly classified for the clean direct output", () => {
   assert.equal(playbackBypassesMastering({ track: { id: "current" }, referenceTrack: true }), true);
   assert.equal(playbackBypassesMastering({ track: { id: "current" } }), false);
@@ -290,7 +313,9 @@ test("the live graph connects one media source to direct, bypass, and processed 
   }
 
   const graph = createLiveMasteringGraph({}, FakeAudioContext);
-  assert.equal(graph.source.connections.length, 2);
+  assert.equal(graph.source.connections.length, 1);
+  assert.equal(graph.source.connections[0].node, graph.envelopeGain);
+  assert.deepEqual(graph.envelopeGain.connections.map(({ node }) => node), [graph.directGain, graph.trackGain]);
   assert.equal(graph.directGain.connections[0].node, graph.masterOutput);
   assert.equal(graph.trackGain.connections.length, 3);
   assert.equal(graph.bypassGain.connections[0].node, graph.masterOutput);

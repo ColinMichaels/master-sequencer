@@ -180,6 +180,9 @@
   .premium-rack-heading, .premium-rack-toolbar { align-items: stretch; flex-direction: column; }
   .premium-rack-master-actions { justify-content: flex-start; }
   .premium-rack-toolbar > div:first-child { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+  .premium-plugin-menu { width: 100%; }
+  .premium-plugin-menu-panel { width: 100%; }
+  .premium-plugin-submenu { position: static; width: 100%; margin: 0 0 0.25rem; border: 0; border-left: 2px solid var(--rack-amber); box-shadow: none; }
   .premium-rack-toolbar > div:first-child label { width: 100%; min-width: 0; }
   .premium-rack-toolbar select { width: 100%; min-width: 0; }
   .premium-plugin-boundary { max-width: none; }
@@ -246,6 +249,7 @@
   .transport-waveform { height: 34px; }
   .transport-actions { display: flex; grid-column: 2; gap: 0.3rem; }
   .transport-button { width: 36px; height: 36px; min-height: 0; padding: 0; }
+  .transport-mode-menu { right: 0.5rem; bottom: calc(100% + 0.35rem); }
 }
 
 @media (max-width: 430px) {

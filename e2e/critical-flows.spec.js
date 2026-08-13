@@ -27,6 +27,27 @@ const contrastRatio = (foreground, background) => {
   return (Math.max(foregroundLuminance, backgroundLuminance) + 0.05) / (Math.min(foregroundLuminance, backgroundLuminance) + 0.05);
 };
 
+const holdPlaybackStyleMenu = async (page, trigger) => {
+  const box = await trigger.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.move(box.x + (box.width / 2), box.y + (box.height / 2));
+  await page.mouse.down();
+  const menu = page.getByRole("menu", { name: "Playback style", exact: true });
+  await expect(menu).toBeVisible();
+  await page.mouse.up();
+  return menu;
+};
+
+const choosePlaybackStyle = async (page, trigger, name, { hold = false } = {}) => {
+  const menu = hold ? await holdPlaybackStyleMenu(page, trigger) : page.getByRole("menu", { name: "Playback style", exact: true });
+  if (!hold) {
+    await trigger.press("ArrowDown");
+    await expect(menu).toBeVisible();
+  }
+  await menu.getByRole("menuitemradio", { name: new RegExp(`^${name}`) }).click();
+  await expect(menu).toBeHidden();
+};
+
 test.beforeEach(async ({ request, page }, testInfo) => {
   if (!testInfo.title.includes("first-time visitors")) {
     await page.addInitScript(({ key, value }) => localStorage.setItem(key, value), {
@@ -319,7 +340,17 @@ test("Premium mastering patches repeated equipment in the same saved order used 
   await compressorThreshold.fill("-38");
   await expect(compressorThreshold).toHaveValue("-38");
   await rack.getByRole("slider", { name: "Output level graphical control", exact: true }).fill("-1.5");
-  await rack.getByLabel("Plug-in to add", { exact: true }).selectOption("sequencer.precision-limiter");
+  const pluginMenu = rack.getByRole("button", { name: "Plug-in to add: Program Equalizer", exact: true });
+  await pluginMenu.click();
+  await expect(rack.getByRole("menu", { name: "Plug-in categories", exact: true })).toBeVisible();
+  await rack.getByRole("menuitem", { name: "Spatial, 2 plug-ins", exact: true }).click();
+  const spatialMenu = rack.getByRole("menu", { name: "Spatial plug-ins", exact: true });
+  await expect(spatialMenu.getByRole("menuitem")).toHaveText(["Stereo Field Matrix2U · FIELD", "Mastering Ambience2U · SPACE"]);
+  await spatialMenu.getByRole("menuitem", { name: /Stereo Field Matrix/ }).click();
+  await expect(rack.getByRole("button", { name: "Plug-in to add: Stereo Field Matrix", exact: true })).toBeVisible();
+  await rack.getByRole("button", { name: "Plug-in to add: Stereo Field Matrix", exact: true }).click();
+  await rack.getByRole("menuitem", { name: "Dynamics, 4 plug-ins", exact: true }).click();
+  await rack.getByRole("menu", { name: "Dynamics plug-ins", exact: true }).getByRole("menuitem", { name: /Precision Limiter/ }).click();
   const addToRack = rack.getByRole("button", { name: "Add plug-in to end of rack", exact: true });
   await expect(addToRack).toHaveAttribute("data-tooltip", "Add plug-in to end of rack");
   await expect(addToRack.locator(":scope > .icon")).toBeVisible();
@@ -366,6 +397,48 @@ test("Premium mastering patches repeated equipment in the same saved order used 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.locator(".premium-patch-bay")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+});
+
+test("remaining Premium processors render as interactive analog faceplates", async ({ page }) => {
+  await page.getByRole("button", { name: "Mastering", exact: true }).click();
+  await page.getByRole("button", { name: /PREMIUM Analog Rack/ }).click();
+  const rack = page.getByRole("region", { name: "Advanced Mastering Plug-in Rack" });
+  const addProcessor = async (category, name) => {
+    await rack.getByRole("button", { name: /Plug-in to add:/ }).click();
+    await rack.getByRole("menuitem", { name: new RegExp(`^${category},`) }).click();
+    await rack.getByRole("menu", { name: `${category} plug-ins` }).getByRole("menuitem", { name: new RegExp(`^${name}`) }).click();
+    await rack.getByRole("button", { name: "Add plug-in to end of rack" }).click();
+  };
+
+  await addProcessor("Color", "Harmonic Color");
+  await addProcessor("Dynamics", "HF Smoother");
+  await addProcessor("Spatial", "Mastering Ambience");
+  await addProcessor("Dynamics", "Transient Sculptor");
+  await addProcessor("Creative", "Creative Phaser");
+
+  await expect(rack.locator(".premium-rack-unit")).toHaveCount(9);
+  for (const faceplateClass of ["color", "smoother", "ambience", "transient", "phaser"]) {
+    const faceplate = rack.locator(`.processor-faceplate--${faceplateClass}`);
+    await expect(faceplate).toBeVisible();
+    await expect(faceplate).toHaveCSS("background-image", /url\(/);
+  }
+  await expect(rack.getByRole("slider", { name: "Drive graphical control" })).toBeEnabled();
+  await expect(rack.getByRole("article", { name: /Harmonic Color/ }).getByRole("button", { name: "4× oversampling" })).toHaveAttribute("aria-pressed", "true");
+  await expect(rack.getByRole("button", { name: "R", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(rack.getByRole("button", { name: "Full", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(rack.getByText("Master wet range is limited to 5%.")).toBeVisible();
+  await expect(rack.getByText("Creative effect: modulation can alter mono compatibility")).toBeVisible();
+
+  const phaserBypass = rack.getByRole("button", { name: "Creative Phaser: bypass" });
+  await phaserBypass.click();
+  await expect(rack.getByRole("article", { name: /9\. Creative Phaser, bypassed/ })).toBeVisible();
+  await rack.getByRole("button", { name: "Creative Phaser: put in circuit" }).click();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(rack.locator(".processor-faceplate--ambience")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+  const rackOverflow = await rack.locator(".premium-equipment-rack").evaluate((element) => ({ clientWidth: element.clientWidth, scrollWidth: element.scrollWidth }));
+  expect(rackOverflow.scrollWidth).toBeGreaterThan(rackOverflow.clientWidth);
 });
 
 test("long sequence lists scroll inside the workspace while controls stay visible", async ({ page, request }) => {
@@ -868,7 +941,7 @@ test("space exclusively owns transport playback and returns focus there from eve
   const transportToggle = page.locator(".transport-playback-toggle");
   await transportToggle.click();
   await expect(transportToggle).toHaveAttribute("aria-label", "Pause playback");
-  await expect(transportToggle).toHaveAttribute("aria-keyshortcuts", "Space");
+  await expect(transportToggle).toHaveAttribute("aria-keyshortcuts", "Space ArrowDown");
   const headerMeter = page.getByTestId("header-master-meter");
   await expect(headerMeter).toHaveAttribute("data-meter-active", "true");
   await expect(headerMeter).toHaveAttribute("data-meter-routing", "mastering");
@@ -879,11 +952,11 @@ test("space exclusively owns transport playback and returns focus there from eve
   await page.keyboard.press("Space");
   await expect(transportToggle).toHaveAttribute("aria-label", "Resume playback");
   await expect(transportToggle).toBeFocused();
-  await expect(page.locator("[data-transport-status]")).toHaveText("Playback paused. Press Space to resume.");
+  await expect(page.locator("[data-transport-status]")).toHaveText("Playback paused. Press Space to resume the edited sequence.");
   await page.keyboard.press("Space");
   await expect(transportToggle).toHaveAttribute("aria-label", "Pause playback");
   await expect(transportToggle).toBeFocused();
-  await expect(page.locator("[data-transport-status]")).toHaveText("Playback resumed. Press Space to pause.");
+  await expect(page.locator("[data-transport-status]")).toHaveText("Playback resumed with the saved edit timing. Press Space to pause.");
 
   await page.keyboard.press("Space");
   await expect(transportToggle).toHaveAttribute("aria-label", "Resume playback");
@@ -1007,14 +1080,155 @@ test("the sequence row follows the main player track and playback state", async 
   await expect(alphaRow).not.toHaveClass(/is-playing/);
   await expect(page.locator(".transport-playback-toggle")).toHaveAttribute("aria-label", "Resume playback");
 
+  const audio = page.locator(".transport-audio-source");
+  await alphaRow.locator(".sequence-play-button").click();
+  await expect.poll(() => audio.evaluate((element) => element.currentTime)).toBeGreaterThan(0.05);
   await alphaRow.getByLabel("Audition source for Alpha Tone").selectOption("alpha-b");
   await expect(page.locator(".transport-playback-toggle")).toHaveAttribute("aria-label", "Resume playback");
+  await expect.poll(() => audio.evaluate((element) => element.paused)).toBe(true);
+  await expect.poll(() => audio.evaluate((element) => element.currentTime)).toBe(0);
+  await expect.poll(() => audio.evaluate((element) => new URL(element.currentSrc || element.src).searchParams.get("key"))).toBe("test-root::Alternate Mix.mp3");
+  await expect(page.locator("[data-transport-status]")).toHaveText("Alpha Tone source changed. Playback stopped at the new source trim; press Space to play.");
+  await expect(alphaRow).toHaveClass(/is-current/);
+  await expect(alphaRow).not.toHaveClass(/is-playing/);
   await alphaRow.getByRole("button", { name: "Remove Alpha Tone from sequence" }).click();
   await expect(alphaRow).toHaveClass(/is-removal-armed/);
   await expect(page.locator(".transport-playback-toggle")).toHaveAttribute("aria-label", "Resume playback");
 
   await alphaRow.locator(".sequence-play-button").click();
   await expect(alphaRow).toHaveClass(/is-playing/);
+});
+
+test("main playback auditions saved trims, fades, gaps, and crossfades", async ({ page, request }) => {
+  const timingState = structuredClone(e2eProjectState);
+  const album = timingState.albums[0];
+  const [alpha, protectedTrack] = album.tracks;
+  alpha.mastering = { trimStart: 0.2, trimEnd: 1, fadeIn: 0.15, endMode: "crossfade", endDuration: 0.45 };
+  protectedTrack.mastering = { trimStart: 0.1, trimEnd: 0.9, fadeIn: 0.1, endMode: "fade", endDuration: 0.2, gapAfter: 0.4 };
+  album.tracks.push({
+    id: "gamma",
+    title: "Gamma Return",
+    decisionStatus: "undecided",
+    masterCandidateId: "",
+    auditionCandidateId: "gamma-a",
+    notes: "",
+    visualAssets: [],
+    mastering: { trimStart: 0.1, trimEnd: 0.65, endMode: "cut" },
+    candidates: [{ id: "gamma-a", label: "Gamma Mix", sourceRef: { rootId: "test-root", relativePath: "Loose Sketch.mp3" }, flags: [], notes: "" }],
+  });
+  album.baselineTrackOrder.push("gamma");
+  const response = await request.put("/api/state", { data: timingState, headers: { Origin: origin } });
+  expect(response.ok()).toBeTruthy();
+  await page.reload();
+  await expect(page.getByRole("table", { name: "Fixture Album track order" })).toBeVisible();
+
+  const alphaRow = page.locator(".sequence-track").filter({ hasText: "Alpha Tone" });
+  const protectedRow = page.locator(".sequence-track").filter({ hasText: "[SIGNAL SOURCE WITHHELD]" });
+  const gammaRow = page.locator(".sequence-track").filter({ hasText: "Gamma Return" });
+  const transportStatus = page.locator("[data-transport-status]");
+
+  await alphaRow.locator(".sequence-play-button").click();
+  await expect.poll(() => page.locator(".transport-audio-source").evaluate((audio) => audio.currentTime)).toBeGreaterThanOrEqual(0.2);
+  await expect.poll(() => page.locator(".transport-audio-deck").evaluate((audio) => audio.readyState)).toBeGreaterThanOrEqual(1);
+  await expect.poll(() => page.locator("audio").evaluateAll(([active, prepared]) => active.currentSrc !== prepared.currentSrc)).toBe(true);
+  await expect(page.locator(".transport-audio-source")).toHaveAttribute("data-live-trim-start", "0.2");
+  await expect(page.locator(".transport-audio-source")).toHaveAttribute("data-live-trim-end", "1");
+  await expect(page.locator(".transport-audio-source")).toHaveAttribute("data-live-fade-in", "0.15");
+  await expect(page.locator(".transport-audio-source")).toHaveAttribute("data-live-end-mode", "crossfade");
+
+  await Promise.all([
+    expect(transportStatus).toContainText("Crossfading Alpha Tone into [SIGNAL SOURCE WITHHELD]"),
+    expect.poll(() => page.locator("audio").evaluateAll((audios) => audios.filter((audio) => !audio.paused).length), { intervals: [20, 50], timeout: 2_000 }).toBe(2),
+    expect(protectedRow).toHaveClass(/is-playing/),
+    expect(page.locator(".transport-audio-source")).toHaveAttribute("data-live-crossfade-in", "0.45"),
+  ]);
+
+  const gammaPlayback = Promise.all([
+    expect(gammaRow).toHaveClass(/is-playing/),
+    expect(page.locator(".transport-audio-source")).toHaveAttribute("data-live-trim-start", "0.1"),
+    expect.poll(() => page.locator(".transport-audio-source").evaluate((audio) => audio.currentTime)).toBeGreaterThanOrEqual(0.1),
+  ]);
+  await Promise.all([
+    expect(transportStatus).toContainText("Auditioning the 0.4s gap before Gamma Return"),
+    expect.poll(() => page.locator("audio").evaluateAll((audios) => audios.filter((audio) => !audio.paused).length)).toBe(0),
+    expect(page.locator(".transport-playback-toggle")).toHaveAttribute("aria-label", "Pause playback"),
+  ]);
+  await gammaPlayback;
+  await expect(transportStatus).toHaveText("Edited working-order audition complete.");
+  await expect(gammaRow).not.toHaveClass(/is-playing/);
+});
+
+test("master transport applies and remembers each after-track playback mode", async ({ page, request }) => {
+  const timingState = structuredClone(e2eProjectState);
+  const [alpha, protectedTrack] = timingState.albums[0].tracks;
+  alpha.mastering = { trimStart: 0.1, trimEnd: 0.55, fadeIn: 0.05, endMode: "crossfade", endDuration: 0.2 };
+  protectedTrack.mastering = { trimStart: 0.1, trimEnd: 0.55, fadeIn: 0.05, endMode: "fade", endDuration: 0.1 };
+  const response = await request.put("/api/state", { data: timingState, headers: { Origin: origin } });
+  expect(response.ok()).toBeTruthy();
+  await page.reload();
+
+  const alphaRow = page.locator(".sequence-track").filter({ hasText: "Alpha Tone" });
+  const protectedRow = page.locator(".sequence-track").filter({ hasText: "[SIGNAL SOURCE WITHHELD]" });
+  const transportStatus = page.locator("[data-transport-status]");
+  const activeAudio = page.locator(".transport-audio-source");
+  const masterPlayButton = page.locator(".transport-actions").getByRole("button", { name: "Play available tracks", exact: true });
+  const transportToggle = page.locator(".transport-playback-toggle");
+  const masterModeIcon = masterPlayButton.locator("[data-after-track-icon]");
+  const toggleModeIcon = transportToggle.locator("[data-after-track-icon]");
+
+  await expect(page.getByLabel("After-track playback behavior")).toHaveCount(0);
+  await expect(masterPlayButton).toHaveAttribute("aria-haspopup", "menu");
+  await expect(transportToggle).toHaveAttribute("aria-haspopup", "menu");
+  await expect(masterModeIcon).toHaveAttribute("data-after-track-icon", "auto-next");
+  await expect(toggleModeIcon).toHaveAttribute("data-after-track-icon", "auto-next");
+  const cueMenu = await holdPlaybackStyleMenu(page, masterPlayButton);
+  await expect(masterPlayButton).toHaveAttribute("aria-expanded", "true");
+  await expect(cueMenu.getByRole("menuitemradio", { name: /^Auto next/ })).toHaveAttribute("aria-checked", "true");
+  await expect.poll(() => activeAudio.evaluate((audio) => audio.paused)).toBe(true);
+  await cueMenu.getByRole("menuitemradio", { name: /^Cue next/ }).click();
+  await expect(cueMenu).toBeHidden();
+  await expect(masterModeIcon).toHaveAttribute("data-after-track-icon", "cue-next");
+  await expect(toggleModeIcon).toHaveAttribute("data-after-track-icon", "cue-next");
+  await alphaRow.locator(".sequence-play-button").click();
+  await expect(transportStatus).toHaveText("[SIGNAL SOURCE WITHHELD] cued at its trim start. Press Space to play.");
+  await expect(protectedRow).toHaveClass(/is-current/);
+  await expect(protectedRow).not.toHaveClass(/is-playing/);
+  await expect(toggleModeIcon).toHaveAttribute("data-after-track-icon", "cue-next");
+  await expect.poll(() => activeAudio.evaluate((audio) => audio.paused)).toBe(true);
+  await expect.poll(() => activeAudio.evaluate((audio) => audio.currentTime)).toBeGreaterThanOrEqual(0.1);
+  await expect.poll(() => activeAudio.evaluate((audio) => audio.currentTime)).toBeLessThan(0.16);
+
+  await choosePlaybackStyle(page, transportToggle, "Reset current", { hold: true });
+  await expect(masterModeIcon).toHaveAttribute("data-after-track-icon", "reset-current");
+  await expect(toggleModeIcon).toHaveAttribute("data-after-track-icon", "reset-current");
+  await transportToggle.click();
+  await expect(transportStatus).toHaveText("[SIGNAL SOURCE WITHHELD] reset to its trim start. Press Space to play.");
+  await expect(protectedRow).not.toHaveClass(/is-playing/);
+  await expect(toggleModeIcon).toHaveAttribute("data-after-track-icon", "reset-current");
+  await expect.poll(() => activeAudio.evaluate((audio) => audio.paused)).toBe(true);
+  await expect.poll(() => activeAudio.evaluate((audio) => audio.currentTime)).toBeLessThan(0.16);
+
+  await choosePlaybackStyle(page, transportToggle, "Loop current");
+  await expect(masterModeIcon).toHaveAttribute("data-after-track-icon", "loop-current");
+  await expect(toggleModeIcon).toHaveAttribute("data-after-track-icon", "loop-current");
+  await transportToggle.click();
+  await expect(transportStatus).toHaveText("Looping [SIGNAL SOURCE WITHHELD] from its trim start.");
+  await expect(protectedRow).toHaveClass(/is-playing/);
+  await expect(masterModeIcon).toHaveAttribute("data-after-track-icon", "loop-current");
+  await expect(toggleModeIcon).toHaveCount(0);
+  await expect.poll(() => activeAudio.evaluate((audio) => audio.paused)).toBe(false);
+  const pauseMenu = await holdPlaybackStyleMenu(page, transportToggle);
+  await expect(transportToggle).toHaveAttribute("aria-label", "Pause playback");
+  await expect.poll(() => activeAudio.evaluate((audio) => audio.paused)).toBe(false);
+  await pauseMenu.getByRole("menuitemradio", { name: /^Loop current/ }).click();
+  await expect(pauseMenu).toBeHidden();
+
+  await page.reload();
+  await expect(page.getByLabel("After-track playback behavior")).toHaveCount(0);
+  await expect(page.locator(".transport-actions").getByRole("button", { name: "Play available tracks", exact: true }).locator("[data-after-track-icon]"))
+    .toHaveAttribute("data-after-track-icon", "loop-current");
+  await expect(page.locator(".transport-playback-toggle [data-after-track-icon]"))
+    .toHaveAttribute("data-after-track-icon", "loop-current");
 });
 
 test("mastering follows shared playback, seeks from its waveform, and reveals transition details at the markers", async ({ page }) => {
@@ -1220,6 +1434,7 @@ test("mastering analysis, chapter cues, and delivery authority remain explicit",
   await expect(limiterReduction).toHaveAttribute("data-live-active", "false");
   await expect(limiterReduction).toHaveAttribute("data-reduction-db", "0.00");
   const transportToggle = page.locator(".transport-playback-toggle");
+  await choosePlaybackStyle(page, transportToggle, "Loop current");
   await transportToggle.click();
   await expect(eqImpact).toHaveAttribute("data-live-active", "true");
   await expect.poll(async () => Number(await eqImpact.getAttribute("data-impact-db")), { timeout: 2_000 }).toBeGreaterThan(0);
@@ -1280,13 +1495,14 @@ test("mastering analysis, chapter cues, and delivery authority remain explicit",
   await page.getByLabel("Bypass MASTER").uncheck();
   await expect(headerMeter).toHaveAttribute("data-meter-routing", "mastering");
   await expect.poll(() => headerMeter.evaluate((element) => getComputedStyle(element).borderColor)).toBe("rgb(168, 201, 47)");
-  // The earlier meter exercise can legitimately advance the sequence to its
-  // next source. Re-select and pause the intended mastering track before the
-  // A/B check so the one-second fixture cannot advance during setup.
+  // Reset the intended track through its real end boundary before A/B so a
+  // nearly-complete one-second fixture cannot advance between click events.
+  await choosePlaybackStyle(page, transportToggle, "Reset current");
   await page.locator(".mastering-track-list").getByRole("button", { name: /^Alpha Tone\./ }).click();
-  await transportToggle.click();
+  await expect(page.locator("[data-transport-status]")).toContainText("Alpha Tone reset to its trim start");
   await expect(transportToggle).toHaveAttribute("aria-label", "Resume playback");
   await expect(page.locator(".transport-copy")).toContainText("Alpha Tone");
+  await choosePlaybackStyle(page, transportToggle, "Auto next");
   await page.locator(".reference-ab-panel > summary").click();
   await page.getByLabel("Reference audio track").selectOption("test-root::Alternate Mix.mp3");
   await page.getByRole("button", { name: /B Clean reference/ }).click();

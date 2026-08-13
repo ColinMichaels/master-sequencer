@@ -1,9 +1,11 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { ADVANCED_PROCESSOR_LIMITS, ADVANCED_PROCESSOR_TYPES, ADVANCED_RACK_MAX_PROCESSORS, availablePluginDefinitions, buildSerialConnections, createAdvancedProcessor, createDefaultAdvancedMastering, normalizeAdvancedMastering, processorDefinition } from "../lib/advanced-mastering.js";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { ADVANCED_PROCESSOR_TYPES, ADVANCED_RACK_MAX_PROCESSORS, availablePluginDefinitions, buildSerialConnections, createAdvancedProcessor, createDefaultAdvancedMastering, normalizeAdvancedMastering, processorDefinition } from "../lib/advanced-mastering.js";
 import { MASTERING_LIMITS } from "../lib/mastering.js";
 import { ChevronIcon, DragIcon, PlusIcon, RefreshIcon, TrashIcon, WarningIcon } from "./Icons.jsx";
 import { CompressorTransferGraph, EqResponseGraph, HardwareGainReductionLeds, HardwareGainReductionMeter, LimiterTransferGraph, ManualValues, MasteringNumberField, ModuleSwitch, RotaryControl } from "./MasteringControls.jsx";
 import { MasterOutputMeters } from "./MasterOutputMeters.jsx";
+import { CreativePhaserFaceplate, HarmonicColorFaceplate, HfSmootherFaceplate, MasteringAmbienceFaceplate, TransientSculptorFaceplate } from "./AnalogProcessorFaceplates.jsx";
+import { PhaseAlignmentFaceplate, StereoFieldFaceplate } from "./SpatialRepairFaceplates.jsx";
 
 const EQUIPMENT_MAKERS = Object.freeze({
   [ADVANCED_PROCESSOR_TYPES.eq]: Object.freeze({ initials: "HS", maker: "Harbor Signal", model: "E-73 PROGRAM" }),
@@ -239,95 +241,6 @@ function PremiumLimiter({ node, disabled, onBypass, onParameter, meteringRef, li
   );
 }
 
-function StereoFieldPlugin({ node, disabled, onParameter }) {
-  const field = node.parameters;
-  return <PluginPanel node={node} title="Stereo Field Matrix" subtitle="Width · depth · low-frequency focus · space">
-    <Field label="Width" value={field.widthDb} limits={ADVANCED_PROCESSOR_LIMITS.widthDb} suffix="dB Side" disabled={disabled} onCommit={(value) => onParameter(["widthDb"], value)} />
-    <Field label="Depth" value={field.depthDb} limits={ADVANCED_PROCESSOR_LIMITS.depthDb} suffix="dB Mid" disabled={disabled} onCommit={(value) => onParameter(["depthDb"], value)} />
-    <Field label="Mono below" value={field.monoBelowHz} limits={ADVANCED_PROCESSOR_LIMITS.monoBelowHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["monoBelowHz"], value)} />
-    <Field label="Space" value={field.spaceDb} limits={ADVANCED_PROCESSOR_LIMITS.spaceDb} suffix="dB Side" disabled={disabled} onCommit={(value) => onParameter(["spaceDb"], value)} />
-    <Field label="Space frequency" value={field.spaceFrequencyHz} limits={ADVANCED_PROCESSOR_LIMITS.spaceFrequencyHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["spaceFrequencyHz"], value)} />
-    <Field label="Balance" value={field.balance} limits={ADVANCED_PROCESSOR_LIMITS.balance} step={0.01} suffix="L/R" disabled={disabled} onCommit={(value) => onParameter(["balance"], value)} />
-  </PluginPanel>;
-}
-
-function HarmonicColorPlugin({ node, disabled, onParameter }) {
-  const color = node.parameters;
-  return <PluginPanel node={node} title="Harmonic Color" subtitle="Original nonlinear stage · oversampled live and print paths">
-    <SelectField label="Channel mode" value={color.channelMode} options={CHANNEL_MODE_OPTIONS} disabled={disabled} onChange={(value) => onParameter(["channelMode"], value)} />
-    <Field label="Drive" value={color.driveDb} limits={ADVANCED_PROCESSOR_LIMITS.colorDriveDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["driveDb"], value)} />
-    <Field label="Even harmonics" value={color.evenAmount * 100} minimum={0} maximum={100} step={1} suffix="%" disabled={disabled} onCommit={(value) => onParameter(["evenAmount"], value / 100)} />
-    <Field label="Odd harmonics" value={color.oddAmount * 100} minimum={0} maximum={100} step={1} suffix="%" disabled={disabled} onCommit={(value) => onParameter(["oddAmount"], value / 100)} />
-    <Field label="Color focus" value={color.colorFrequencyHz} limits={ADVANCED_PROCESSOR_LIMITS.colorFrequencyHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["colorFrequencyHz"], value)} />
-    <Field label="Mix" value={color.mix * 100} minimum={0} maximum={100} step={1} suffix="%" disabled={disabled} onCommit={(value) => onParameter(["mix"], value / 100)} />
-    <SelectField label="Oversampling" value={String(color.oversample)} options={[1, 2, 4].map((value) => ({ value: String(value), label: `${value}×` }))} disabled={disabled} onChange={(value) => onParameter(["oversample"], Number(value))} />
-    <Field label="Output" value={color.outputGainDb} limits={MASTERING_LIMITS.outputGainDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["outputGainDb"], value)} />
-  </PluginPanel>;
-}
-
-function PhaseAlignmentPlugin({ node, disabled, onParameter }) {
-  const phase = node.parameters;
-  return <PluginPanel node={node} title="Phase Alignment" subtitle="Static repair utility · no LFO or feedback" warning="Use on damaged or misaligned stereo only. Always verify correlation and mono playback.">
-    <SelectField label="Target" value={phase.target} options={["left", "right", "mid", "side"].map((value) => ({ value, label: value[0].toUpperCase() + value.slice(1) }))} disabled={disabled} onChange={(value) => onParameter(["target"], value)} />
-    <label className="premium-plugin-toggle"><input type="checkbox" checked={phase.polarityInvert} disabled={disabled} onChange={(event) => onParameter(["polarityInvert"], event.target.checked)} /><span>Invert target polarity</span></label>
-    <Field label="Delay" value={phase.delaySamples} limits={ADVANCED_PROCESSOR_LIMITS.phaseDelaySamples} step={1} suffix="samples" disabled={disabled} onCommit={(value) => onParameter(["delaySamples"], value)} />
-    <Field label="All-pass center" value={phase.centerFrequencyHz} limits={MASTERING_LIMITS.highShelfFrequencyHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["centerFrequencyHz"], value)} />
-    <Field label="All-pass Q" value={phase.q} limits={MASTERING_LIMITS.midBandQ} step={0.01} suffix="Q" disabled={disabled} onCommit={(value) => onParameter(["q"], value)} />
-    <Field label="Rotation" value={phase.shift} limits={ADVANCED_PROCESSOR_LIMITS.phaseShift} step={0.01} suffix="" disabled={disabled} onCommit={(value) => onParameter(["shift"], value)} />
-    <Field label="Mix" value={phase.mix * 100} minimum={0} maximum={100} step={1} suffix="%" disabled={disabled} onCommit={(value) => onParameter(["mix"], value / 100)} />
-  </PluginPanel>;
-}
-
-function HfSmootherPlugin({ node, disabled, onParameter }) {
-  const smoother = node.parameters;
-  return <PluginPanel node={node} title="HF Smoother" subtitle="High-band compression · harshness and brittle-fizz control">
-    <Field label="Crossover" value={smoother.frequencyHz} limits={ADVANCED_PROCESSOR_LIMITS.hfFrequencyHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["frequencyHz"], value)} />
-    <Field label="Threshold" value={smoother.thresholdDb} limits={MASTERING_LIMITS.compressorThresholdDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["thresholdDb"], value)} />
-    <Field label="Ratio" value={smoother.ratio} limits={ADVANCED_PROCESSOR_LIMITS.hfRatio} step={0.1} suffix=":1" disabled={disabled} onCommit={(value) => onParameter(["ratio"], value)} />
-    <Field label="Attack" value={smoother.attackMs} limits={MASTERING_LIMITS.compressorAttackMs} suffix="ms" disabled={disabled} onCommit={(value) => onParameter(["attackMs"], value)} />
-    <Field label="Release" value={smoother.releaseMs} limits={MASTERING_LIMITS.compressorReleaseMs} step={1} suffix="ms" disabled={disabled} onCommit={(value) => onParameter(["releaseMs"], value)} />
-    <Field label="Mix" value={smoother.mix * 100} minimum={0} maximum={100} step={1} suffix="%" disabled={disabled} onCommit={(value) => onParameter(["mix"], value / 100)} />
-    <Field label="Output" value={smoother.outputGainDb} limits={MASTERING_LIMITS.outputGainDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["outputGainDb"], value)} />
-  </PluginPanel>;
-}
-
-function MasteringAmbiencePlugin({ node, disabled, onParameter }) {
-  const ambience = node.parameters;
-  return <PluginPanel node={node} title="Mastering Ambience" subtitle="Versioned deterministic convolution" warning="Master wet range is intentionally limited to 5%. Keep the limiter after ambience.">
-    <SelectField label="Space" value={ambience.model} options={["room", "chamber", "plate"].map((value) => ({ value, label: value[0].toUpperCase() + value.slice(1) }))} disabled={disabled} onChange={(value) => onParameter(["model"], value)} />
-    <Field label="Pre-delay" value={ambience.preDelayMs} limits={ADVANCED_PROCESSOR_LIMITS.ambiencePreDelayMs} step={1} suffix="ms" disabled={disabled} onCommit={(value) => onParameter(["preDelayMs"], value)} />
-    <Field label="Decay" value={ambience.decaySeconds} limits={ADVANCED_PROCESSOR_LIMITS.ambienceDecaySeconds} step={0.01} suffix="s" disabled={disabled} onCommit={(value) => onParameter(["decaySeconds"], value)} />
-    <Field label="Damping" value={ambience.dampingHz} limits={ADVANCED_PROCESSOR_LIMITS.ambienceDampingHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["dampingHz"], value)} />
-    <Field label="Low cut" value={ambience.lowCutHz} limits={ADVANCED_PROCESSOR_LIMITS.ambienceLowCutHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["lowCutHz"], value)} />
-    <Field label="Width" value={ambience.widthPercent} limits={ADVANCED_PROCESSOR_LIMITS.ambienceWidthPercent} step={1} suffix="%" disabled={disabled} onCommit={(value) => onParameter(["widthPercent"], value)} />
-    <Field label="Wet" value={ambience.wetPercent} limits={ADVANCED_PROCESSOR_LIMITS.ambienceWetPercent} step={0.1} suffix="%" disabled={disabled} onCommit={(value) => onParameter(["wetPercent"], value)} />
-  </PluginPanel>;
-}
-
-function TransientShaperPlugin({ node, disabled, onParameter }) {
-  const transient = node.parameters;
-  return <PluginPanel node={node} title="Transient Sculptor" subtitle="Restricted mastering range · attack and sustain">
-    <SelectField label="Mode" value={transient.mode} options={[{ value: "full", label: "Full range" }, { value: "focused", label: "Frequency focused" }]} disabled={disabled} onChange={(value) => onParameter(["mode"], value)} />
-    <Field label="Attack" value={transient.attackDb} limits={ADVANCED_PROCESSOR_LIMITS.transientDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["attackDb"], value)} />
-    <Field label="Sustain" value={transient.sustainDb} limits={ADVANCED_PROCESSOR_LIMITS.transientDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["sustainDb"], value)} />
-    <Field label="Focus" value={transient.focusFrequencyHz} limits={ADVANCED_PROCESSOR_LIMITS.transientFocusHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["focusFrequencyHz"], value)} />
-    <label className="premium-plugin-toggle"><input type="checkbox" checked={transient.stereoLink} disabled={disabled} onChange={(event) => onParameter(["stereoLink"], event.target.checked)} /><span>Stereo-linked detection</span></label>
-    <Field label="Output" value={transient.outputGainDb} limits={MASTERING_LIMITS.outputGainDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["outputGainDb"], value)} />
-  </PluginPanel>;
-}
-
-function CreativePhaserPlugin({ node, disabled, onParameter }) {
-  const phaser = node.parameters;
-  return <PluginPanel node={node} title="Creative Phaser" subtitle="Moving phase effect · intentionally not a repair processor" warning="Creative effect: modulation can alter mono compatibility and album-wide tonal balance.">
-    <Field label="Rate" value={phaser.rateHz} limits={ADVANCED_PROCESSOR_LIMITS.phaserRateHz} step={0.01} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["rateHz"], value)} />
-    <Field label="Depth" value={phaser.depth * 100} minimum={0} maximum={100} step={1} suffix="%" disabled={disabled} onCommit={(value) => onParameter(["depth"], value / 100)} />
-    <Field label="Center" value={phaser.centerFrequencyHz} limits={ADVANCED_PROCESSOR_LIMITS.phaserCenterHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["centerFrequencyHz"], value)} />
-    <Field label="Feedback" value={phaser.feedback * 100} minimum={-80} maximum={80} step={1} suffix="%" disabled={disabled} onCommit={(value) => onParameter(["feedback"], value / 100)} />
-    <Field label="Mix" value={phaser.mix * 100} minimum={0} maximum={50} step={1} suffix="%" disabled={disabled} onCommit={(value) => onParameter(["mix"], value / 100)} />
-    <Field label="Stereo offset" value={phaser.stereoOffsetDegrees} limits={ADVANCED_PROCESSOR_LIMITS.phaserStereoDegrees} step={1} suffix="°" disabled={disabled} onCommit={(value) => onParameter(["stereoOffsetDegrees"], value)} />
-  </PluginPanel>;
-}
-
 function RackEquipment({ node, index, count, selected, rackBypassed, meteringRef, liveProcessing, playing, onSelect, onMove, onDuplicate, onRemove, onBypass, onParameter, onDragStart, onDrop }) {
   const definition = processorDefinition(node.typeId) || { accent: "graphite", rackUnits: 1, shortName: "EXT" };
   const disabled = Boolean(node.unavailable);
@@ -340,15 +253,68 @@ function RackEquipment({ node, index, count, selected, rackBypassed, meteringRef
       {node.typeId === ADVANCED_PROCESSOR_TYPES.compressor && <PremiumCompressor node={node} disabled={disabled} onBypass={onBypass} onParameter={onParameter} meteringRef={meteringRef} live={live} />}
       {node.typeId === ADVANCED_PROCESSOR_TYPES.output && <PremiumOutput node={node} disabled={disabled} onBypass={onBypass} onParameter={onParameter} />}
       {node.typeId === ADVANCED_PROCESSOR_TYPES.limiter && <PremiumLimiter node={node} disabled={disabled} onBypass={onBypass} onParameter={onParameter} meteringRef={meteringRef} live={live} />}
-      {node.typeId === ADVANCED_PROCESSOR_TYPES.stereoField && <StereoFieldPlugin node={node} disabled={disabled} onParameter={onParameter} />}
-      {node.typeId === ADVANCED_PROCESSOR_TYPES.harmonicColor && <HarmonicColorPlugin node={node} disabled={disabled} onParameter={onParameter} />}
-      {node.typeId === ADVANCED_PROCESSOR_TYPES.phaseAlignment && <PhaseAlignmentPlugin node={node} disabled={disabled} onParameter={onParameter} />}
-      {node.typeId === ADVANCED_PROCESSOR_TYPES.hfSmoother && <HfSmootherPlugin node={node} disabled={disabled} onParameter={onParameter} />}
-      {node.typeId === ADVANCED_PROCESSOR_TYPES.ambience && <MasteringAmbiencePlugin node={node} disabled={disabled} onParameter={onParameter} />}
-      {node.typeId === ADVANCED_PROCESSOR_TYPES.transientShaper && <TransientShaperPlugin node={node} disabled={disabled} onParameter={onParameter} />}
-      {node.typeId === ADVANCED_PROCESSOR_TYPES.creativePhaser && <CreativePhaserPlugin node={node} disabled={disabled} onParameter={onParameter} />}
+      {node.typeId === ADVANCED_PROCESSOR_TYPES.stereoField && <StereoFieldFaceplate node={node} disabled={disabled} onBypass={onBypass} onParameter={onParameter} meteringRef={meteringRef} live={live} />}
+      {node.typeId === ADVANCED_PROCESSOR_TYPES.harmonicColor && <HarmonicColorFaceplate node={node} disabled={disabled} onParameter={onParameter} />}
+      {node.typeId === ADVANCED_PROCESSOR_TYPES.phaseAlignment && <PhaseAlignmentFaceplate node={node} disabled={disabled} onBypass={onBypass} onParameter={onParameter} meteringRef={meteringRef} live={live} />}
+      {node.typeId === ADVANCED_PROCESSOR_TYPES.hfSmoother && <HfSmootherFaceplate node={node} disabled={disabled} onBypass={onBypass} onParameter={onParameter} />}
+      {node.typeId === ADVANCED_PROCESSOR_TYPES.ambience && <MasteringAmbienceFaceplate node={node} disabled={disabled} onBypass={onBypass} onParameter={onParameter} />}
+      {node.typeId === ADVANCED_PROCESSOR_TYPES.transientShaper && <TransientSculptorFaceplate node={node} disabled={disabled} onBypass={onBypass} onParameter={onParameter} />}
+      {node.typeId === ADVANCED_PROCESSOR_TYPES.creativePhaser && <CreativePhaserFaceplate node={node} disabled={disabled} onBypass={onBypass} onParameter={onParameter} />}
       {node.unavailable ? <PluginPanel node={node} title={node.name} subtitle={`${node.pluginRef?.format?.toUpperCase()} · native host required`} warning="This owned plug-in is preserved in the rack but remains bypassed until the signed desktop host resolves it." /> : null}
     </article>
+  );
+}
+
+function PluginInsertMenu({ definitions, value, onChange }) {
+  const rootRef = useRef(null);
+  const pluginsByCategory = useMemo(() => definitions.reduce((categories, definition) => {
+    const members = categories.get(definition.category) || [];
+    categories.set(definition.category, [...members, definition]);
+    return categories;
+  }, new Map()), [definitions]);
+  const categories = useMemo(() => [...pluginsByCategory.keys()], [pluginsByCategory]);
+  const selected = definitions.find((definition) => definition.typeId === value) || definitions[0];
+  const [open, setOpen] = useState(false);
+  const [activeCategory, setActiveCategory] = useState(selected?.category || categories[0] || "");
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const closeOutside = (event) => {
+      if (!rootRef.current?.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    return () => document.removeEventListener("pointerdown", closeOutside);
+  }, [open]);
+
+  const toggle = () => {
+    setActiveCategory(selected?.category || categories[0] || "");
+    setOpen((current) => !current);
+  };
+  const choose = (definition) => {
+    onChange(definition.typeId);
+    setActiveCategory(definition.category);
+    setOpen(false);
+  };
+
+  return (
+    <div ref={rootRef} className={`premium-plugin-menu ${open ? "is-open" : ""}`} onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); setOpen(false); } }}>
+      <span className="premium-plugin-menu-label">Plug-in to add</span>
+      <button type="button" className="premium-plugin-menu-trigger" aria-label={`Plug-in to add: ${selected?.name || "None"}`} aria-haspopup="menu" aria-expanded={open} onClick={toggle}>
+        <span><small>{selected?.category || "No category"}</small><strong>{selected?.name || "No plug-ins available"}</strong></span><ChevronIcon direction={open ? "up" : "down"} />
+      </button>
+      {open ? <div className="premium-plugin-menu-panel" role="menu" aria-label="Plug-in categories">
+        {categories.map((category) => {
+          const categoryPlugins = pluginsByCategory.get(category) || [];
+          const active = activeCategory === category;
+          return <div key={category} className={`premium-plugin-menu-category ${active ? "is-active" : ""}`} onPointerEnter={() => setActiveCategory(category)}>
+            <button type="button" role="menuitem" aria-haspopup="menu" aria-expanded={active} aria-label={`${category}, ${categoryPlugins.length} plug-in${categoryPlugins.length === 1 ? "" : "s"}`} onFocus={() => setActiveCategory(category)} onClick={() => setActiveCategory(category)}><span>{category}</span><small>{categoryPlugins.length}</small><ChevronIcon direction="right" /></button>
+            {active ? <div className="premium-plugin-submenu" role="menu" aria-label={`${category} plug-ins`}>
+              {categoryPlugins.map((definition) => <button key={definition.typeId} type="button" role="menuitem" className={definition.typeId === value ? "is-selected" : ""} aria-current={definition.typeId === value ? "true" : undefined} onClick={() => choose(definition)}><span><strong>{definition.name}</strong><small>{definition.rackUnits}U · {definition.shortName}</small></span>{definition.typeId === value ? <i aria-hidden="true">●</i> : null}</button>)}
+            </div> : null}
+          </div>;
+        })}
+      </div> : null}
+    </div>
   );
 }
 
@@ -410,7 +376,10 @@ export function AdvancedMasteringRack({ rack, onChange, meteringRef, meteringAva
       </header>
 
       <div className="premium-rack-toolbar">
-        <div><label><span>Plug-in to add</span><select aria-label="Plug-in to add" value={addType} onChange={(event) => setAddType(event.target.value)}>{availablePlugins.map((definition) => <option key={definition.typeId} value={definition.typeId}>{definition.category} · {definition.name}</option>)}</select></label><button type="button" className="premium-rack-add-button" aria-label="Add plug-in to end of rack" data-tooltip="Add plug-in to end of rack" onClick={add} disabled={normalized.nodes.length >= ADVANCED_RACK_MAX_PROCESSORS}><PlusIcon /><span className="sr-only">Add plug-in to end of rack</span></button></div>
+        <div className="premium-rack-add-controls">
+          <PluginInsertMenu definitions={availablePlugins} value={addType} onChange={setAddType} />
+          <button type="button" className="premium-rack-add-button" aria-label="Add plug-in to end of rack" data-tooltip="Add plug-in to end of rack" onClick={add} disabled={normalized.nodes.length >= ADVANCED_RACK_MAX_PROCESSORS}><PlusIcon /><span className="sr-only">Add plug-in to end of rack</span></button>
+        </div>
         <div className="premium-plugin-boundary"><span>THIRD-PARTY VST3 / AU</span><strong>Ownership-aware native host connection</strong><small>Projects preserve external plug-in identity and state; execution remains bypassed until the signed desktop host resolves an owned installation.</small></div>
       </div>
 

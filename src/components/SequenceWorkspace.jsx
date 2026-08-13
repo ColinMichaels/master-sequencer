@@ -12,7 +12,7 @@ const sourceLabel = (track, candidate, file, revealPrivateFilenames) => {
 const isIndependentRowControl = (target) => target instanceof Element
   && Boolean(target.closest("button, select, input, textarea, a, [data-row-playback-ignore]"));
 
-export function SequenceWorkspace({ album, libraryMap, revealPrivateFilenames, transitioningTrackId, currentTrackId, playing, renderingAvailable = true, onAlbumChange, onAddTracks, onPlayFrom, onTogglePlayback, onTransition, onExport, onRemoveFromSequence, onRestoreToSequence }) {
+export function SequenceWorkspace({ album, libraryMap, revealPrivateFilenames, transitioningTrackId, currentTrackId, playing, renderingAvailable = true, onAlbumChange, onAuditionSourceChange, onAddTracks, onPlayFrom, onTogglePlayback, onTransition, onExport, onRemoveFromSequence, onRestoreToSequence }) {
   const [draggedTrackId, setDraggedTrackId] = useState("");
   const [removeArmedTrackId, setRemoveArmedTrackId] = useState("");
   const trackRowsRef = useRef(new Map());
@@ -149,10 +149,7 @@ export function SequenceWorkspace({ album, libraryMap, revealPrivateFilenames, t
                     <span className="track-index">{index + 1}</span>
                     <div className="track-title"><strong>{track.title}</strong><small>{originalIndex >= 0 ? `Original slot ${originalIndex + 1}` : "Added track"}{track.privacy === "protected" ? " · protected" : ""}</small></div>
                     <div className="track-source">
-                      <select aria-label={`Audition source for ${track.title}`} value={track.auditionCandidateId || ""} disabled={!track.candidates.length} onChange={(event) => onAlbumChange((draft) => {
-                        const target = draft.tracks.find((item) => item.id === track.id);
-                        target.auditionCandidateId = event.target.value;
-                      })}>
+                      <select aria-label={`Audition source for ${track.title}`} value={track.auditionCandidateId || ""} disabled={!track.candidates.length} onChange={(event) => onAuditionSourceChange(track.id, event.target.value)}>
                         {!track.candidates.length && <option value="">— No source —</option>}
                         {track.candidates.map((item) => {
                           const itemFile = libraryMap.get(sourceKey(item.sourceRef));

@@ -1,13 +1,26 @@
 import React from "react";
+import { AFTER_TRACK_MODES } from "../lib/after-track.js";
 
-const Icon = ({ children, size = 18, className = "" }) => (
-  <svg className={`icon ${className}`} width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+const Icon = ({ children, size = 18, className = "", ...props }) => (
+  <svg className={`icon ${className}`} width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" {...props}>
     {children}
   </svg>
 );
 
 export const PlayIcon = (props) => <Icon {...props}><path d="m8 5 11 7-11 7V5Z" fill="currentColor" stroke="currentColor" strokeLinejoin="round" /></Icon>;
 export const PauseIcon = (props) => <Icon {...props}><path d="M8 5v14M16 5v14" stroke="currentColor" strokeWidth="2.2" /></Icon>;
+export const AfterTrackPlayIcon = ({ mode = AFTER_TRACK_MODES.AUTO_NEXT, ...props }) => {
+  if (mode === AFTER_TRACK_MODES.CUE_NEXT) {
+    return <Icon {...props} data-after-track-icon={mode}><path d="m3.5 6 9 6-9 6V6Z" fill="currentColor" stroke="currentColor" strokeLinejoin="round" /><path d="M16 6.5v11M20.5 6.5v11" stroke="currentColor" strokeWidth="2" /></Icon>;
+  }
+  if (mode === AFTER_TRACK_MODES.RESET_CURRENT) {
+    return <Icon {...props} data-after-track-icon={mode}><path d="M7.5 5H3.5v4M4.2 7.4A8.5 8.5 0 1 1 4.8 17" stroke="currentColor" strokeWidth="1.7" strokeLinecap="square" strokeLinejoin="miter" /><path d="m9.5 8.2 6 3.8-6 3.8V8.2Z" fill="currentColor" stroke="currentColor" strokeLinejoin="round" /></Icon>;
+  }
+  if (mode === AFTER_TRACK_MODES.LOOP_CURRENT) {
+    return <Icon {...props} data-after-track-icon={mode}><path d="M5.5 7A8 8 0 0 1 19 6l1.5 2M20.5 4v4h-4M18.5 17A8 8 0 0 1 5 18l-1.5-2M3.5 20v-4h4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="square" strokeLinejoin="miter" /><path d="m9 8 6 4-6 4V8Z" fill="currentColor" stroke="currentColor" strokeLinejoin="round" /></Icon>;
+  }
+  return <Icon {...props} data-after-track-icon={AFTER_TRACK_MODES.AUTO_NEXT}><path d="m3.5 6 8.5 6-8.5 6V6Z" fill="currentColor" stroke="currentColor" strokeLinejoin="round" /><path d="m14 7 5 5-5 5M20 7v10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" strokeLinejoin="miter" /></Icon>;
+};
 export const ChevronIcon = ({ direction = "down", ...props }) => {
   const paths = { down: "m7 9 5 5 5-5", up: "m7 15 5-5 5 5", left: "m15 7-5 5 5 5", right: "m9 7 5 5-5 5" };
   return <Icon {...props}><path d={paths[direction]} stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" strokeLinejoin="miter" /></Icon>;
