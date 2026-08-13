@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ADVANCED_PROCESSOR_LIMITS } from "../lib/advanced-mastering.js";
+import { ADVANCED_PROCESSOR_LIMITS, processorDefaultParameters } from "../lib/advanced-mastering.js";
 import { calculateStereoCorrelation, sampleVectorscope } from "../lib/master-metering.js";
 import { MASTERING_LIMITS } from "../lib/mastering.js";
-import { ManualValues, MasteringNumberField, RotaryControl } from "./MasteringControls.jsx";
+import { handleOptionReset, handleOptionResetKey } from "../lib/option-reset.js";
+import { ManualValues, MasteringNumberField, MasteringSelectField, RotaryControl } from "./MasteringControls.jsx";
 
 // Presentation boundary: these faceplates read existing meters and update existing
 // parameter paths. Audio graphs, render filters, normalization, and persistence stay elsewhere.
@@ -13,8 +14,8 @@ const CHANNEL_TARGETS = Object.freeze([
   { value: "side", label: "S", name: "Side" },
 ]);
 
-const Field = ({ label, value, limits, minimum, maximum, step = 0.1, suffix, disabled, onCommit }) => (
-  <MasteringNumberField label={label} value={value} minimum={limits?.minimum ?? minimum} maximum={limits?.maximum ?? maximum} step={step} suffix={suffix} disabled={disabled} onCommit={onCommit} />
+const Field = ({ label, value, defaultValue, limits, minimum, maximum, step = 0.1, suffix, disabled, onCommit }) => (
+  <MasteringNumberField label={label} value={value} defaultValue={defaultValue} minimum={limits?.minimum ?? minimum} maximum={limits?.maximum ?? maximum} step={step} suffix={suffix} disabled={disabled} onCommit={onCommit} />
 );
 
 function useCompactStereoFrame({ active, meteringRef }) {
@@ -69,7 +70,7 @@ function FaceplateScope({ active, meteringRef, compact = false }) {
 function CircuitButton({ node, className, onBypass }) {
   const inCircuit = !node.bypass;
   return (
-    <button type="button" className={`analog-circuit-button ${className} ${inCircuit ? "is-powered" : ""}`} aria-label={`${node.name}: ${inCircuit ? "bypass" : "put in circuit"}`} aria-pressed={inCircuit} onClick={() => onBypass(inCircuit)}>
+    <button type="button" className={`analog-circuit-button ${className} ${inCircuit ? "is-powered" : ""}`} aria-label={`${node.name}: ${inCircuit ? "bypass" : "put in circuit"}`} aria-pressed={inCircuit} data-option-reset="true" data-default-value="false" title="Option-click to put this processor in circuit" aria-keyshortcuts="Alt+Enter" onKeyDown={(event) => handleOptionResetKey(event, { defaultValue: false, onReset: onBypass })} onClick={(event) => { if (!handleOptionReset(event, { defaultValue: false, onReset: onBypass })) onBypass(inCircuit); }}>
       <i aria-hidden="true" /><span>{inCircuit ? "IN" : "BYP"}</span>
     </button>
   );
@@ -77,26 +78,27 @@ function CircuitButton({ node, className, onBypass }) {
 
 export function StereoFieldFaceplate({ node, disabled, onBypass, onParameter, meteringRef, live }) {
   const field = node.parameters;
+  const defaults = processorDefaultParameters(node.typeId);
   return (
     <>
       <div className="spatial-faceplate spatial-faceplate--field">
         <div className="analog-faceplate-brand analog-faceplate-brand--field"><strong>HARBOR SIGNAL</strong><span>S-4 FIELD</span><small>Stereo field matrix</small></div>
-        <RotaryControl className="analog-control analog-control--field-width" label="Width" value={field.widthDb} limits={ADVANCED_PROCESSOR_LIMITS.widthDb} step={0.1} suffix="dB Side" precision={1} disabled={disabled} onChange={(value) => onParameter(["widthDb"], value)} />
-        <RotaryControl className="analog-control analog-control--field-depth" label="Depth" value={field.depthDb} limits={ADVANCED_PROCESSOR_LIMITS.depthDb} step={0.1} suffix="dB Mid" precision={1} disabled={disabled} onChange={(value) => onParameter(["depthDb"], value)} />
-        <RotaryControl className="analog-control analog-control--field-space" label="Space" value={field.spaceDb} limits={ADVANCED_PROCESSOR_LIMITS.spaceDb} step={0.1} suffix="dB Side" precision={1} disabled={disabled} onChange={(value) => onParameter(["spaceDb"], value)} />
-        <RotaryControl className="analog-control analog-control--field-space-frequency" label="Space Hz" value={field.spaceFrequencyHz} limits={ADVANCED_PROCESSOR_LIMITS.spaceFrequencyHz} step={1} suffix="Hz" precision={0} scale="log" disabled={disabled} onChange={(value) => onParameter(["spaceFrequencyHz"], value)} />
+        <RotaryControl className="analog-control analog-control--field-width" label="Width" value={field.widthDb} defaultValue={defaults.widthDb} limits={ADVANCED_PROCESSOR_LIMITS.widthDb} step={0.1} suffix="dB Side" precision={1} disabled={disabled} onChange={(value) => onParameter(["widthDb"], value)} />
+        <RotaryControl className="analog-control analog-control--field-depth" label="Depth" value={field.depthDb} defaultValue={defaults.depthDb} limits={ADVANCED_PROCESSOR_LIMITS.depthDb} step={0.1} suffix="dB Mid" precision={1} disabled={disabled} onChange={(value) => onParameter(["depthDb"], value)} />
+        <RotaryControl className="analog-control analog-control--field-space" label="Space" value={field.spaceDb} defaultValue={defaults.spaceDb} limits={ADVANCED_PROCESSOR_LIMITS.spaceDb} step={0.1} suffix="dB Side" precision={1} disabled={disabled} onChange={(value) => onParameter(["spaceDb"], value)} />
+        <RotaryControl className="analog-control analog-control--field-space-frequency" label="Space Hz" value={field.spaceFrequencyHz} defaultValue={defaults.spaceFrequencyHz} limits={ADVANCED_PROCESSOR_LIMITS.spaceFrequencyHz} step={1} suffix="Hz" precision={0} scale="log" disabled={disabled} onChange={(value) => onParameter(["spaceFrequencyHz"], value)} />
         <FaceplateScope active={live && !disabled} meteringRef={meteringRef} />
-        <label className="analog-balance-control"><span>BALANCE</span><input type="range" min={ADVANCED_PROCESSOR_LIMITS.balance.minimum} max={ADVANCED_PROCESSOR_LIMITS.balance.maximum} step="0.01" value={field.balance} disabled={disabled} aria-label="Stereo balance graphical control" aria-valuetext={`${field.balance.toFixed(2)} left/right`} onChange={(event) => onParameter(["balance"], Number(event.target.value))} /><output>{field.balance === 0 ? "C" : `${Math.abs(field.balance).toFixed(2)} ${field.balance < 0 ? "L" : "R"}`}</output></label>
-        <div className="analog-protected-control"><span>MONO BELOW</span><RotaryControl className="analog-control analog-control--field-mono" label="Mono below" value={field.monoBelowHz} limits={ADVANCED_PROCESSOR_LIMITS.monoBelowHz} step={1} suffix="Hz" precision={0} scale="log" disabled={disabled} onChange={(value) => onParameter(["monoBelowHz"], value)} /><small>LOW FOCUS</small></div>
+        <label className="analog-balance-control"><span>BALANCE</span><input type="range" min={ADVANCED_PROCESSOR_LIMITS.balance.minimum} max={ADVANCED_PROCESSOR_LIMITS.balance.maximum} step="0.01" value={field.balance} disabled={disabled} aria-label="Stereo balance graphical control" aria-valuetext={`${field.balance.toFixed(2)} left/right`} data-option-reset="true" data-default-value={String(defaults.balance)} title="Option-click to reset balance" aria-keyshortcuts="Alt+Enter" onPointerDown={(event) => handleOptionReset(event, { defaultValue: defaults.balance, disabled, onReset: (value) => onParameter(["balance"], value) })} onKeyDown={(event) => handleOptionResetKey(event, { defaultValue: defaults.balance, disabled, onReset: (value) => onParameter(["balance"], value) })} onChange={(event) => onParameter(["balance"], Number(event.target.value))} /><output>{field.balance === 0 ? "C" : `${Math.abs(field.balance).toFixed(2)} ${field.balance < 0 ? "L" : "R"}`}</output></label>
+        <div className="analog-protected-control"><span>MONO BELOW</span><RotaryControl className="analog-control analog-control--field-mono" label="Mono below" value={field.monoBelowHz} defaultValue={defaults.monoBelowHz} limits={ADVANCED_PROCESSOR_LIMITS.monoBelowHz} step={1} suffix="Hz" precision={0} scale="log" disabled={disabled} onChange={(value) => onParameter(["monoBelowHz"], value)} /><small>LOW FOCUS</small></div>
         <CircuitButton node={node} className="analog-circuit-button--field" onBypass={onBypass} />
       </div>
       <ManualValues><div className="master-module-fields premium-exact-values">
-        <Field label="Width" value={field.widthDb} limits={ADVANCED_PROCESSOR_LIMITS.widthDb} suffix="dB Side" disabled={disabled} onCommit={(value) => onParameter(["widthDb"], value)} />
-        <Field label="Depth" value={field.depthDb} limits={ADVANCED_PROCESSOR_LIMITS.depthDb} suffix="dB Mid" disabled={disabled} onCommit={(value) => onParameter(["depthDb"], value)} />
-        <Field label="Mono below" value={field.monoBelowHz} limits={ADVANCED_PROCESSOR_LIMITS.monoBelowHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["monoBelowHz"], value)} />
-        <Field label="Space" value={field.spaceDb} limits={ADVANCED_PROCESSOR_LIMITS.spaceDb} suffix="dB Side" disabled={disabled} onCommit={(value) => onParameter(["spaceDb"], value)} />
-        <Field label="Space frequency" value={field.spaceFrequencyHz} limits={ADVANCED_PROCESSOR_LIMITS.spaceFrequencyHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["spaceFrequencyHz"], value)} />
-        <Field label="Balance" value={field.balance} limits={ADVANCED_PROCESSOR_LIMITS.balance} step={0.01} suffix="L/R" disabled={disabled} onCommit={(value) => onParameter(["balance"], value)} />
+        <Field label="Width" value={field.widthDb} defaultValue={defaults.widthDb} limits={ADVANCED_PROCESSOR_LIMITS.widthDb} suffix="dB Side" disabled={disabled} onCommit={(value) => onParameter(["widthDb"], value)} />
+        <Field label="Depth" value={field.depthDb} defaultValue={defaults.depthDb} limits={ADVANCED_PROCESSOR_LIMITS.depthDb} suffix="dB Mid" disabled={disabled} onCommit={(value) => onParameter(["depthDb"], value)} />
+        <Field label="Mono below" value={field.monoBelowHz} defaultValue={defaults.monoBelowHz} limits={ADVANCED_PROCESSOR_LIMITS.monoBelowHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["monoBelowHz"], value)} />
+        <Field label="Space" value={field.spaceDb} defaultValue={defaults.spaceDb} limits={ADVANCED_PROCESSOR_LIMITS.spaceDb} suffix="dB Side" disabled={disabled} onCommit={(value) => onParameter(["spaceDb"], value)} />
+        <Field label="Space frequency" value={field.spaceFrequencyHz} defaultValue={defaults.spaceFrequencyHz} limits={ADVANCED_PROCESSOR_LIMITS.spaceFrequencyHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["spaceFrequencyHz"], value)} />
+        <Field label="Balance" value={field.balance} defaultValue={defaults.balance} limits={ADVANCED_PROCESSOR_LIMITS.balance} step={0.01} suffix="L/R" disabled={disabled} onCommit={(value) => onParameter(["balance"], value)} />
       </div></ManualValues>
     </>
   );
@@ -104,29 +106,30 @@ export function StereoFieldFaceplate({ node, disabled, onBypass, onParameter, me
 
 export function PhaseAlignmentFaceplate({ node, disabled, onBypass, onParameter, meteringRef, live }) {
   const phase = node.parameters;
+  const defaults = processorDefaultParameters(node.typeId);
   return (
     <>
       <div className="spatial-faceplate spatial-faceplate--phase">
         <div className="analog-faceplate-brand analog-faceplate-brand--phase"><strong>RESOLUTE WORKS</strong><span>P-1 ALIGN</span><small>Phase repair instrument</small></div>
-        <button type="button" className={`analog-polarity-switch ${phase.polarityInvert ? "is-inverted" : ""}`} disabled={disabled} aria-label="Invert target polarity" aria-pressed={phase.polarityInvert} onClick={() => onParameter(["polarityInvert"], !phase.polarityInvert)}><i aria-hidden="true" /><span>POLARITY</span></button>
-        <RotaryControl className="analog-control analog-control--phase-delay" label="Delay" value={phase.delaySamples} limits={ADVANCED_PROCESSOR_LIMITS.phaseDelaySamples} step={1} suffix="samples" precision={0} disabled={disabled} onChange={(value) => onParameter(["delaySamples"], value)} />
-        <RotaryControl className="analog-control analog-control--phase-frequency" label="AP center" value={phase.centerFrequencyHz} limits={MASTERING_LIMITS.highShelfFrequencyHz} step={1} suffix="Hz" precision={0} scale="log" disabled={disabled} onChange={(value) => onParameter(["centerFrequencyHz"], value)} />
-        <RotaryControl className="analog-control analog-control--phase-q" label="AP Q" value={phase.q} limits={MASTERING_LIMITS.midBandQ} step={0.01} suffix="Q" precision={2} disabled={disabled} onChange={(value) => onParameter(["q"], value)} />
-        <RotaryControl className="analog-control analog-control--phase-rotation" label="Rotation" value={phase.shift} limits={ADVANCED_PROCESSOR_LIMITS.phaseShift} step={0.01} suffix="" precision={2} disabled={disabled} onChange={(value) => onParameter(["shift"], value)} />
-        <div className="analog-target-selector" role="group" aria-label="Phase alignment target"><span>TARGET</span><div>{CHANNEL_TARGETS.map((target) => <button key={target.value} type="button" className={phase.target === target.value ? "is-active" : ""} disabled={disabled} aria-label={`Target ${target.name}`} aria-pressed={phase.target === target.value} onClick={() => onParameter(["target"], target.value)}><i aria-hidden="true" />{target.label}</button>)}</div></div>
-        <RotaryControl className="analog-control analog-control--phase-mix" label="Repair mix" value={phase.mix * 100} minimum={0} maximum={100} step={1} suffix="%" precision={0} disabled={disabled} onChange={(value) => onParameter(["mix"], value / 100)} />
+        <button type="button" className={`analog-polarity-switch ${phase.polarityInvert ? "is-inverted" : ""}`} disabled={disabled} aria-label="Invert target polarity" aria-pressed={phase.polarityInvert} data-option-reset="true" data-default-value={String(defaults.polarityInvert)} title="Option-click to reset polarity" aria-keyshortcuts="Alt+Enter" onKeyDown={(event) => handleOptionResetKey(event, { defaultValue: defaults.polarityInvert, disabled, onReset: (value) => onParameter(["polarityInvert"], value) })} onClick={(event) => { if (!handleOptionReset(event, { defaultValue: defaults.polarityInvert, disabled, onReset: (value) => onParameter(["polarityInvert"], value) })) onParameter(["polarityInvert"], !phase.polarityInvert); }}><i aria-hidden="true" /><span>POLARITY</span></button>
+        <RotaryControl className="analog-control analog-control--phase-delay" label="Delay" value={phase.delaySamples} defaultValue={defaults.delaySamples} limits={ADVANCED_PROCESSOR_LIMITS.phaseDelaySamples} step={1} suffix="samples" precision={0} disabled={disabled} onChange={(value) => onParameter(["delaySamples"], value)} />
+        <RotaryControl className="analog-control analog-control--phase-frequency" label="AP center" value={phase.centerFrequencyHz} defaultValue={defaults.centerFrequencyHz} limits={MASTERING_LIMITS.highShelfFrequencyHz} step={1} suffix="Hz" precision={0} scale="log" disabled={disabled} onChange={(value) => onParameter(["centerFrequencyHz"], value)} />
+        <RotaryControl className="analog-control analog-control--phase-q" label="AP Q" value={phase.q} defaultValue={defaults.q} limits={MASTERING_LIMITS.midBandQ} step={0.01} suffix="Q" precision={2} disabled={disabled} onChange={(value) => onParameter(["q"], value)} />
+        <RotaryControl className="analog-control analog-control--phase-rotation" label="Rotation" value={phase.shift} defaultValue={defaults.shift} limits={ADVANCED_PROCESSOR_LIMITS.phaseShift} step={0.01} suffix="" precision={2} disabled={disabled} onChange={(value) => onParameter(["shift"], value)} />
+        <div className="analog-target-selector" role="group" aria-label="Phase alignment target"><span>TARGET</span><div>{CHANNEL_TARGETS.map((target) => <button key={target.value} type="button" className={phase.target === target.value ? "is-active" : ""} disabled={disabled} aria-label={`Target ${target.name}`} aria-pressed={phase.target === target.value} data-option-reset="true" data-default-value={defaults.target} title="Option-click to reset target" aria-keyshortcuts="Alt+Enter" onKeyDown={(event) => handleOptionResetKey(event, { defaultValue: defaults.target, disabled, onReset: (value) => onParameter(["target"], value) })} onClick={(event) => { if (!handleOptionReset(event, { defaultValue: defaults.target, disabled, onReset: (value) => onParameter(["target"], value) })) onParameter(["target"], target.value); }}><i aria-hidden="true" />{target.label}</button>)}</div></div>
+        <RotaryControl className="analog-control analog-control--phase-mix" label="Repair mix" value={phase.mix * 100} defaultValue={defaults.mix * 100} minimum={0} maximum={100} step={1} suffix="%" precision={0} disabled={disabled} onChange={(value) => onParameter(["mix"], value / 100)} />
         <FaceplateScope active={live && !disabled} meteringRef={meteringRef} compact />
         <CircuitButton node={node} className="analog-circuit-button--phase" onBypass={onBypass} />
       </div>
       <p className="analog-repair-warning">STATIC REPAIR · verify correlation and mono playback before approval</p>
       <ManualValues><div className="master-module-fields premium-exact-values">
-        <label className="master-select-field"><span>Target</span><select value={phase.target} disabled={disabled} onChange={(event) => onParameter(["target"], event.target.value)}>{CHANNEL_TARGETS.map((target) => <option key={target.value} value={target.value}>{target.name}</option>)}</select></label>
-        <label className="premium-plugin-toggle"><input type="checkbox" checked={phase.polarityInvert} disabled={disabled} onChange={(event) => onParameter(["polarityInvert"], event.target.checked)} /><span>Invert target polarity</span></label>
-        <Field label="Delay" value={phase.delaySamples} limits={ADVANCED_PROCESSOR_LIMITS.phaseDelaySamples} step={1} suffix="samples" disabled={disabled} onCommit={(value) => onParameter(["delaySamples"], value)} />
-        <Field label="All-pass center" value={phase.centerFrequencyHz} limits={MASTERING_LIMITS.highShelfFrequencyHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["centerFrequencyHz"], value)} />
-        <Field label="All-pass Q" value={phase.q} limits={MASTERING_LIMITS.midBandQ} step={0.01} suffix="Q" disabled={disabled} onCommit={(value) => onParameter(["q"], value)} />
-        <Field label="Rotation" value={phase.shift} limits={ADVANCED_PROCESSOR_LIMITS.phaseShift} step={0.01} suffix="" disabled={disabled} onCommit={(value) => onParameter(["shift"], value)} />
-        <Field label="Mix" value={phase.mix * 100} minimum={0} maximum={100} step={1} suffix="%" disabled={disabled} onCommit={(value) => onParameter(["mix"], value / 100)} />
+        <MasteringSelectField label="Target" value={phase.target} defaultValue={defaults.target} disabled={disabled} options={CHANNEL_TARGETS.map((target) => ({ value: target.value, label: target.name }))} onChange={(value) => onParameter(["target"], value)} />
+        <label className="premium-plugin-toggle"><input type="checkbox" checked={phase.polarityInvert} disabled={disabled} data-option-reset="true" data-default-value={String(defaults.polarityInvert)} title="Option-click to reset target polarity" aria-keyshortcuts="Alt+Enter" onClick={(event) => handleOptionReset(event, { defaultValue: defaults.polarityInvert, disabled, onReset: (value) => onParameter(["polarityInvert"], value) })} onKeyDown={(event) => handleOptionResetKey(event, { defaultValue: defaults.polarityInvert, disabled, onReset: (value) => onParameter(["polarityInvert"], value) })} onChange={(event) => onParameter(["polarityInvert"], event.target.checked)} /><span>Invert target polarity</span></label>
+        <Field label="Delay" value={phase.delaySamples} defaultValue={defaults.delaySamples} limits={ADVANCED_PROCESSOR_LIMITS.phaseDelaySamples} step={1} suffix="samples" disabled={disabled} onCommit={(value) => onParameter(["delaySamples"], value)} />
+        <Field label="All-pass center" value={phase.centerFrequencyHz} defaultValue={defaults.centerFrequencyHz} limits={MASTERING_LIMITS.highShelfFrequencyHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["centerFrequencyHz"], value)} />
+        <Field label="All-pass Q" value={phase.q} defaultValue={defaults.q} limits={MASTERING_LIMITS.midBandQ} step={0.01} suffix="Q" disabled={disabled} onCommit={(value) => onParameter(["q"], value)} />
+        <Field label="Rotation" value={phase.shift} defaultValue={defaults.shift} limits={ADVANCED_PROCESSOR_LIMITS.phaseShift} step={0.01} suffix="" disabled={disabled} onCommit={(value) => onParameter(["shift"], value)} />
+        <Field label="Mix" value={phase.mix * 100} defaultValue={defaults.mix * 100} minimum={0} maximum={100} step={1} suffix="%" disabled={disabled} onCommit={(value) => onParameter(["mix"], value / 100)} />
       </div></ManualValues>
     </>
   );

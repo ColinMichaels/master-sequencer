@@ -1,7 +1,8 @@
 import React from "react";
-import { ADVANCED_PROCESSOR_LIMITS } from "../lib/advanced-mastering.js";
+import { ADVANCED_PROCESSOR_LIMITS, processorDefaultParameters } from "../lib/advanced-mastering.js";
 import { MASTERING_LIMITS } from "../lib/mastering.js";
-import { ManualValues, MasteringNumberField, RotaryControl } from "./MasteringControls.jsx";
+import { handleOptionReset, handleOptionResetKey } from "../lib/option-reset.js";
+import { ManualValues, MasteringNumberField, MasteringSelectField, RotaryControl } from "./MasteringControls.jsx";
 
 // Presentation boundary: these faceplates only map the existing normalized
 // processor parameters to hardware-style controls. Audio routing, DSP, state
@@ -13,12 +14,12 @@ const CHANNEL_MODE_OPTIONS = Object.freeze([
   { value: "side", label: "Side only" },
 ]);
 
-function Field({ label, value, limits, minimum, maximum, step = 0.1, suffix, disabled, onCommit }) {
-  return <MasteringNumberField label={label} value={value} minimum={limits?.minimum ?? minimum} maximum={limits?.maximum ?? maximum} step={step} suffix={suffix} disabled={disabled} onCommit={onCommit} />;
+function Field({ label, value, defaultValue, limits, minimum, maximum, step = 0.1, suffix, disabled, onCommit }) {
+  return <MasteringNumberField label={label} value={value} defaultValue={defaultValue} minimum={limits?.minimum ?? minimum} maximum={limits?.maximum ?? maximum} step={step} suffix={suffix} disabled={disabled} onCommit={onCommit} />;
 }
 
-function SelectField({ label, value, options, disabled, onChange }) {
-  return <label className="master-select-field"><span>{label}</span><select value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>;
+function SelectField({ label, value, defaultValue, options, disabled, onChange }) {
+  return <MasteringSelectField label={label} value={value} defaultValue={defaultValue} options={options} disabled={disabled} onChange={onChange} />;
 }
 
 function FaceplateIdentity({ maker, model, title }) {
@@ -32,34 +33,34 @@ function FaceplateRotary({ className, ...props }) {
 function FaceplateBypass({ node, className, onBypass }) {
   const active = !node.bypass;
   return (
-    <button type="button" className={`processor-bypass-button ${active ? "is-powered" : ""} ${className}`} aria-label={`${node.name}: ${active ? "bypass" : "put in circuit"}`} aria-pressed={active} onClick={() => onBypass(active)}>
+    <button type="button" className={`processor-bypass-button ${active ? "is-powered" : ""} ${className}`} aria-label={`${node.name}: ${active ? "bypass" : "put in circuit"}`} aria-pressed={active} data-option-reset="true" data-default-value="false" title="Option-click to put this processor in circuit" aria-keyshortcuts="Alt+Enter" onKeyDown={(event) => handleOptionResetKey(event, { defaultValue: false, disabled: false, onReset: onBypass })} onClick={(event) => { if (!handleOptionReset(event, { defaultValue: false, disabled: false, onReset: onBypass })) onBypass(active); }}>
       <span aria-hidden="true"><i /></span><b aria-hidden="true" /><em>{active ? "In circuit" : "Bypassed"}</em>
     </button>
   );
 }
 
-function OptionSelector({ label, value, options, className, disabled, onChange }) {
+function OptionSelector({ label, value, defaultValue, options, className, disabled, onChange }) {
   return (
     <div className={`processor-option-selector ${className}`} role="group" aria-label={label}>
       <span>{label}</span>
-      <div>{options.map((option) => <button key={option.value} type="button" className={value === option.value ? "is-active" : ""} disabled={disabled} aria-pressed={value === option.value} onClick={() => onChange(option.value)}>{option.shortLabel || option.label}</button>)}</div>
+      <div>{options.map((option) => <button key={option.value} type="button" className={value === option.value ? "is-active" : ""} disabled={disabled} aria-pressed={value === option.value} data-option-reset="true" data-default-value={String(defaultValue)} title={`Option-click to reset ${label}`} aria-keyshortcuts="Alt+Enter" onKeyDown={(event) => handleOptionResetKey(event, { defaultValue, disabled, onReset: onChange })} onClick={(event) => { if (!handleOptionReset(event, { defaultValue, disabled, onReset: onChange })) onChange(option.value); }}>{option.shortLabel || option.label}</button>)}</div>
     </div>
   );
 }
 
-function StepSelector({ value, disabled, onChange }) {
+function StepSelector({ value, defaultValue, disabled, onChange }) {
   return (
     <div className="processor-step-selector" role="group" aria-label="Oversampling">
       <span>Oversampling</span>
-      {[1, 2, 4].map((factor) => <button key={factor} type="button" className={value === factor ? "is-active" : ""} disabled={disabled} aria-label={`${factor}× oversampling`} aria-pressed={value === factor} onClick={() => onChange(factor)}><i aria-hidden="true" />{factor}×</button>)}
+      {[1, 2, 4].map((factor) => <button key={factor} type="button" className={value === factor ? "is-active" : ""} disabled={disabled} aria-label={`${factor}× oversampling`} aria-pressed={value === factor} data-option-reset="true" data-default-value={String(defaultValue)} title="Option-click to reset oversampling" aria-keyshortcuts="Alt+Enter" onKeyDown={(event) => handleOptionResetKey(event, { defaultValue, disabled, onReset: onChange })} onClick={(event) => { if (!handleOptionReset(event, { defaultValue, disabled, onReset: onChange })) onChange(factor); }}><i aria-hidden="true" />{factor}×</button>)}
     </div>
   );
 }
 
-function ToggleKnob({ label, checked, className, disabled, onChange }) {
+function ToggleKnob({ label, checked, defaultChecked, className, disabled, onChange }) {
   return (
     <label className={`processor-toggle-knob ${checked ? "is-active" : ""} ${className}`}>
-      <input type="checkbox" checked={checked} disabled={disabled} aria-label={label} onChange={(event) => onChange(event.target.checked)} />
+      <input type="checkbox" checked={checked} disabled={disabled} aria-label={label} data-option-reset="true" data-default-value={String(defaultChecked)} title={`Option-click to reset ${label}`} aria-keyshortcuts="Alt+Enter" onClick={(event) => handleOptionReset(event, { defaultValue: defaultChecked, disabled, onReset: onChange })} onKeyDown={(event) => handleOptionResetKey(event, { defaultValue: defaultChecked, disabled, onReset: onChange })} onChange={(event) => onChange(event.target.checked)} />
       <span aria-hidden="true"><i /></span><output>{checked ? "Linked" : "Independent"}</output>
     </label>
   );
@@ -128,134 +129,139 @@ function PhaserDisplay({ depth, feedback, stereoOffsetDegrees, active }) {
 
 export function HarmonicColorFaceplate({ node, disabled, onParameter }) {
   const color = node.parameters;
+  const defaults = processorDefaultParameters(node.typeId);
   return <>
     <div className="processor-faceplate processor-faceplate--color">
       <FaceplateIdentity maker="Northline Audio" model="H-3 Color" title="Harmonic Color" />
-      <FaceplateRotary className="processor-control--color-drive" label="Drive" value={color.driveDb} limits={ADVANCED_PROCESSOR_LIMITS.colorDriveDb} step={0.1} suffix="dB" precision={1} disabled={disabled} onChange={(value) => onParameter(["driveDb"], value)} />
-      <FaceplateRotary className="processor-control--color-even" label="Even harmonics" value={color.evenAmount * 100} minimum={0} maximum={100} step={1} suffix="%" precision={0} disabled={disabled} onChange={(value) => onParameter(["evenAmount"], value / 100)} />
-      <FaceplateRotary className="processor-control--color-odd" label="Odd harmonics" value={color.oddAmount * 100} minimum={0} maximum={100} step={1} suffix="%" precision={0} disabled={disabled} onChange={(value) => onParameter(["oddAmount"], value / 100)} />
-      <FaceplateRotary className="processor-control--color-focus" label="Color focus" value={color.colorFrequencyHz} limits={ADVANCED_PROCESSOR_LIMITS.colorFrequencyHz} step={1} suffix="Hz" scale="log" disabled={disabled} onChange={(value) => onParameter(["colorFrequencyHz"], value)} />
+      <FaceplateRotary className="processor-control--color-drive" label="Drive" value={color.driveDb} defaultValue={defaults.driveDb} limits={ADVANCED_PROCESSOR_LIMITS.colorDriveDb} step={0.1} suffix="dB" precision={1} disabled={disabled} onChange={(value) => onParameter(["driveDb"], value)} />
+      <FaceplateRotary className="processor-control--color-even" label="Even harmonics" value={color.evenAmount * 100} defaultValue={defaults.evenAmount * 100} minimum={0} maximum={100} step={1} suffix="%" precision={0} disabled={disabled} onChange={(value) => onParameter(["evenAmount"], value / 100)} />
+      <FaceplateRotary className="processor-control--color-odd" label="Odd harmonics" value={color.oddAmount * 100} defaultValue={defaults.oddAmount * 100} minimum={0} maximum={100} step={1} suffix="%" precision={0} disabled={disabled} onChange={(value) => onParameter(["oddAmount"], value / 100)} />
+      <FaceplateRotary className="processor-control--color-focus" label="Color focus" value={color.colorFrequencyHz} defaultValue={defaults.colorFrequencyHz} limits={ADVANCED_PROCESSOR_LIMITS.colorFrequencyHz} step={1} suffix="Hz" scale="log" disabled={disabled} onChange={(value) => onParameter(["colorFrequencyHz"], value)} />
       <HarmonicDisplay even={color.evenAmount} odd={color.oddAmount} drive={color.driveDb} />
-      <FaceplateRotary className="processor-control--color-mix" label="Mix" value={color.mix * 100} minimum={0} maximum={100} step={1} suffix="%" precision={0} disabled={disabled} onChange={(value) => onParameter(["mix"], value / 100)} />
-      <FaceplateRotary className="processor-control--color-output" label="Output" value={color.outputGainDb} limits={MASTERING_LIMITS.outputGainDb} step={0.1} suffix="dB" precision={1} disabled={disabled} onChange={(value) => onParameter(["outputGainDb"], value)} />
-      <StepSelector value={color.oversample} disabled={disabled} onChange={(value) => onParameter(["oversample"], value)} />
+      <FaceplateRotary className="processor-control--color-mix" label="Mix" value={color.mix * 100} defaultValue={defaults.mix * 100} minimum={0} maximum={100} step={1} suffix="%" precision={0} disabled={disabled} onChange={(value) => onParameter(["mix"], value / 100)} />
+      <FaceplateRotary className="processor-control--color-output" label="Output" value={color.outputGainDb} defaultValue={defaults.outputGainDb} limits={MASTERING_LIMITS.outputGainDb} step={0.1} suffix="dB" precision={1} disabled={disabled} onChange={(value) => onParameter(["outputGainDb"], value)} />
+      <StepSelector value={color.oversample} defaultValue={defaults.oversample} disabled={disabled} onChange={(value) => onParameter(["oversample"], value)} />
     </div>
     <ManualValues><div className="master-module-fields processor-exact-values">
-      <SelectField label="Channel mode" value={color.channelMode} options={CHANNEL_MODE_OPTIONS} disabled={disabled} onChange={(value) => onParameter(["channelMode"], value)} />
-      <Field label="Drive" value={color.driveDb} limits={ADVANCED_PROCESSOR_LIMITS.colorDriveDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["driveDb"], value)} />
-      <Field label="Even harmonics" value={color.evenAmount * 100} minimum={0} maximum={100} step={1} suffix="%" disabled={disabled} onCommit={(value) => onParameter(["evenAmount"], value / 100)} />
-      <Field label="Odd harmonics" value={color.oddAmount * 100} minimum={0} maximum={100} step={1} suffix="%" disabled={disabled} onCommit={(value) => onParameter(["oddAmount"], value / 100)} />
-      <Field label="Color focus" value={color.colorFrequencyHz} limits={ADVANCED_PROCESSOR_LIMITS.colorFrequencyHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["colorFrequencyHz"], value)} />
-      <Field label="Mix" value={color.mix * 100} minimum={0} maximum={100} step={1} suffix="%" disabled={disabled} onCommit={(value) => onParameter(["mix"], value / 100)} />
-      <SelectField label="Oversampling" value={String(color.oversample)} options={[1, 2, 4].map((value) => ({ value: String(value), label: `${value}×` }))} disabled={disabled} onChange={(value) => onParameter(["oversample"], Number(value))} />
-      <Field label="Output" value={color.outputGainDb} limits={MASTERING_LIMITS.outputGainDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["outputGainDb"], value)} />
+      <SelectField label="Channel mode" value={color.channelMode} defaultValue={defaults.channelMode} options={CHANNEL_MODE_OPTIONS} disabled={disabled} onChange={(value) => onParameter(["channelMode"], value)} />
+      <Field label="Drive" value={color.driveDb} defaultValue={defaults.driveDb} limits={ADVANCED_PROCESSOR_LIMITS.colorDriveDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["driveDb"], value)} />
+      <Field label="Even harmonics" value={color.evenAmount * 100} defaultValue={defaults.evenAmount * 100} minimum={0} maximum={100} step={1} suffix="%" disabled={disabled} onCommit={(value) => onParameter(["evenAmount"], value / 100)} />
+      <Field label="Odd harmonics" value={color.oddAmount * 100} defaultValue={defaults.oddAmount * 100} minimum={0} maximum={100} step={1} suffix="%" disabled={disabled} onCommit={(value) => onParameter(["oddAmount"], value / 100)} />
+      <Field label="Color focus" value={color.colorFrequencyHz} defaultValue={defaults.colorFrequencyHz} limits={ADVANCED_PROCESSOR_LIMITS.colorFrequencyHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["colorFrequencyHz"], value)} />
+      <Field label="Mix" value={color.mix * 100} defaultValue={defaults.mix * 100} minimum={0} maximum={100} step={1} suffix="%" disabled={disabled} onCommit={(value) => onParameter(["mix"], value / 100)} />
+      <SelectField label="Oversampling" value={String(color.oversample)} defaultValue={String(defaults.oversample)} options={[1, 2, 4].map((value) => ({ value: String(value), label: `${value}×` }))} disabled={disabled} onChange={(value) => onParameter(["oversample"], Number(value))} />
+      <Field label="Output" value={color.outputGainDb} defaultValue={defaults.outputGainDb} limits={MASTERING_LIMITS.outputGainDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["outputGainDb"], value)} />
     </div></ManualValues>
   </>;
 }
 
 export function HfSmootherFaceplate({ node, disabled, onBypass, onParameter }) {
   const smoother = node.parameters;
+  const defaults = processorDefaultParameters(node.typeId);
   return <>
     <div className="processor-faceplate processor-faceplate--smoother">
       <FaceplateIdentity maker="Ironvale Labs" model="HF-2 Smooth" title="HF Smoother" />
-      <FaceplateRotary className="processor-control--hf-frequency" label="Crossover" value={smoother.frequencyHz} limits={ADVANCED_PROCESSOR_LIMITS.hfFrequencyHz} step={1} suffix="Hz" scale="log" disabled={disabled} onChange={(value) => onParameter(["frequencyHz"], value)} />
-      <FaceplateRotary className="processor-control--hf-threshold" label="Threshold" value={smoother.thresholdDb} limits={MASTERING_LIMITS.compressorThresholdDb} step={0.1} suffix="dB" precision={1} disabled={disabled} onChange={(value) => onParameter(["thresholdDb"], value)} />
-      <FaceplateRotary className="processor-control--hf-ratio" label="Ratio" value={smoother.ratio} limits={ADVANCED_PROCESSOR_LIMITS.hfRatio} step={0.1} suffix=":1" precision={1} disabled={disabled} onChange={(value) => onParameter(["ratio"], value)} />
-      <FaceplateRotary className="processor-control--hf-attack" label="Attack" value={smoother.attackMs} limits={MASTERING_LIMITS.compressorAttackMs} step={0.1} suffix="ms" scale="log" disabled={disabled} onChange={(value) => onParameter(["attackMs"], value)} />
-      <FaceplateRotary className="processor-control--hf-release" label="Release" value={smoother.releaseMs} limits={MASTERING_LIMITS.compressorReleaseMs} step={1} suffix="ms" scale="log" disabled={disabled} onChange={(value) => onParameter(["releaseMs"], value)} />
-      <FaceplateRotary className="processor-control--hf-mix" label="Mix" value={smoother.mix * 100} minimum={0} maximum={100} step={1} suffix="%" precision={0} disabled={disabled} onChange={(value) => onParameter(["mix"], value / 100)} />
-      <FaceplateRotary className="processor-control--hf-output" label="Output" value={smoother.outputGainDb} limits={MASTERING_LIMITS.outputGainDb} step={0.1} suffix="dB" precision={1} disabled={disabled} onChange={(value) => onParameter(["outputGainDb"], value)} />
+      <FaceplateRotary className="processor-control--hf-frequency" label="Crossover" value={smoother.frequencyHz} defaultValue={defaults.frequencyHz} limits={ADVANCED_PROCESSOR_LIMITS.hfFrequencyHz} step={1} suffix="Hz" scale="log" disabled={disabled} onChange={(value) => onParameter(["frequencyHz"], value)} />
+      <FaceplateRotary className="processor-control--hf-threshold" label="Threshold" value={smoother.thresholdDb} defaultValue={defaults.thresholdDb} limits={MASTERING_LIMITS.compressorThresholdDb} step={0.1} suffix="dB" precision={1} disabled={disabled} onChange={(value) => onParameter(["thresholdDb"], value)} />
+      <FaceplateRotary className="processor-control--hf-ratio" label="Ratio" value={smoother.ratio} defaultValue={defaults.ratio} limits={ADVANCED_PROCESSOR_LIMITS.hfRatio} step={0.1} suffix=":1" precision={1} disabled={disabled} onChange={(value) => onParameter(["ratio"], value)} />
+      <FaceplateRotary className="processor-control--hf-attack" label="Attack" value={smoother.attackMs} defaultValue={defaults.attackMs} limits={MASTERING_LIMITS.compressorAttackMs} step={0.1} suffix="ms" scale="log" disabled={disabled} onChange={(value) => onParameter(["attackMs"], value)} />
+      <FaceplateRotary className="processor-control--hf-release" label="Release" value={smoother.releaseMs} defaultValue={defaults.releaseMs} limits={MASTERING_LIMITS.compressorReleaseMs} step={1} suffix="ms" scale="log" disabled={disabled} onChange={(value) => onParameter(["releaseMs"], value)} />
+      <FaceplateRotary className="processor-control--hf-mix" label="Mix" value={smoother.mix * 100} defaultValue={defaults.mix * 100} minimum={0} maximum={100} step={1} suffix="%" precision={0} disabled={disabled} onChange={(value) => onParameter(["mix"], value / 100)} />
+      <FaceplateRotary className="processor-control--hf-output" label="Output" value={smoother.outputGainDb} defaultValue={defaults.outputGainDb} limits={MASTERING_LIMITS.outputGainDb} step={0.1} suffix="dB" precision={1} disabled={disabled} onChange={(value) => onParameter(["outputGainDb"], value)} />
       <FaceplateBypass node={node} className="processor-bypass-button--smoother" onBypass={onBypass} />
     </div>
     <ManualValues><div className="master-module-fields processor-exact-values">
-      <Field label="Crossover" value={smoother.frequencyHz} limits={ADVANCED_PROCESSOR_LIMITS.hfFrequencyHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["frequencyHz"], value)} />
-      <Field label="Threshold" value={smoother.thresholdDb} limits={MASTERING_LIMITS.compressorThresholdDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["thresholdDb"], value)} />
-      <Field label="Ratio" value={smoother.ratio} limits={ADVANCED_PROCESSOR_LIMITS.hfRatio} step={0.1} suffix=":1" disabled={disabled} onCommit={(value) => onParameter(["ratio"], value)} />
-      <Field label="Attack" value={smoother.attackMs} limits={MASTERING_LIMITS.compressorAttackMs} suffix="ms" disabled={disabled} onCommit={(value) => onParameter(["attackMs"], value)} />
-      <Field label="Release" value={smoother.releaseMs} limits={MASTERING_LIMITS.compressorReleaseMs} step={1} suffix="ms" disabled={disabled} onCommit={(value) => onParameter(["releaseMs"], value)} />
-      <Field label="Mix" value={smoother.mix * 100} minimum={0} maximum={100} step={1} suffix="%" disabled={disabled} onCommit={(value) => onParameter(["mix"], value / 100)} />
-      <Field label="Output" value={smoother.outputGainDb} limits={MASTERING_LIMITS.outputGainDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["outputGainDb"], value)} />
+      <Field label="Crossover" value={smoother.frequencyHz} defaultValue={defaults.frequencyHz} limits={ADVANCED_PROCESSOR_LIMITS.hfFrequencyHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["frequencyHz"], value)} />
+      <Field label="Threshold" value={smoother.thresholdDb} defaultValue={defaults.thresholdDb} limits={MASTERING_LIMITS.compressorThresholdDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["thresholdDb"], value)} />
+      <Field label="Ratio" value={smoother.ratio} defaultValue={defaults.ratio} limits={ADVANCED_PROCESSOR_LIMITS.hfRatio} step={0.1} suffix=":1" disabled={disabled} onCommit={(value) => onParameter(["ratio"], value)} />
+      <Field label="Attack" value={smoother.attackMs} defaultValue={defaults.attackMs} limits={MASTERING_LIMITS.compressorAttackMs} suffix="ms" disabled={disabled} onCommit={(value) => onParameter(["attackMs"], value)} />
+      <Field label="Release" value={smoother.releaseMs} defaultValue={defaults.releaseMs} limits={MASTERING_LIMITS.compressorReleaseMs} step={1} suffix="ms" disabled={disabled} onCommit={(value) => onParameter(["releaseMs"], value)} />
+      <Field label="Mix" value={smoother.mix * 100} defaultValue={defaults.mix * 100} minimum={0} maximum={100} step={1} suffix="%" disabled={disabled} onCommit={(value) => onParameter(["mix"], value / 100)} />
+      <Field label="Output" value={smoother.outputGainDb} defaultValue={defaults.outputGainDb} limits={MASTERING_LIMITS.outputGainDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["outputGainDb"], value)} />
     </div></ManualValues>
   </>;
 }
 
 export function MasteringAmbienceFaceplate({ node, disabled, onBypass, onParameter }) {
   const ambience = node.parameters;
+  const defaults = processorDefaultParameters(node.typeId);
   const options = ["room", "chamber", "plate"].map((value) => ({ value, label: value[0].toUpperCase() + value.slice(1), shortLabel: value[0].toUpperCase() }));
   return <>
     <div className="processor-faceplate processor-faceplate--ambience">
       <FaceplateIdentity maker="Harbor Signal" model="A-7 Space" title="Mastering Ambience" />
-      <OptionSelector label="Space type" value={ambience.model} options={options} className="processor-option-selector--ambience" disabled={disabled} onChange={(value) => onParameter(["model"], value)} />
-      <FaceplateRotary className="processor-control--ambience-predelay" label="Pre-delay" value={ambience.preDelayMs} limits={ADVANCED_PROCESSOR_LIMITS.ambiencePreDelayMs} step={1} suffix="ms" disabled={disabled} onChange={(value) => onParameter(["preDelayMs"], value)} />
-      <FaceplateRotary className="processor-control--ambience-decay" label="Decay" value={ambience.decaySeconds} limits={ADVANCED_PROCESSOR_LIMITS.ambienceDecaySeconds} step={0.01} suffix="s" precision={2} disabled={disabled} onChange={(value) => onParameter(["decaySeconds"], value)} />
+      <OptionSelector label="Space type" value={ambience.model} defaultValue={defaults.model} options={options} className="processor-option-selector--ambience" disabled={disabled} onChange={(value) => onParameter(["model"], value)} />
+      <FaceplateRotary className="processor-control--ambience-predelay" label="Pre-delay" value={ambience.preDelayMs} defaultValue={defaults.preDelayMs} limits={ADVANCED_PROCESSOR_LIMITS.ambiencePreDelayMs} step={1} suffix="ms" disabled={disabled} onChange={(value) => onParameter(["preDelayMs"], value)} />
+      <FaceplateRotary className="processor-control--ambience-decay" label="Decay" value={ambience.decaySeconds} defaultValue={defaults.decaySeconds} limits={ADVANCED_PROCESSOR_LIMITS.ambienceDecaySeconds} step={0.01} suffix="s" precision={2} disabled={disabled} onChange={(value) => onParameter(["decaySeconds"], value)} />
       <AmbienceDisplay decaySeconds={ambience.decaySeconds} dampingHz={ambience.dampingHz} active={!node.bypass} />
-      <FaceplateRotary className="processor-control--ambience-damping" label="Damping" value={ambience.dampingHz} limits={ADVANCED_PROCESSOR_LIMITS.ambienceDampingHz} step={1} suffix="Hz" scale="log" disabled={disabled} onChange={(value) => onParameter(["dampingHz"], value)} />
-      <FaceplateRotary className="processor-control--ambience-lowcut" label="Low cut" value={ambience.lowCutHz} limits={ADVANCED_PROCESSOR_LIMITS.ambienceLowCutHz} step={1} suffix="Hz" scale="log" disabled={disabled} onChange={(value) => onParameter(["lowCutHz"], value)} />
-      <FaceplateRotary className="processor-control--ambience-width" label="Width" value={ambience.widthPercent} limits={ADVANCED_PROCESSOR_LIMITS.ambienceWidthPercent} step={1} suffix="%" precision={0} disabled={disabled} onChange={(value) => onParameter(["widthPercent"], value)} />
-      <FaceplateRotary className="processor-control--ambience-wet" label="Wet" value={ambience.wetPercent} limits={ADVANCED_PROCESSOR_LIMITS.ambienceWetPercent} step={0.1} suffix="%" precision={1} disabled={disabled} onChange={(value) => onParameter(["wetPercent"], value)} />
+      <FaceplateRotary className="processor-control--ambience-damping" label="Damping" value={ambience.dampingHz} defaultValue={defaults.dampingHz} limits={ADVANCED_PROCESSOR_LIMITS.ambienceDampingHz} step={1} suffix="Hz" scale="log" disabled={disabled} onChange={(value) => onParameter(["dampingHz"], value)} />
+      <FaceplateRotary className="processor-control--ambience-lowcut" label="Low cut" value={ambience.lowCutHz} defaultValue={defaults.lowCutHz} limits={ADVANCED_PROCESSOR_LIMITS.ambienceLowCutHz} step={1} suffix="Hz" scale="log" disabled={disabled} onChange={(value) => onParameter(["lowCutHz"], value)} />
+      <FaceplateRotary className="processor-control--ambience-width" label="Width" value={ambience.widthPercent} defaultValue={defaults.widthPercent} limits={ADVANCED_PROCESSOR_LIMITS.ambienceWidthPercent} step={1} suffix="%" precision={0} disabled={disabled} onChange={(value) => onParameter(["widthPercent"], value)} />
+      <FaceplateRotary className="processor-control--ambience-wet" label="Wet" value={ambience.wetPercent} defaultValue={defaults.wetPercent} limits={ADVANCED_PROCESSOR_LIMITS.ambienceWetPercent} step={0.1} suffix="%" precision={1} disabled={disabled} onChange={(value) => onParameter(["wetPercent"], value)} />
       <FaceplateBypass node={node} className="processor-bypass-button--ambience" onBypass={onBypass} />
     </div>
     <p className="analog-processor-warning">Master wet range is limited to 5%. Keep the limiter after ambience.</p>
     <ManualValues><div className="master-module-fields processor-exact-values">
-      <SelectField label="Space" value={ambience.model} options={options} disabled={disabled} onChange={(value) => onParameter(["model"], value)} />
-      <Field label="Pre-delay" value={ambience.preDelayMs} limits={ADVANCED_PROCESSOR_LIMITS.ambiencePreDelayMs} step={1} suffix="ms" disabled={disabled} onCommit={(value) => onParameter(["preDelayMs"], value)} />
-      <Field label="Decay" value={ambience.decaySeconds} limits={ADVANCED_PROCESSOR_LIMITS.ambienceDecaySeconds} step={0.01} suffix="s" disabled={disabled} onCommit={(value) => onParameter(["decaySeconds"], value)} />
-      <Field label="Damping" value={ambience.dampingHz} limits={ADVANCED_PROCESSOR_LIMITS.ambienceDampingHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["dampingHz"], value)} />
-      <Field label="Low cut" value={ambience.lowCutHz} limits={ADVANCED_PROCESSOR_LIMITS.ambienceLowCutHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["lowCutHz"], value)} />
-      <Field label="Width" value={ambience.widthPercent} limits={ADVANCED_PROCESSOR_LIMITS.ambienceWidthPercent} step={1} suffix="%" disabled={disabled} onCommit={(value) => onParameter(["widthPercent"], value)} />
-      <Field label="Wet" value={ambience.wetPercent} limits={ADVANCED_PROCESSOR_LIMITS.ambienceWetPercent} step={0.1} suffix="%" disabled={disabled} onCommit={(value) => onParameter(["wetPercent"], value)} />
+      <SelectField label="Space" value={ambience.model} defaultValue={defaults.model} options={options} disabled={disabled} onChange={(value) => onParameter(["model"], value)} />
+      <Field label="Pre-delay" value={ambience.preDelayMs} defaultValue={defaults.preDelayMs} limits={ADVANCED_PROCESSOR_LIMITS.ambiencePreDelayMs} step={1} suffix="ms" disabled={disabled} onCommit={(value) => onParameter(["preDelayMs"], value)} />
+      <Field label="Decay" value={ambience.decaySeconds} defaultValue={defaults.decaySeconds} limits={ADVANCED_PROCESSOR_LIMITS.ambienceDecaySeconds} step={0.01} suffix="s" disabled={disabled} onCommit={(value) => onParameter(["decaySeconds"], value)} />
+      <Field label="Damping" value={ambience.dampingHz} defaultValue={defaults.dampingHz} limits={ADVANCED_PROCESSOR_LIMITS.ambienceDampingHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["dampingHz"], value)} />
+      <Field label="Low cut" value={ambience.lowCutHz} defaultValue={defaults.lowCutHz} limits={ADVANCED_PROCESSOR_LIMITS.ambienceLowCutHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["lowCutHz"], value)} />
+      <Field label="Width" value={ambience.widthPercent} defaultValue={defaults.widthPercent} limits={ADVANCED_PROCESSOR_LIMITS.ambienceWidthPercent} step={1} suffix="%" disabled={disabled} onCommit={(value) => onParameter(["widthPercent"], value)} />
+      <Field label="Wet" value={ambience.wetPercent} defaultValue={defaults.wetPercent} limits={ADVANCED_PROCESSOR_LIMITS.ambienceWetPercent} step={0.1} suffix="%" disabled={disabled} onCommit={(value) => onParameter(["wetPercent"], value)} />
     </div></ManualValues>
   </>;
 }
 
 export function TransientSculptorFaceplate({ node, disabled, onBypass, onParameter }) {
   const transient = node.parameters;
+  const defaults = processorDefaultParameters(node.typeId);
   const options = [{ value: "full", label: "Full range", shortLabel: "Full" }, { value: "focused", label: "Frequency focused", shortLabel: "Focus" }];
   return <>
     <div className="processor-faceplate processor-faceplate--transient">
       <FaceplateIdentity maker="Resolute Works" model="T-5 Impact" title="Transient Sculptor" />
-      <OptionSelector label="Mode" value={transient.mode} options={options} className="processor-option-selector--transient" disabled={disabled} onChange={(value) => onParameter(["mode"], value)} />
-      <FaceplateRotary className="processor-control--transient-attack" label="Attack" value={transient.attackDb} limits={ADVANCED_PROCESSOR_LIMITS.transientDb} step={0.1} suffix="dB" precision={1} disabled={disabled} onChange={(value) => onParameter(["attackDb"], value)} />
-      <FaceplateRotary className="processor-control--transient-sustain" label="Sustain" value={transient.sustainDb} limits={ADVANCED_PROCESSOR_LIMITS.transientDb} step={0.1} suffix="dB" precision={1} disabled={disabled} onChange={(value) => onParameter(["sustainDb"], value)} />
+      <OptionSelector label="Mode" value={transient.mode} defaultValue={defaults.mode} options={options} className="processor-option-selector--transient" disabled={disabled} onChange={(value) => onParameter(["mode"], value)} />
+      <FaceplateRotary className="processor-control--transient-attack" label="Attack" value={transient.attackDb} defaultValue={defaults.attackDb} limits={ADVANCED_PROCESSOR_LIMITS.transientDb} step={0.1} suffix="dB" precision={1} disabled={disabled} onChange={(value) => onParameter(["attackDb"], value)} />
+      <FaceplateRotary className="processor-control--transient-sustain" label="Sustain" value={transient.sustainDb} defaultValue={defaults.sustainDb} limits={ADVANCED_PROCESSOR_LIMITS.transientDb} step={0.1} suffix="dB" precision={1} disabled={disabled} onChange={(value) => onParameter(["sustainDb"], value)} />
       <TransientDisplay attackDb={transient.attackDb} sustainDb={transient.sustainDb} focused={transient.mode === "focused"} active={!node.bypass} />
-      <FaceplateRotary className="processor-control--transient-focus" label="Focus" value={transient.focusFrequencyHz} limits={ADVANCED_PROCESSOR_LIMITS.transientFocusHz} step={1} suffix="Hz" scale="log" disabled={disabled} onChange={(value) => onParameter(["focusFrequencyHz"], value)} />
-      <ToggleKnob label="Stereo-linked detection" checked={transient.stereoLink} className="processor-toggle-knob--transient-link" disabled={disabled} onChange={(value) => onParameter(["stereoLink"], value)} />
-      <FaceplateRotary className="processor-control--transient-output" label="Output" value={transient.outputGainDb} limits={MASTERING_LIMITS.outputGainDb} step={0.1} suffix="dB" precision={1} disabled={disabled} onChange={(value) => onParameter(["outputGainDb"], value)} />
+      <FaceplateRotary className="processor-control--transient-focus" label="Focus" value={transient.focusFrequencyHz} defaultValue={defaults.focusFrequencyHz} limits={ADVANCED_PROCESSOR_LIMITS.transientFocusHz} step={1} suffix="Hz" scale="log" disabled={disabled} onChange={(value) => onParameter(["focusFrequencyHz"], value)} />
+      <ToggleKnob label="Stereo-linked detection" checked={transient.stereoLink} defaultChecked={defaults.stereoLink} className="processor-toggle-knob--transient-link" disabled={disabled} onChange={(value) => onParameter(["stereoLink"], value)} />
+      <FaceplateRotary className="processor-control--transient-output" label="Output" value={transient.outputGainDb} defaultValue={defaults.outputGainDb} limits={MASTERING_LIMITS.outputGainDb} step={0.1} suffix="dB" precision={1} disabled={disabled} onChange={(value) => onParameter(["outputGainDb"], value)} />
       <FaceplateBypass node={node} className="processor-bypass-button--transient" onBypass={onBypass} />
     </div>
     <ManualValues><div className="master-module-fields processor-exact-values">
-      <SelectField label="Mode" value={transient.mode} options={options} disabled={disabled} onChange={(value) => onParameter(["mode"], value)} />
-      <Field label="Attack" value={transient.attackDb} limits={ADVANCED_PROCESSOR_LIMITS.transientDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["attackDb"], value)} />
-      <Field label="Sustain" value={transient.sustainDb} limits={ADVANCED_PROCESSOR_LIMITS.transientDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["sustainDb"], value)} />
-      <Field label="Focus" value={transient.focusFrequencyHz} limits={ADVANCED_PROCESSOR_LIMITS.transientFocusHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["focusFrequencyHz"], value)} />
-      <label className="premium-plugin-toggle"><input type="checkbox" checked={transient.stereoLink} disabled={disabled} onChange={(event) => onParameter(["stereoLink"], event.target.checked)} /><span>Stereo-linked detection</span></label>
-      <Field label="Output" value={transient.outputGainDb} limits={MASTERING_LIMITS.outputGainDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["outputGainDb"], value)} />
+      <SelectField label="Mode" value={transient.mode} defaultValue={defaults.mode} options={options} disabled={disabled} onChange={(value) => onParameter(["mode"], value)} />
+      <Field label="Attack" value={transient.attackDb} defaultValue={defaults.attackDb} limits={ADVANCED_PROCESSOR_LIMITS.transientDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["attackDb"], value)} />
+      <Field label="Sustain" value={transient.sustainDb} defaultValue={defaults.sustainDb} limits={ADVANCED_PROCESSOR_LIMITS.transientDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["sustainDb"], value)} />
+      <Field label="Focus" value={transient.focusFrequencyHz} defaultValue={defaults.focusFrequencyHz} limits={ADVANCED_PROCESSOR_LIMITS.transientFocusHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["focusFrequencyHz"], value)} />
+      <label className="premium-plugin-toggle"><input type="checkbox" checked={transient.stereoLink} disabled={disabled} data-option-reset="true" data-default-value={String(defaults.stereoLink)} title="Option-click to reset stereo-linked detection" aria-keyshortcuts="Alt+Enter" onClick={(event) => handleOptionReset(event, { defaultValue: defaults.stereoLink, disabled, onReset: (value) => onParameter(["stereoLink"], value) })} onKeyDown={(event) => handleOptionResetKey(event, { defaultValue: defaults.stereoLink, disabled, onReset: (value) => onParameter(["stereoLink"], value) })} onChange={(event) => onParameter(["stereoLink"], event.target.checked)} /><span>Stereo-linked detection</span></label>
+      <Field label="Output" value={transient.outputGainDb} defaultValue={defaults.outputGainDb} limits={MASTERING_LIMITS.outputGainDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["outputGainDb"], value)} />
     </div></ManualValues>
   </>;
 }
 
 export function CreativePhaserFaceplate({ node, disabled, onBypass, onParameter }) {
   const phaser = node.parameters;
+  const defaults = processorDefaultParameters(node.typeId);
   return <>
     <div className="processor-faceplate processor-faceplate--phaser">
       <FaceplateIdentity maker="Northline Audio" model="P-6 Motion" title="Creative Phaser" />
-      <FaceplateRotary className="processor-control--phaser-rate" label="Rate" value={phaser.rateHz} limits={ADVANCED_PROCESSOR_LIMITS.phaserRateHz} step={0.01} suffix="Hz" scale="log" precision={2} disabled={disabled} onChange={(value) => onParameter(["rateHz"], value)} />
-      <FaceplateRotary className="processor-control--phaser-depth" label="Depth" value={phaser.depth * 100} minimum={0} maximum={100} step={1} suffix="%" precision={0} disabled={disabled} onChange={(value) => onParameter(["depth"], value / 100)} />
-      <FaceplateRotary className="processor-control--phaser-center" label="Center" value={phaser.centerFrequencyHz} limits={ADVANCED_PROCESSOR_LIMITS.phaserCenterHz} step={1} suffix="Hz" scale="log" disabled={disabled} onChange={(value) => onParameter(["centerFrequencyHz"], value)} />
+      <FaceplateRotary className="processor-control--phaser-rate" label="Rate" value={phaser.rateHz} defaultValue={defaults.rateHz} limits={ADVANCED_PROCESSOR_LIMITS.phaserRateHz} step={0.01} suffix="Hz" scale="log" precision={2} disabled={disabled} onChange={(value) => onParameter(["rateHz"], value)} />
+      <FaceplateRotary className="processor-control--phaser-depth" label="Depth" value={phaser.depth * 100} defaultValue={defaults.depth * 100} minimum={0} maximum={100} step={1} suffix="%" precision={0} disabled={disabled} onChange={(value) => onParameter(["depth"], value / 100)} />
+      <FaceplateRotary className="processor-control--phaser-center" label="Center" value={phaser.centerFrequencyHz} defaultValue={defaults.centerFrequencyHz} limits={ADVANCED_PROCESSOR_LIMITS.phaserCenterHz} step={1} suffix="Hz" scale="log" disabled={disabled} onChange={(value) => onParameter(["centerFrequencyHz"], value)} />
       <PhaserDisplay depth={phaser.depth} feedback={phaser.feedback} stereoOffsetDegrees={phaser.stereoOffsetDegrees} active={!node.bypass && phaser.mix > 0} />
-      <FaceplateRotary className="processor-control--phaser-feedback" label="Feedback" value={phaser.feedback * 100} minimum={-80} maximum={80} step={1} suffix="%" precision={0} disabled={disabled} onChange={(value) => onParameter(["feedback"], value / 100)} />
-      <FaceplateRotary className="processor-control--phaser-mix" label="Mix" value={phaser.mix * 100} minimum={0} maximum={50} step={1} suffix="%" precision={0} disabled={disabled} onChange={(value) => onParameter(["mix"], value / 100)} />
-      <FaceplateRotary className="processor-control--phaser-offset" label="Stereo offset" value={phaser.stereoOffsetDegrees} limits={ADVANCED_PROCESSOR_LIMITS.phaserStereoDegrees} step={1} suffix="°" precision={0} disabled={disabled} onChange={(value) => onParameter(["stereoOffsetDegrees"], value)} />
+      <FaceplateRotary className="processor-control--phaser-feedback" label="Feedback" value={phaser.feedback * 100} defaultValue={defaults.feedback * 100} minimum={-80} maximum={80} step={1} suffix="%" precision={0} disabled={disabled} onChange={(value) => onParameter(["feedback"], value / 100)} />
+      <FaceplateRotary className="processor-control--phaser-mix" label="Mix" value={phaser.mix * 100} defaultValue={defaults.mix * 100} minimum={0} maximum={50} step={1} suffix="%" precision={0} disabled={disabled} onChange={(value) => onParameter(["mix"], value / 100)} />
+      <FaceplateRotary className="processor-control--phaser-offset" label="Stereo offset" value={phaser.stereoOffsetDegrees} defaultValue={defaults.stereoOffsetDegrees} limits={ADVANCED_PROCESSOR_LIMITS.phaserStereoDegrees} step={1} suffix="°" precision={0} disabled={disabled} onChange={(value) => onParameter(["stereoOffsetDegrees"], value)} />
       <FaceplateBypass node={node} className="processor-bypass-button--phaser" onBypass={onBypass} />
     </div>
     <p className="analog-processor-warning analog-processor-warning--phaser">Creative effect: modulation can alter mono compatibility and album-wide tonal balance.</p>
     <ManualValues><div className="master-module-fields processor-exact-values">
-      <Field label="Rate" value={phaser.rateHz} limits={ADVANCED_PROCESSOR_LIMITS.phaserRateHz} step={0.01} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["rateHz"], value)} />
-      <Field label="Depth" value={phaser.depth * 100} minimum={0} maximum={100} step={1} suffix="%" disabled={disabled} onCommit={(value) => onParameter(["depth"], value / 100)} />
-      <Field label="Center" value={phaser.centerFrequencyHz} limits={ADVANCED_PROCESSOR_LIMITS.phaserCenterHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["centerFrequencyHz"], value)} />
-      <Field label="Feedback" value={phaser.feedback * 100} minimum={-80} maximum={80} step={1} suffix="%" disabled={disabled} onCommit={(value) => onParameter(["feedback"], value / 100)} />
-      <Field label="Mix" value={phaser.mix * 100} minimum={0} maximum={50} step={1} suffix="%" disabled={disabled} onCommit={(value) => onParameter(["mix"], value / 100)} />
-      <Field label="Stereo offset" value={phaser.stereoOffsetDegrees} limits={ADVANCED_PROCESSOR_LIMITS.phaserStereoDegrees} step={1} suffix="°" disabled={disabled} onCommit={(value) => onParameter(["stereoOffsetDegrees"], value)} />
+      <Field label="Rate" value={phaser.rateHz} defaultValue={defaults.rateHz} limits={ADVANCED_PROCESSOR_LIMITS.phaserRateHz} step={0.01} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["rateHz"], value)} />
+      <Field label="Depth" value={phaser.depth * 100} defaultValue={defaults.depth * 100} minimum={0} maximum={100} step={1} suffix="%" disabled={disabled} onCommit={(value) => onParameter(["depth"], value / 100)} />
+      <Field label="Center" value={phaser.centerFrequencyHz} defaultValue={defaults.centerFrequencyHz} limits={ADVANCED_PROCESSOR_LIMITS.phaserCenterHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["centerFrequencyHz"], value)} />
+      <Field label="Feedback" value={phaser.feedback * 100} defaultValue={defaults.feedback * 100} minimum={-80} maximum={80} step={1} suffix="%" disabled={disabled} onCommit={(value) => onParameter(["feedback"], value / 100)} />
+      <Field label="Mix" value={phaser.mix * 100} defaultValue={defaults.mix * 100} minimum={0} maximum={50} step={1} suffix="%" disabled={disabled} onCommit={(value) => onParameter(["mix"], value / 100)} />
+      <Field label="Stereo offset" value={phaser.stereoOffsetDegrees} defaultValue={defaults.stereoOffsetDegrees} limits={ADVANCED_PROCESSOR_LIMITS.phaserStereoDegrees} step={1} suffix="°" disabled={disabled} onCommit={(value) => onParameter(["stereoOffsetDegrees"], value)} />
     </div></ManualValues>
   </>;
 }

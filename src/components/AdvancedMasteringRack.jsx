@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ADVANCED_PROCESSOR_TYPES, ADVANCED_RACK_MAX_PROCESSORS, availablePluginDefinitions, buildSerialConnections, createAdvancedProcessor, createDefaultAdvancedMastering, normalizeAdvancedMastering, processorDefinition } from "../lib/advanced-mastering.js";
+import { ADVANCED_PROCESSOR_TYPES, ADVANCED_RACK_MAX_PROCESSORS, availablePluginDefinitions, buildSerialConnections, createAdvancedProcessor, createDefaultAdvancedMastering, normalizeAdvancedMastering, processorDefaultParameters, processorDefinition } from "../lib/advanced-mastering.js";
 import { MASTERING_LIMITS } from "../lib/mastering.js";
+import { handleOptionReset, handleOptionResetKey } from "../lib/option-reset.js";
 import { ChevronIcon, DragIcon, PlusIcon, RefreshIcon, TrashIcon, WarningIcon } from "./Icons.jsx";
-import { CompressorTransferGraph, EqResponseGraph, HardwareGainReductionLeds, HardwareGainReductionMeter, LimiterTransferGraph, ManualValues, MasteringNumberField, ModuleSwitch, RotaryControl } from "./MasteringControls.jsx";
+import { CompressorTransferGraph, EqResponseGraph, HardwareGainReductionLeds, HardwareGainReductionMeter, LimiterTransferGraph, ManualValues, MasteringNumberField, MasteringSelectField, ModuleSwitch, RotaryControl } from "./MasteringControls.jsx";
 import { MasterOutputMeters } from "./MasterOutputMeters.jsx";
 import { CreativePhaserFaceplate, HarmonicColorFaceplate, HfSmootherFaceplate, MasteringAmbienceFaceplate, TransientSculptorFaceplate } from "./AnalogProcessorFaceplates.jsx";
 import { PhaseAlignmentFaceplate, StereoFieldFaceplate } from "./SpatialRepairFaceplates.jsx";
@@ -32,8 +33,8 @@ const CHANNEL_MODE_OPTIONS = Object.freeze([
   { value: "side", label: "Side only" },
 ]);
 
-function SelectField({ label, value, options, disabled, onChange }) {
-  return <label className="master-select-field"><span>{label}</span><select value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>;
+function SelectField({ label, value, defaultValue, options, disabled, onChange }) {
+  return <MasteringSelectField label={label} value={value} defaultValue={defaultValue} options={options} disabled={disabled} onChange={onChange} />;
 }
 
 function PluginPanel({ node, title, subtitle, warning, children }) {
@@ -57,14 +58,14 @@ const uniqueProcessorId = (rack, typeId) => {
   return `${base}-${index}`;
 };
 
-const Field = ({ label, value, limits, minimum, maximum, step = 0.1, suffix, disabled, onCommit }) => (
-  <MasteringNumberField label={label} value={value} minimum={limits?.minimum ?? minimum} maximum={limits?.maximum ?? maximum} step={step} suffix={suffix} disabled={disabled} onCommit={onCommit} />
+const Field = ({ label, value, defaultValue, limits, minimum, maximum, step = 0.1, suffix, disabled, onCommit }) => (
+  <MasteringNumberField label={label} value={value} defaultValue={defaultValue} minimum={limits?.minimum ?? minimum} maximum={limits?.maximum ?? maximum} step={step} suffix={suffix} disabled={disabled} onCommit={onCommit} />
 );
 
 function EquipmentActions({ node, index, count, onMove, onDuplicate, onRemove, onBypass }) {
   return (
     <div className="premium-unit-actions">
-      <ModuleSwitch label={`Enable ${node.name}`} checked={!node.bypass} onChange={(enabled) => onBypass(!enabled)} />
+      <ModuleSwitch label={`Enable ${node.name}`} checked={!node.bypass} defaultChecked onChange={(enabled) => onBypass(!enabled)} />
       <button type="button" aria-label={`Move ${node.name} up`} title="Move earlier in signal path" disabled={index === 0} onClick={() => onMove(index, index - 1)}><ChevronIcon direction="up" /></button>
       <button type="button" aria-label={`Move ${node.name} down`} title="Move later in signal path" disabled={index === count - 1} onClick={() => onMove(index, index + 1)}><ChevronIcon direction="down" /></button>
       <button type="button" aria-label={`Duplicate ${node.name}`} title="Duplicate equipment" onClick={onDuplicate}><PlusIcon /></button>
@@ -80,7 +81,7 @@ function FaceplateCircuitSwitch({ node, mode, className, onBypass }) {
   const nextAction = inCircuit ? "bypass" : "put in circuit";
   return (
     <label className={`premium-faceplate-switch premium-faceplate-switch--${mode} ${checked ? "is-switch-on" : ""} ${inCircuit ? "is-in-circuit" : "is-bypassed"} ${className}`} title={`${node.name}: ${inCircuit ? "in circuit" : "bypassed"}. Click to ${nextAction}.`}>
-      <input type="checkbox" checked={checked} aria-label={`${node.name} ${legend} switch`} onChange={(event) => onBypass(mode === "in" ? !event.target.checked : event.target.checked)} />
+      <input type="checkbox" checked={checked} aria-label={`${node.name} ${legend} switch`} data-option-reset="true" data-default-value="false" title="Option-click to put this processor in circuit" aria-keyshortcuts="Alt+Enter" onClick={(event) => handleOptionReset(event, { defaultValue: false, onReset: onBypass })} onKeyDown={(event) => handleOptionResetKey(event, { defaultValue: false, onReset: onBypass })} onChange={(event) => onBypass(mode === "in" ? !event.target.checked : event.target.checked)} />
       <span className="premium-faceplate-switch-hardware" aria-hidden="true"><i /></span>
       <em aria-hidden="true" />
       <span className="premium-faceplate-switch-state" aria-live="polite">{inCircuit ? "In circuit" : "Bypassed"}</span>
@@ -88,10 +89,10 @@ function FaceplateCircuitSwitch({ node, mode, className, onBypass }) {
   );
 }
 
-function FaceplateOptionSwitch({ label, checked, className, onChange }) {
+function FaceplateOptionSwitch({ label, checked, defaultChecked, className, onChange }) {
   return (
     <label className={`premium-faceplate-switch premium-faceplate-switch--option ${checked ? "is-switch-on is-option-enabled" : ""} ${className}`} title={`${label}: ${checked ? "on" : "off"}`}>
-      <input type="checkbox" checked={checked} aria-label={`${label} switch`} onChange={(event) => onChange(event.target.checked)} />
+      <input type="checkbox" checked={checked} aria-label={`${label} switch`} data-option-reset="true" data-default-value={String(defaultChecked)} title={`Option-click to reset ${label}`} aria-keyshortcuts="Alt+Enter" onClick={(event) => handleOptionReset(event, { defaultValue: defaultChecked, onReset: onChange })} onKeyDown={(event) => handleOptionResetKey(event, { defaultValue: defaultChecked, onReset: onChange })} onChange={(event) => onChange(event.target.checked)} />
       <span className="premium-faceplate-switch-hardware" aria-hidden="true"><i /></span>
       <em aria-hidden="true" />
       <span className="premium-faceplate-switch-state" aria-live="polite">{checked ? "On" : "Off"}</span>
@@ -99,10 +100,10 @@ function FaceplateOptionSwitch({ label, checked, className, onChange }) {
   );
 }
 
-function OversamplingSelector({ value, onChange }) {
+function OversamplingSelector({ value, defaultValue = 4, onChange }) {
   return (
     <div className="premium-oversampling-selector" role="group" aria-label="Limiter oversampling">
-      {[2, 4, 8].map((factor) => <button key={factor} type="button" className={value === factor ? "is-active" : ""} aria-label={`${factor}× oversampling`} aria-pressed={value === factor} onClick={() => onChange(factor)}><i aria-hidden="true" /></button>)}
+      {[2, 4, 8].map((factor) => <button key={factor} type="button" className={value === factor ? "is-active" : ""} aria-label={`${factor}× oversampling`} aria-pressed={value === factor} data-option-reset="true" data-default-value={String(defaultValue)} title="Option-click to reset oversampling" aria-keyshortcuts="Alt+Enter" onKeyDown={(event) => handleOptionResetKey(event, { defaultValue, onReset: onChange })} onClick={(event) => { if (!handleOptionReset(event, { defaultValue, onReset: onChange })) onChange(factor); }}><i aria-hidden="true" /></button>)}
     </div>
   );
 }
@@ -131,6 +132,7 @@ const PREMIUM_DIAL_MARKS = Object.freeze({
 
 function PremiumEq({ node, disabled, onBypass, onParameter, meteringRef, live }) {
   const eq = node.parameters;
+  const defaults = processorDefaultParameters(node.typeId);
   return (
     <>
       <div className="premium-faceplate premium-faceplate--eq">
@@ -139,30 +141,30 @@ function PremiumEq({ node, disabled, onBypass, onParameter, meteringRef, live })
         <FaceplateCircuitSwitch node={node} mode="bypass" className="premium-faceplate-switch--eq-bypass" onBypass={onBypass} />
         <EqResponseGraph eq={eq} meteringRef={meteringRef} active={live && !disabled} />
         <div className="premium-knob-bank premium-knob-bank--eq">
-          <RotaryControl className="premium-mock-control premium-mock-control--eq-low-frequency" dialMarks={PREMIUM_DIAL_MARKS.lowFrequency} label="Low frequency" value={eq.lowShelf.frequencyHz} limits={MASTERING_LIMITS.lowShelfFrequencyHz} step={1} suffix="Hz" scale="log" disabled={disabled} onChange={(value) => onParameter(["lowShelf", "frequencyHz"], value)} />
-          <RotaryControl className="premium-mock-control premium-mock-control--eq-low-gain" dialMarks={PREMIUM_DIAL_MARKS.gain} label="Low boost / cut" value={eq.lowShelf.gainDb} limits={MASTERING_LIMITS.eqGainDb} step={0.1} suffix="dB" precision={1} disabled={disabled} onChange={(value) => onParameter(["lowShelf", "gainDb"], value)} />
-          <RotaryControl className="premium-mock-control premium-mock-control--eq-low-mid-frequency" dialMarks={PREMIUM_DIAL_MARKS.lowMidFrequency} label="Low-mid frequency" value={eq.lowMidBand.frequencyHz} limits={MASTERING_LIMITS.lowMidBandFrequencyHz} step={1} suffix="Hz" scale="log" disabled={disabled} onChange={(value) => onParameter(["lowMidBand", "frequencyHz"], value)} />
-          <RotaryControl className="premium-mock-control premium-mock-control--eq-low-mid-gain" dialMarks={PREMIUM_DIAL_MARKS.gain} label="Low-mid boost / cut" value={eq.lowMidBand.gainDb} limits={MASTERING_LIMITS.eqGainDb} step={0.1} suffix="dB" precision={1} disabled={disabled} onChange={(value) => onParameter(["lowMidBand", "gainDb"], value)} />
-          <RotaryControl className="premium-mock-control premium-mock-control--eq-high-mid-frequency" dialMarks={PREMIUM_DIAL_MARKS.highMidFrequency} label="High-mid frequency" value={eq.highMidBand.frequencyHz} limits={MASTERING_LIMITS.highMidBandFrequencyHz} step={1} suffix="Hz" scale="log" disabled={disabled} onChange={(value) => onParameter(["highMidBand", "frequencyHz"], value)} />
-          <RotaryControl className="premium-mock-control premium-mock-control--eq-high-mid-gain" dialMarks={PREMIUM_DIAL_MARKS.gain} label="High-mid boost / cut" value={eq.highMidBand.gainDb} limits={MASTERING_LIMITS.eqGainDb} step={0.1} suffix="dB" precision={1} disabled={disabled} onChange={(value) => onParameter(["highMidBand", "gainDb"], value)} />
-          <RotaryControl className="premium-mock-control premium-mock-control--eq-high-frequency" dialMarks={PREMIUM_DIAL_MARKS.highFrequency} label="High frequency" value={eq.highShelf.frequencyHz} limits={MASTERING_LIMITS.highShelfFrequencyHz} step={1} suffix="Hz" scale="log" disabled={disabled} onChange={(value) => onParameter(["highShelf", "frequencyHz"], value)} />
-          <RotaryControl className="premium-mock-control premium-mock-control--eq-high-gain" dialMarks={PREMIUM_DIAL_MARKS.gain} label="High boost / cut" value={eq.highShelf.gainDb} limits={MASTERING_LIMITS.eqGainDb} step={0.1} suffix="dB" precision={1} disabled={disabled} onChange={(value) => onParameter(["highShelf", "gainDb"], value)} />
-          <RotaryControl className="premium-mock-control premium-mock-control--eq-output" dialMarks={PREMIUM_DIAL_MARKS.gain} label="EQ output" value={eq.outputGainDb} limits={MASTERING_LIMITS.eqOutputGainDb} step={0.1} suffix="dB" precision={1} disabled={disabled} onChange={(value) => onParameter(["outputGainDb"], value)} />
+          <RotaryControl className="premium-mock-control premium-mock-control--eq-low-frequency" dialMarks={PREMIUM_DIAL_MARKS.lowFrequency} label="Low frequency" value={eq.lowShelf.frequencyHz} defaultValue={defaults.lowShelf.frequencyHz} limits={MASTERING_LIMITS.lowShelfFrequencyHz} step={1} suffix="Hz" scale="log" disabled={disabled} onChange={(value) => onParameter(["lowShelf", "frequencyHz"], value)} />
+          <RotaryControl className="premium-mock-control premium-mock-control--eq-low-gain" dialMarks={PREMIUM_DIAL_MARKS.gain} label="Low boost / cut" value={eq.lowShelf.gainDb} defaultValue={defaults.lowShelf.gainDb} limits={MASTERING_LIMITS.eqGainDb} step={0.1} suffix="dB" precision={1} disabled={disabled} onChange={(value) => onParameter(["lowShelf", "gainDb"], value)} />
+          <RotaryControl className="premium-mock-control premium-mock-control--eq-low-mid-frequency" dialMarks={PREMIUM_DIAL_MARKS.lowMidFrequency} label="Low-mid frequency" value={eq.lowMidBand.frequencyHz} defaultValue={defaults.lowMidBand.frequencyHz} limits={MASTERING_LIMITS.lowMidBandFrequencyHz} step={1} suffix="Hz" scale="log" disabled={disabled} onChange={(value) => onParameter(["lowMidBand", "frequencyHz"], value)} />
+          <RotaryControl className="premium-mock-control premium-mock-control--eq-low-mid-gain" dialMarks={PREMIUM_DIAL_MARKS.gain} label="Low-mid boost / cut" value={eq.lowMidBand.gainDb} defaultValue={defaults.lowMidBand.gainDb} limits={MASTERING_LIMITS.eqGainDb} step={0.1} suffix="dB" precision={1} disabled={disabled} onChange={(value) => onParameter(["lowMidBand", "gainDb"], value)} />
+          <RotaryControl className="premium-mock-control premium-mock-control--eq-high-mid-frequency" dialMarks={PREMIUM_DIAL_MARKS.highMidFrequency} label="High-mid frequency" value={eq.highMidBand.frequencyHz} defaultValue={defaults.highMidBand.frequencyHz} limits={MASTERING_LIMITS.highMidBandFrequencyHz} step={1} suffix="Hz" scale="log" disabled={disabled} onChange={(value) => onParameter(["highMidBand", "frequencyHz"], value)} />
+          <RotaryControl className="premium-mock-control premium-mock-control--eq-high-mid-gain" dialMarks={PREMIUM_DIAL_MARKS.gain} label="High-mid boost / cut" value={eq.highMidBand.gainDb} defaultValue={defaults.highMidBand.gainDb} limits={MASTERING_LIMITS.eqGainDb} step={0.1} suffix="dB" precision={1} disabled={disabled} onChange={(value) => onParameter(["highMidBand", "gainDb"], value)} />
+          <RotaryControl className="premium-mock-control premium-mock-control--eq-high-frequency" dialMarks={PREMIUM_DIAL_MARKS.highFrequency} label="High frequency" value={eq.highShelf.frequencyHz} defaultValue={defaults.highShelf.frequencyHz} limits={MASTERING_LIMITS.highShelfFrequencyHz} step={1} suffix="Hz" scale="log" disabled={disabled} onChange={(value) => onParameter(["highShelf", "frequencyHz"], value)} />
+          <RotaryControl className="premium-mock-control premium-mock-control--eq-high-gain" dialMarks={PREMIUM_DIAL_MARKS.gain} label="High boost / cut" value={eq.highShelf.gainDb} defaultValue={defaults.highShelf.gainDb} limits={MASTERING_LIMITS.eqGainDb} step={0.1} suffix="dB" precision={1} disabled={disabled} onChange={(value) => onParameter(["highShelf", "gainDb"], value)} />
+          <RotaryControl className="premium-mock-control premium-mock-control--eq-output" dialMarks={PREMIUM_DIAL_MARKS.gain} label="EQ output" value={eq.outputGainDb} defaultValue={defaults.outputGainDb} limits={MASTERING_LIMITS.eqOutputGainDb} step={0.1} suffix="dB" precision={1} disabled={disabled} onChange={(value) => onParameter(["outputGainDb"], value)} />
         </div>
       </div>
       <ManualValues><div className="master-module-fields premium-exact-values">
-        <SelectField label="Channel mode" value={eq.channelMode} options={CHANNEL_MODE_OPTIONS} disabled={disabled} onChange={(value) => onParameter(["channelMode"], value)} />
-        <Field label="Low frequency" value={eq.lowShelf.frequencyHz} limits={MASTERING_LIMITS.lowShelfFrequencyHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["lowShelf", "frequencyHz"], value)} />
-        <Field label="Low gain" value={eq.lowShelf.gainDb} limits={MASTERING_LIMITS.eqGainDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["lowShelf", "gainDb"], value)} />
-        <Field label="Low-mid frequency" value={eq.lowMidBand.frequencyHz} limits={MASTERING_LIMITS.lowMidBandFrequencyHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["lowMidBand", "frequencyHz"], value)} />
-        <Field label="Low-mid gain" value={eq.lowMidBand.gainDb} limits={MASTERING_LIMITS.eqGainDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["lowMidBand", "gainDb"], value)} />
-        <Field label="Low-mid Q" value={eq.lowMidBand.q} limits={MASTERING_LIMITS.midBandQ} suffix="Q" disabled={disabled} onCommit={(value) => onParameter(["lowMidBand", "q"], value)} />
-        <Field label="High-mid frequency" value={eq.highMidBand.frequencyHz} limits={MASTERING_LIMITS.highMidBandFrequencyHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["highMidBand", "frequencyHz"], value)} />
-        <Field label="High-mid gain" value={eq.highMidBand.gainDb} limits={MASTERING_LIMITS.eqGainDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["highMidBand", "gainDb"], value)} />
-        <Field label="High-mid Q" value={eq.highMidBand.q} limits={MASTERING_LIMITS.midBandQ} suffix="Q" disabled={disabled} onCommit={(value) => onParameter(["highMidBand", "q"], value)} />
-        <Field label="High frequency" value={eq.highShelf.frequencyHz} limits={MASTERING_LIMITS.highShelfFrequencyHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["highShelf", "frequencyHz"], value)} />
-        <Field label="High gain" value={eq.highShelf.gainDb} limits={MASTERING_LIMITS.eqGainDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["highShelf", "gainDb"], value)} />
-        <Field label="EQ output" value={eq.outputGainDb} limits={MASTERING_LIMITS.eqOutputGainDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["outputGainDb"], value)} />
+        <SelectField label="Channel mode" value={eq.channelMode} defaultValue={defaults.channelMode} options={CHANNEL_MODE_OPTIONS} disabled={disabled} onChange={(value) => onParameter(["channelMode"], value)} />
+        <Field label="Low frequency" value={eq.lowShelf.frequencyHz} defaultValue={defaults.lowShelf.frequencyHz} limits={MASTERING_LIMITS.lowShelfFrequencyHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["lowShelf", "frequencyHz"], value)} />
+        <Field label="Low gain" value={eq.lowShelf.gainDb} defaultValue={defaults.lowShelf.gainDb} limits={MASTERING_LIMITS.eqGainDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["lowShelf", "gainDb"], value)} />
+        <Field label="Low-mid frequency" value={eq.lowMidBand.frequencyHz} defaultValue={defaults.lowMidBand.frequencyHz} limits={MASTERING_LIMITS.lowMidBandFrequencyHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["lowMidBand", "frequencyHz"], value)} />
+        <Field label="Low-mid gain" value={eq.lowMidBand.gainDb} defaultValue={defaults.lowMidBand.gainDb} limits={MASTERING_LIMITS.eqGainDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["lowMidBand", "gainDb"], value)} />
+        <Field label="Low-mid Q" value={eq.lowMidBand.q} defaultValue={defaults.lowMidBand.q} limits={MASTERING_LIMITS.midBandQ} suffix="Q" disabled={disabled} onCommit={(value) => onParameter(["lowMidBand", "q"], value)} />
+        <Field label="High-mid frequency" value={eq.highMidBand.frequencyHz} defaultValue={defaults.highMidBand.frequencyHz} limits={MASTERING_LIMITS.highMidBandFrequencyHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["highMidBand", "frequencyHz"], value)} />
+        <Field label="High-mid gain" value={eq.highMidBand.gainDb} defaultValue={defaults.highMidBand.gainDb} limits={MASTERING_LIMITS.eqGainDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["highMidBand", "gainDb"], value)} />
+        <Field label="High-mid Q" value={eq.highMidBand.q} defaultValue={defaults.highMidBand.q} limits={MASTERING_LIMITS.midBandQ} suffix="Q" disabled={disabled} onCommit={(value) => onParameter(["highMidBand", "q"], value)} />
+        <Field label="High frequency" value={eq.highShelf.frequencyHz} defaultValue={defaults.highShelf.frequencyHz} limits={MASTERING_LIMITS.highShelfFrequencyHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["highShelf", "frequencyHz"], value)} />
+        <Field label="High gain" value={eq.highShelf.gainDb} defaultValue={defaults.highShelf.gainDb} limits={MASTERING_LIMITS.eqGainDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["highShelf", "gainDb"], value)} />
+        <Field label="EQ output" value={eq.outputGainDb} defaultValue={defaults.outputGainDb} limits={MASTERING_LIMITS.eqOutputGainDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["outputGainDb"], value)} />
       </div></ManualValues>
     </>
   );
@@ -170,51 +172,54 @@ function PremiumEq({ node, disabled, onBypass, onParameter, meteringRef, live })
 
 function PremiumCompressor({ node, disabled, onBypass, onParameter, meteringRef, live }) {
   const compressor = node.parameters;
+  const defaults = processorDefaultParameters(node.typeId);
   return (
     <>
       <div className="premium-faceplate premium-faceplate--compressor">
         <div className="premium-brand"><EquipmentMakerMark node={node} /><strong>BUS COMPRESSOR</strong><small>Stereo mastering dynamics</small></div>
-        <button type="button" className={`premium-panel-lamp premium-panel-lamp--compressor-power ${node.bypass ? "" : "is-lit"}`} aria-label="Bus Compressor power" aria-pressed={!node.bypass} onClick={() => onBypass(!node.bypass)} />
+        <button type="button" className={`premium-panel-lamp premium-panel-lamp--compressor-power ${node.bypass ? "" : "is-lit"}`} aria-label="Bus Compressor power" aria-pressed={!node.bypass} data-option-reset="true" data-default-value="false" title="Option-click to put this processor in circuit" aria-keyshortcuts="Alt+Enter" onKeyDown={(event) => handleOptionResetKey(event, { defaultValue: false, onReset: onBypass })} onClick={(event) => { if (!handleOptionReset(event, { defaultValue: false, onReset: onBypass })) onBypass(!node.bypass); }} />
         <FaceplateCircuitSwitch node={node} mode="in" className="premium-faceplate-switch--compressor-in" onBypass={onBypass} />
-        <FaceplateOptionSwitch label="Sidechain input" checked={compressor.sidechainEnabled} className="premium-faceplate-switch--compressor-sidechain" onChange={(checked) => onParameter(["sidechainEnabled"], checked)} />
+        <FaceplateOptionSwitch label="Sidechain input" checked={compressor.sidechainEnabled} defaultChecked={defaults.sidechainEnabled} className="premium-faceplate-switch--compressor-sidechain" onChange={(checked) => onParameter(["sidechainEnabled"], checked)} />
         <FaceplateCircuitSwitch node={node} mode="bypass" className="premium-faceplate-switch--compressor-bypass" onBypass={onBypass} />
         <HardwareGainReductionMeter variant="mockup-dual" meteringRef={meteringRef} meterNodeKey={`processor:${node.id}:compressor`} active={live && !disabled} />
         <CompressorTransferGraph compressor={compressor} meteringRef={meteringRef} meterNodeKey={`processor:${node.id}:compressor`} active={live && !disabled} />
         <div className="premium-knob-bank premium-knob-bank--compressor">
-          <RotaryControl className="premium-mock-control premium-mock-control--comp-threshold" dialMarks={PREMIUM_DIAL_MARKS.threshold} label="Threshold" value={compressor.thresholdDb} limits={MASTERING_LIMITS.compressorThresholdDb} step={0.1} suffix="dB" precision={1} disabled={disabled} onChange={(value) => onParameter(["thresholdDb"], value)} />
-          <RotaryControl className="premium-mock-control premium-mock-control--comp-ratio" dialMarks={PREMIUM_DIAL_MARKS.ratio} label="Ratio" value={compressor.ratio} limits={MASTERING_LIMITS.compressorRatio} step={0.1} suffix=":1" precision={1} scale="log" disabled={disabled} onChange={(value) => onParameter(["ratio"], value)} />
-          <RotaryControl className="premium-mock-control premium-mock-control--comp-attack" dialMarks={PREMIUM_DIAL_MARKS.attack} label="Attack" value={compressor.attackMs} limits={MASTERING_LIMITS.compressorAttackMs} step={0.1} suffix="ms" scale="log" disabled={disabled} onChange={(value) => onParameter(["attackMs"], value)} />
-          <RotaryControl className="premium-mock-control premium-mock-control--comp-release" dialMarks={PREMIUM_DIAL_MARKS.compressorRelease} label="Release" value={compressor.releaseMs} limits={MASTERING_LIMITS.compressorReleaseMs} step={1} suffix="ms" scale="log" disabled={disabled} onChange={(value) => onParameter(["releaseMs"], value)} />
-          <RotaryControl className="premium-mock-control premium-mock-control--comp-sidechain" dialMarks={PREMIUM_DIAL_MARKS.sidechain} label="Sidechain filter" value={compressor.sidechainFilterHz} limits={MASTERING_LIMITS.compressorSidechainFilterHz} step={1} suffix="Hz" scale="log" disabled={disabled} onChange={(value) => onParameter(["sidechainFilterHz"], value)} />
-          <RotaryControl className="premium-mock-control premium-mock-control--comp-mix" dialMarks={PREMIUM_DIAL_MARKS.mix} label="Parallel mix" value={Math.round(compressor.mix * 100)} minimum={0} maximum={100} step={1} suffix="%" precision={0} disabled={disabled} onChange={(value) => onParameter(["mix"], value / 100)} />
+          <RotaryControl className="premium-mock-control premium-mock-control--comp-threshold" dialMarks={PREMIUM_DIAL_MARKS.threshold} label="Threshold" value={compressor.thresholdDb} defaultValue={defaults.thresholdDb} limits={MASTERING_LIMITS.compressorThresholdDb} step={0.1} suffix="dB" precision={1} disabled={disabled} onChange={(value) => onParameter(["thresholdDb"], value)} />
+          <RotaryControl className="premium-mock-control premium-mock-control--comp-ratio" dialMarks={PREMIUM_DIAL_MARKS.ratio} label="Ratio" value={compressor.ratio} defaultValue={defaults.ratio} limits={MASTERING_LIMITS.compressorRatio} step={0.1} suffix=":1" precision={1} scale="log" disabled={disabled} onChange={(value) => onParameter(["ratio"], value)} />
+          <RotaryControl className="premium-mock-control premium-mock-control--comp-attack" dialMarks={PREMIUM_DIAL_MARKS.attack} label="Attack" value={compressor.attackMs} defaultValue={defaults.attackMs} limits={MASTERING_LIMITS.compressorAttackMs} step={0.1} suffix="ms" scale="log" disabled={disabled} onChange={(value) => onParameter(["attackMs"], value)} />
+          <RotaryControl className="premium-mock-control premium-mock-control--comp-release" dialMarks={PREMIUM_DIAL_MARKS.compressorRelease} label="Release" value={compressor.releaseMs} defaultValue={defaults.releaseMs} limits={MASTERING_LIMITS.compressorReleaseMs} step={1} suffix="ms" scale="log" disabled={disabled} onChange={(value) => onParameter(["releaseMs"], value)} />
+          <RotaryControl className="premium-mock-control premium-mock-control--comp-sidechain" dialMarks={PREMIUM_DIAL_MARKS.sidechain} label="Sidechain filter" value={compressor.sidechainFilterHz} defaultValue={defaults.sidechainFilterHz} limits={MASTERING_LIMITS.compressorSidechainFilterHz} step={1} suffix="Hz" scale="log" disabled={disabled} onChange={(value) => onParameter(["sidechainFilterHz"], value)} />
+          <RotaryControl className="premium-mock-control premium-mock-control--comp-mix" dialMarks={PREMIUM_DIAL_MARKS.mix} label="Parallel mix" value={Math.round(compressor.mix * 100)} defaultValue={Math.round(defaults.mix * 100)} minimum={0} maximum={100} step={1} suffix="%" precision={0} disabled={disabled} onChange={(value) => onParameter(["mix"], value / 100)} />
         </div>
       </div>
       <ManualValues><div className="master-module-fields premium-exact-values">
-        <SelectField label="Channel mode" value={compressor.channelMode} options={CHANNEL_MODE_OPTIONS} disabled={disabled} onChange={(value) => onParameter(["channelMode"], value)} />
-        <Field label="Threshold" value={compressor.thresholdDb} limits={MASTERING_LIMITS.compressorThresholdDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["thresholdDb"], value)} />
-        <Field label="Ratio" value={compressor.ratio} limits={MASTERING_LIMITS.compressorRatio} suffix=":1" disabled={disabled} onCommit={(value) => onParameter(["ratio"], value)} />
-        <Field label="Attack" value={compressor.attackMs} limits={MASTERING_LIMITS.compressorAttackMs} suffix="ms" disabled={disabled} onCommit={(value) => onParameter(["attackMs"], value)} />
-        <Field label="Release" value={compressor.releaseMs} limits={MASTERING_LIMITS.compressorReleaseMs} step={1} suffix="ms" disabled={disabled} onCommit={(value) => onParameter(["releaseMs"], value)} />
-        <Field label="Knee" value={compressor.knee} limits={MASTERING_LIMITS.compressorKnee} suffix="" disabled={disabled} onCommit={(value) => onParameter(["knee"], value)} />
-        <Field label="Makeup" value={compressor.makeupGainDb} limits={MASTERING_LIMITS.compressorMakeupGainDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["makeupGainDb"], value)} />
-        <Field label="Sidechain filter" value={compressor.sidechainFilterHz} limits={MASTERING_LIMITS.compressorSidechainFilterHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["sidechainFilterHz"], value)} />
-        <Field label="Mix" value={Math.round(compressor.mix * 100)} minimum={0} maximum={100} step={1} suffix="%" disabled={disabled} onCommit={(value) => onParameter(["mix"], value / 100)} />
-        <label className="master-select-field"><span>Detection</span><select value={compressor.detection} disabled={disabled} onChange={(event) => onParameter(["detection"], event.target.value)}><option value="rms">RMS</option><option value="peak">Peak</option></select></label>
-        <label className="master-select-field"><span>Stereo link</span><select value={compressor.link} disabled={disabled} onChange={(event) => onParameter(["link"], event.target.value)}><option value="maximum">Maximum</option><option value="average">Average</option></select></label>
+        <SelectField label="Channel mode" value={compressor.channelMode} defaultValue={defaults.channelMode} options={CHANNEL_MODE_OPTIONS} disabled={disabled} onChange={(value) => onParameter(["channelMode"], value)} />
+        <Field label="Threshold" value={compressor.thresholdDb} defaultValue={defaults.thresholdDb} limits={MASTERING_LIMITS.compressorThresholdDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["thresholdDb"], value)} />
+        <Field label="Ratio" value={compressor.ratio} defaultValue={defaults.ratio} limits={MASTERING_LIMITS.compressorRatio} suffix=":1" disabled={disabled} onCommit={(value) => onParameter(["ratio"], value)} />
+        <Field label="Attack" value={compressor.attackMs} defaultValue={defaults.attackMs} limits={MASTERING_LIMITS.compressorAttackMs} suffix="ms" disabled={disabled} onCommit={(value) => onParameter(["attackMs"], value)} />
+        <Field label="Release" value={compressor.releaseMs} defaultValue={defaults.releaseMs} limits={MASTERING_LIMITS.compressorReleaseMs} step={1} suffix="ms" disabled={disabled} onCommit={(value) => onParameter(["releaseMs"], value)} />
+        <Field label="Knee" value={compressor.knee} defaultValue={defaults.knee} limits={MASTERING_LIMITS.compressorKnee} suffix="" disabled={disabled} onCommit={(value) => onParameter(["knee"], value)} />
+        <Field label="Makeup" value={compressor.makeupGainDb} defaultValue={defaults.makeupGainDb} limits={MASTERING_LIMITS.compressorMakeupGainDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["makeupGainDb"], value)} />
+        <Field label="Sidechain filter" value={compressor.sidechainFilterHz} defaultValue={defaults.sidechainFilterHz} limits={MASTERING_LIMITS.compressorSidechainFilterHz} step={1} suffix="Hz" disabled={disabled} onCommit={(value) => onParameter(["sidechainFilterHz"], value)} />
+        <Field label="Mix" value={Math.round(compressor.mix * 100)} defaultValue={Math.round(defaults.mix * 100)} minimum={0} maximum={100} step={1} suffix="%" disabled={disabled} onCommit={(value) => onParameter(["mix"], value / 100)} />
+        <MasteringSelectField label="Detection" value={compressor.detection} defaultValue={defaults.detection} disabled={disabled} options={[{ value: "rms", label: "RMS" }, { value: "peak", label: "Peak" }]} onChange={(value) => onParameter(["detection"], value)} />
+        <MasteringSelectField label="Stereo link" value={compressor.link} defaultValue={defaults.link} disabled={disabled} options={[{ value: "maximum", label: "Maximum" }, { value: "average", label: "Average" }]} onChange={(value) => onParameter(["link"], value)} />
       </div></ManualValues>
     </>
   );
 }
 
 function PremiumOutput({ node, disabled, onBypass, onParameter }) {
+  const defaults = processorDefaultParameters(node.typeId);
   return <>
-    <div className="premium-faceplate premium-faceplate--output"><div className="premium-brand"><EquipmentMakerMark node={node} /><strong>MASTER OUTPUT</strong><small>Calibrated line stage</small></div><RotaryControl label="Output level" value={node.parameters.outputGainDb} limits={MASTERING_LIMITS.outputGainDb} step={0.1} suffix="dB" precision={1} disabled={disabled} onChange={(value) => onParameter(["outputGainDb"], value)} /><div className={`premium-output-led ${node.bypass ? "" : "is-lit"}`}><i /><span>48 kHz / 24-bit print path</span></div><FaceplateCircuitSwitch node={node} mode="in" className="premium-faceplate-switch--output-in" onBypass={onBypass} /></div>
-    <ManualValues><div className="master-module-fields premium-exact-values"><Field label="Output level" value={node.parameters.outputGainDb} limits={MASTERING_LIMITS.outputGainDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["outputGainDb"], value)} /></div></ManualValues>
+    <div className="premium-faceplate premium-faceplate--output"><div className="premium-brand"><EquipmentMakerMark node={node} /><strong>MASTER OUTPUT</strong><small>Calibrated line stage</small></div><RotaryControl label="Output level" value={node.parameters.outputGainDb} defaultValue={defaults.outputGainDb} limits={MASTERING_LIMITS.outputGainDb} step={0.1} suffix="dB" precision={1} disabled={disabled} onChange={(value) => onParameter(["outputGainDb"], value)} /><div className={`premium-output-led ${node.bypass ? "" : "is-lit"}`}><i /><span>48 kHz / 24-bit print path</span></div><FaceplateCircuitSwitch node={node} mode="in" className="premium-faceplate-switch--output-in" onBypass={onBypass} /></div>
+    <ManualValues><div className="master-module-fields premium-exact-values"><Field label="Output level" value={node.parameters.outputGainDb} defaultValue={defaults.outputGainDb} limits={MASTERING_LIMITS.outputGainDb} suffix="dB" disabled={disabled} onCommit={(value) => onParameter(["outputGainDb"], value)} /></div></ManualValues>
   </>;
 }
 
 function PremiumLimiter({ node, disabled, onBypass, onParameter, meteringRef, live }) {
   const limiter = node.parameters;
+  const defaults = processorDefaultParameters(node.typeId);
   return (
     <>
       <div className="premium-faceplate premium-faceplate--limiter">
@@ -224,18 +229,18 @@ function PremiumLimiter({ node, disabled, onBypass, onParameter, meteringRef, li
         <HardwareGainReductionLeds meteringRef={meteringRef} meterNodeKey={`processor:${node.id}:limiter`} active={live && !disabled} />
         <LimiterTransferGraph limiter={limiter} meteringRef={meteringRef} meterNodeKey={`processor:${node.id}:limiter`} active={live && !disabled} />
         <div className="premium-knob-bank premium-knob-bank--limiter">
-          <RotaryControl className="premium-mock-control premium-mock-control--limiter-ceiling" dialMarks={PREMIUM_DIAL_MARKS.ceiling} label="Ceiling" value={limiter.ceilingDbfs} limits={MASTERING_LIMITS.limiterCeilingDbfs} step={0.1} suffix="dBFS" precision={1} disabled={disabled} onChange={(value) => onParameter(["ceilingDbfs"], value)} />
-          <RotaryControl className="premium-mock-control premium-mock-control--limiter-lookahead" dialMarks={PREMIUM_DIAL_MARKS.lookahead} label="Lookahead" value={limiter.attackMs} limits={MASTERING_LIMITS.limiterAttackMs} step={0.1} suffix="ms" scale="log" disabled={disabled} onChange={(value) => onParameter(["attackMs"], value)} />
-          <RotaryControl className="premium-mock-control premium-mock-control--limiter-release" dialMarks={PREMIUM_DIAL_MARKS.limiterRelease} label="Release" value={limiter.releaseMs} limits={MASTERING_LIMITS.limiterReleaseMs} step={1} suffix="ms" scale="log" disabled={disabled} onChange={(value) => onParameter(["releaseMs"], value)} />
-          <OversamplingSelector value={limiter.oversample} onChange={(value) => onParameter(["oversample"], value)} />
-          <RotaryControl className="premium-mock-control premium-mock-control--limiter-stereo-link" dialMarks={PREMIUM_DIAL_MARKS.stereoLink} label="Stereo link" value={limiter.stereoLinkPercent} limits={MASTERING_LIMITS.limiterStereoLinkPercent} step={1} suffix="%" precision={0} disabled={disabled} onChange={(value) => onParameter(["stereoLinkPercent"], value)} />
+          <RotaryControl className="premium-mock-control premium-mock-control--limiter-ceiling" dialMarks={PREMIUM_DIAL_MARKS.ceiling} label="Ceiling" value={limiter.ceilingDbfs} defaultValue={defaults.ceilingDbfs} limits={MASTERING_LIMITS.limiterCeilingDbfs} step={0.1} suffix="dBFS" precision={1} disabled={disabled} onChange={(value) => onParameter(["ceilingDbfs"], value)} />
+          <RotaryControl className="premium-mock-control premium-mock-control--limiter-lookahead" dialMarks={PREMIUM_DIAL_MARKS.lookahead} label="Lookahead" value={limiter.attackMs} defaultValue={defaults.attackMs} limits={MASTERING_LIMITS.limiterAttackMs} step={0.1} suffix="ms" scale="log" disabled={disabled} onChange={(value) => onParameter(["attackMs"], value)} />
+          <RotaryControl className="premium-mock-control premium-mock-control--limiter-release" dialMarks={PREMIUM_DIAL_MARKS.limiterRelease} label="Release" value={limiter.releaseMs} defaultValue={defaults.releaseMs} limits={MASTERING_LIMITS.limiterReleaseMs} step={1} suffix="ms" scale="log" disabled={disabled} onChange={(value) => onParameter(["releaseMs"], value)} />
+          <OversamplingSelector value={limiter.oversample} defaultValue={defaults.oversample} onChange={(value) => onParameter(["oversample"], value)} />
+          <RotaryControl className="premium-mock-control premium-mock-control--limiter-stereo-link" dialMarks={PREMIUM_DIAL_MARKS.stereoLink} label="Stereo link" value={limiter.stereoLinkPercent} defaultValue={defaults.stereoLinkPercent} limits={MASTERING_LIMITS.limiterStereoLinkPercent} step={1} suffix="%" precision={0} disabled={disabled} onChange={(value) => onParameter(["stereoLinkPercent"], value)} />
         </div>
       </div>
       <ManualValues><div className="master-module-fields premium-exact-values">
-        <Field label="Ceiling" value={limiter.ceilingDbfs} limits={MASTERING_LIMITS.limiterCeilingDbfs} suffix="dBFS" disabled={disabled} onCommit={(value) => onParameter(["ceilingDbfs"], value)} />
-        <Field label="Lookahead" value={limiter.attackMs} limits={MASTERING_LIMITS.limiterAttackMs} suffix="ms" disabled={disabled} onCommit={(value) => onParameter(["attackMs"], value)} />
-        <Field label="Release" value={limiter.releaseMs} limits={MASTERING_LIMITS.limiterReleaseMs} step={1} suffix="ms" disabled={disabled} onCommit={(value) => onParameter(["releaseMs"], value)} />
-        <Field label="Stereo link" value={limiter.stereoLinkPercent} limits={MASTERING_LIMITS.limiterStereoLinkPercent} step={1} suffix="%" disabled={disabled} onCommit={(value) => onParameter(["stereoLinkPercent"], value)} />
+        <Field label="Ceiling" value={limiter.ceilingDbfs} defaultValue={defaults.ceilingDbfs} limits={MASTERING_LIMITS.limiterCeilingDbfs} suffix="dBFS" disabled={disabled} onCommit={(value) => onParameter(["ceilingDbfs"], value)} />
+        <Field label="Lookahead" value={limiter.attackMs} defaultValue={defaults.attackMs} limits={MASTERING_LIMITS.limiterAttackMs} suffix="ms" disabled={disabled} onCommit={(value) => onParameter(["attackMs"], value)} />
+        <Field label="Release" value={limiter.releaseMs} defaultValue={defaults.releaseMs} limits={MASTERING_LIMITS.limiterReleaseMs} step={1} suffix="ms" disabled={disabled} onCommit={(value) => onParameter(["releaseMs"], value)} />
+        <Field label="Stereo link" value={limiter.stereoLinkPercent} defaultValue={defaults.stereoLinkPercent} limits={MASTERING_LIMITS.limiterStereoLinkPercent} step={1} suffix="%" disabled={disabled} onCommit={(value) => onParameter(["stereoLinkPercent"], value)} />
       </div></ManualValues>
     </>
   );
@@ -372,7 +377,7 @@ export function AdvancedMasteringRack({ rack, onChange, meteringRef, meteringAva
     <section className={`premium-mastering-rack ${normalized.bypass ? "is-bypassed" : ""}`} aria-labelledby="premium-rack-title">
       <header className="premium-rack-heading">
         <div><span className="premium-badge">PREMIUM</span><div><h3 id="premium-rack-title">Advanced Mastering Plug-in Rack</h3><p>Add, remove, reorder, duplicate, or bypass processors · live audition follows rack order · final print is authoritative</p></div></div>
-        <div className="premium-rack-master-actions"><strong>{normalized.bypass ? "Rack bypassed" : `${activeCount}/${normalized.nodes.length} plug-ins in circuit`}</strong><label className={`master-bypass-switch ${normalized.bypass ? "is-enabled" : ""}`}><input type="checkbox" checked={normalized.bypass} onChange={(event) => onChange({ ...normalized, bypass: event.target.checked })} /><span>Bypass rack</span></label><button type="button" className="text-button" onClick={() => { const reset = createDefaultAdvancedMastering(); onChange(reset); setSelectedId(reset.nodes[0].id); }}><RefreshIcon /> Reset rack</button></div>
+        <div className="premium-rack-master-actions"><strong>{normalized.bypass ? "Rack bypassed" : `${activeCount}/${normalized.nodes.length} plug-ins in circuit`}</strong><label className={`master-bypass-switch ${normalized.bypass ? "is-enabled" : ""}`}><input type="checkbox" checked={normalized.bypass} data-option-reset="true" data-default-value="false" title="Option-click to reset rack bypass" aria-keyshortcuts="Alt+Enter" onClick={(event) => handleOptionReset(event, { defaultValue: false, onReset: (value) => onChange({ ...normalized, bypass: value }) })} onKeyDown={(event) => handleOptionResetKey(event, { defaultValue: false, onReset: (value) => onChange({ ...normalized, bypass: value }) })} onChange={(event) => onChange({ ...normalized, bypass: event.target.checked })} /><span>Bypass rack</span></label><button type="button" className="text-button" onClick={() => { const reset = createDefaultAdvancedMastering(); onChange(reset); setSelectedId(reset.nodes[0].id); }}><RefreshIcon /> Reset rack</button></div>
       </header>
 
       <div className="premium-rack-toolbar">

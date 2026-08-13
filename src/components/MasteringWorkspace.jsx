@@ -14,6 +14,7 @@ import { MasterBusControls, MasteringNumberField as NumberField, TrackLevelContr
 import { MasteringReferenceAB } from "./MasteringReferenceAB.jsx";
 import { AdvancedMasteringRack } from "./AdvancedMasteringRack.jsx";
 import { createDefaultAdvancedMastering, normalizeAdvancedMastering, normalizeMasteringPath } from "../lib/advanced-mastering.js";
+import { handleOptionReset, handleOptionResetKey } from "../lib/option-reset.js";
 
 const fileForTrack = (track, libraryMap) => {
   const candidate = track.candidates.find((item) => item.id === track.auditionCandidateId);
@@ -153,7 +154,7 @@ export function MasteringWorkspace({ album, libraryMap, presets, renderingAvaila
       />
 
       <section className="mastering-tier-selector" aria-label="Mastering equipment level">
-        <div><strong>Equipment</strong></div>
+        <div><strong>Equipment</strong><small className="mastering-option-reset-hint"><kbd>⌥ Option</kbd> + click a parameter to reset it</small></div>
         <div role="group" aria-label="Choose mastering equipment level">
           <button type="button" className={masteringPath === "basic" ? "is-active" : ""} aria-pressed={masteringPath === "basic"} onClick={() => updateMasteringPath("basic")}><span>BASIC</span><strong>Component Chain</strong><small>Fast fixed EQ · compressor · output · limiter</small></button>
           <button type="button" className={masteringPath === "advanced" ? "is-active" : ""} aria-pressed={masteringPath === "advanced"} onClick={() => updateMasteringPath("advanced")}><span>PREMIUM</span><strong>Analog Rack</strong><small>Multiple units · drag-to-patch signal order</small></button>
@@ -225,9 +226,9 @@ export function MasteringWorkspace({ album, libraryMap, presets, renderingAvaila
               <section className="mastering-control-section">
                 <div className="mastering-section-title"><ScissorsIcon /><div><h3>Trim &amp; Opening</h3><p>Shorten the source from either end and optionally fade into the opening.</p></div></div>
                 <div className="mastering-field-grid">
-                  <NumberField label="Start at" value={settings.trimStart.toFixed(3)} maximum={Math.max(0, settings.trimEnd - 0.1)} step={0.01} onCommit={(value) => updateMastering("trimStart", value)} />
-                  <NumberField label="End at" value={settings.trimEnd.toFixed(3)} minimum={settings.trimStart + 0.1} maximum={selectedFile.duration} step={0.01} onCommit={(value) => updateMastering("trimEnd", value)} />
-                  <NumberField label="Fade in" value={settings.fadeIn.toFixed(2)} maximum={settings.duration - 0.05} step={0.1} onCommit={(value) => updateMastering("fadeIn", value)} />
+                  <NumberField label="Start at" value={settings.trimStart.toFixed(3)} defaultValue={0} maximum={Math.max(0, settings.trimEnd - 0.1)} step={0.01} onCommit={(value) => updateMastering("trimStart", value)} />
+                  <NumberField label="End at" value={settings.trimEnd.toFixed(3)} defaultValue={selectedFile.duration} minimum={settings.trimStart + 0.1} maximum={selectedFile.duration} step={0.01} onCommit={(value) => updateMastering("trimEnd", value)} />
+                  <NumberField label="Fade in" value={settings.fadeIn.toFixed(2)} defaultValue={0} maximum={settings.duration - 0.05} step={0.1} onCommit={(value) => updateMastering("fadeIn", value)} />
                 </div>
                 <button type="button" className="text-button preview-edit-button" disabled={!renderingAvailable || previewingTrackId === selectedTrack.id} title={renderingAvailable ? "Print a short edited-start preview" : "Rendered edit previews are unavailable in the browser"} onClick={() => onPreview(selectedTrack.id, "start")}><PlayIcon /> {previewingTrackId === selectedTrack.id ? "Printing Preview…" : renderingAvailable ? "Preview Edited Start" : "Preview Unavailable"}</button>
               </section>
@@ -240,11 +241,15 @@ export function MasteringWorkspace({ album, libraryMap, presets, renderingAvaila
                     ["cut", "Hard Cut", "Stop exactly at the trim point"],
                     ["fade", "Fade Out", "Fade to silence before the end"],
                     ["crossfade", "Crossfade", hasNextPlayable ? `Overlap into ${nextPlayable.track.title}` : "Needs a next playable track"],
-                  ].map(([mode, label, copy]) => <label key={mode} className={`${settings.endMode === mode ? "is-selected" : ""} ${mode === "crossfade" && !hasNextPlayable ? "is-disabled" : ""}`}><input type="radio" name={`ending-${selectedTrack.id}`} value={mode} checked={settings.endMode === mode} disabled={mode === "crossfade" && !hasNextPlayable} onChange={() => updateMastering("endMode", mode)} /><TransitionCurve mode={mode} /><strong>{label}</strong><small>{copy}</small><em>{transitionCurve(mode).curveLabel}</em></label>)}
+                  ].map(([mode, label, copy]) => {
+                    const disabled = mode === "crossfade" && !hasNextPlayable;
+                    const resetOptions = { defaultValue: "natural", disabled, onReset: (value) => updateMastering("endMode", value) };
+                    return <label key={mode} className={`${settings.endMode === mode ? "is-selected" : ""} ${disabled ? "is-disabled" : ""}`}><input type="radio" name={`ending-${selectedTrack.id}`} value={mode} checked={settings.endMode === mode} disabled={disabled} data-option-reset="true" data-default-value="natural" title="Option-click to reset ending to Natural" aria-keyshortcuts="Alt+Enter" onClick={(event) => handleOptionReset(event, resetOptions)} onKeyDown={(event) => handleOptionResetKey(event, resetOptions)} onChange={() => updateMastering("endMode", mode)} /><TransitionCurve mode={mode} /><strong>{label}</strong><small>{copy}</small><em>{transitionCurve(mode).curveLabel}</em></label>;
+                  })}
                 </div>
                 <div className="mastering-field-grid mastering-field-grid--ending">
-                  <NumberField label={settings.endMode === "crossfade" ? "Crossfade length" : "Ending fade length"} value={settings.endDuration.toFixed(2)} maximum={settings.duration - 0.05} step={0.1} disabled={!['fade', 'crossfade'].includes(settings.endMode)} onCommit={(value) => updateMastering("endDuration", value)} />
-                  <NumberField label="Silence after" value={settings.gapAfter.toFixed(2)} maximum={30} step={0.1} disabled={settings.endMode === "crossfade" || !hasNextPlayable} onCommit={(value) => updateMastering("gapAfter", value)} />
+                  <NumberField label={settings.endMode === "crossfade" ? "Crossfade length" : "Ending fade length"} value={settings.endDuration.toFixed(2)} defaultValue={3} maximum={settings.duration - 0.05} step={0.1} disabled={!['fade', 'crossfade'].includes(settings.endMode)} onCommit={(value) => updateMastering("endDuration", value)} />
+                  <NumberField label="Silence after" value={settings.gapAfter.toFixed(2)} defaultValue={0} maximum={30} step={0.1} disabled={settings.endMode === "crossfade" || !hasNextPlayable} onCommit={(value) => updateMastering("gapAfter", value)} />
                   <div className="ending-result"><span>Result</span><strong>{masteringSummary(settings)}</strong></div>
                 </div>
                 <button type="button" className="primary-button preview-ending-button" disabled={!renderingAvailable || previewingTrackId === selectedTrack.id} title={renderingAvailable ? "Print a short edited-ending preview" : "Rendered edit previews are unavailable in the browser"} onClick={() => onPreview(selectedTrack.id, "end")}><PlayIcon /> {previewingTrackId === selectedTrack.id ? "Printing Preview…" : renderingAvailable ? "Preview Edited Ending" : "Preview Unavailable"}</button>

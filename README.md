@@ -139,7 +139,11 @@ Up Arrow and Down Arrow select the previous or next playable track in the main
 sequence and synchronize that selection with the shared player. Playback keeps
 running when it was already active; a paused player stays paused. Focused text
 fields, selects, sliders, waveform controls, and open dialogs retain their
-normal arrow-key behavior.
+normal arrow-key behavior. In Mastering, Option-click any adjustable audio
+parameter to restore that parameter's model-defined default; Option+Enter
+provides the same reset from the keyboard. Basic and Premium controls use their
+own canonical defaults, so the shortcut does not replace the separate Reset
+MASTER or Reset rack actions.
 
 On phone widths, the shell removes duplicate count panels and hover-only
 tooltips, keeps the active album and primary actions above the fold, and

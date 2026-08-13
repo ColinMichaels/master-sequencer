@@ -232,6 +232,60 @@ test("Mastering keeps delivery compact and reveals secondary guidance on demand"
   await expect(masterBusTooltip).toHaveText("Every preview and exported track passes through this shared chain.");
 });
 
+test("Option-click resets Basic and Premium audio parameters to canonical defaults", async ({ page }) => {
+  await page.getByRole("button", { name: "Mastering", exact: true }).click();
+  await expect(page.getByText(/Option.*click a parameter to reset it/)).toBeVisible();
+
+  const trackLevel = page.locator(".track-level-fader input");
+  await trackLevel.fill("-6");
+  await expect(trackLevel).toHaveValue("-6");
+  await trackLevel.click({ modifiers: ["Alt"] });
+  await expect(trackLevel).toHaveValue("0");
+
+  const eqSwitch = page.getByLabel("Enable MASTER EQ");
+  await eqSwitch.check();
+  const lowShelfGain = page.getByRole("slider", { name: "Low shelf gain graphical control" });
+  await lowShelfGain.fill("4.5");
+  await expect(lowShelfGain).toHaveAttribute("aria-valuetext", "4.5 dB");
+  await lowShelfGain.click({ modifiers: ["Alt"] });
+  await expect(lowShelfGain).toHaveAttribute("aria-valuetext", "0.0 dB");
+
+  await eqSwitch.click({ modifiers: ["Alt"] });
+  await expect(eqSwitch).not.toBeChecked();
+
+  await page.getByRole("button", { name: /PREMIUM Analog Rack/ }).click();
+  const rack = page.getByRole("region", { name: "Advanced Mastering Plug-in Rack" });
+  const threshold = rack.getByRole("slider", { name: "Threshold graphical control", exact: true });
+  await threshold.fill("-36");
+  await threshold.click({ modifiers: ["Alt"] });
+  await expect(threshold).toHaveAttribute("aria-valuetext", "-18.0 dB");
+  await threshold.fill("-30");
+  await threshold.focus();
+  await page.keyboard.press("Alt+Enter");
+  await expect(threshold).toHaveAttribute("aria-valuetext", "-18.0 dB");
+
+  const eqExactValues = rack.locator(".premium-rack-unit").first().locator(".manual-control-bank");
+  await eqExactValues.locator("summary").click();
+  const channelMode = eqExactValues.getByRole("combobox", { name: "Channel mode" });
+  await channelMode.selectOption("side");
+  await expect(channelMode).toHaveValue("side");
+  await channelMode.click({ modifiers: ["Alt"] });
+  await expect(channelMode).toHaveValue("stereo");
+
+  const oversampling8x = rack.getByRole("button", { name: "8× oversampling", exact: true });
+  const oversampling4x = rack.getByRole("button", { name: "4× oversampling", exact: true });
+  const oversampling2x = rack.getByRole("button", { name: "2× oversampling", exact: true });
+  await oversampling8x.click();
+  await expect(oversampling8x).toHaveAttribute("aria-pressed", "true");
+  await oversampling2x.click({ modifiers: ["Alt"] });
+  await expect(oversampling4x).toHaveAttribute("aria-pressed", "true");
+
+  const sidechain = rack.getByRole("checkbox", { name: "Sidechain input switch", exact: true });
+  await sidechain.check();
+  await sidechain.click({ modifiers: ["Alt"] });
+  await expect(sidechain).not.toBeChecked();
+});
+
 test("Premium mastering patches repeated equipment in the same saved order used by the audio path", async ({ page, request }) => {
   await page.getByRole("button", { name: "Mastering", exact: true }).click();
   await page.getByRole("button", { name: /PREMIUM Analog Rack/ }).click();

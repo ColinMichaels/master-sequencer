@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { MASTERING_LIMITS } from "../lib/mastering.js";
+import { MASTER_BUS_DEFAULTS, MASTERING_LIMITS } from "../lib/mastering.js";
+import { handleOptionReset, handleOptionResetKey, hasResetDefault, optionResetTitle } from "../lib/option-reset.js";
 import { compressorGainReductionDb, equalizerLiveImpact, equalizerResponseDbAtFrequency, MAX_LIVE_COMPRESSOR_REDUCTION_DB, MAX_LIVE_LIMITER_REDUCTION_DB } from "../lib/live-mastering.js";
 import { MasterOutputMeters } from "./MasterOutputMeters.jsx";
 import { MasteringPresetControls } from "./MasteringPresetControls.jsx";
 
-export function MasteringNumberField({ label, value, minimum = 0, maximum, step = 0.1, suffix = "seconds", onCommit, disabled = false }) {
+export function MasteringNumberField({ label, value, defaultValue, minimum = 0, maximum, step = 0.1, suffix = "seconds", onCommit, disabled = false }) {
   const [draft, setDraft] = useState(String(value));
   useEffect(() => { setDraft(String(value)); }, [value]);
   const commit = () => {
@@ -12,7 +13,9 @@ export function MasteringNumberField({ label, value, minimum = 0, maximum, step 
     if (Number.isFinite(parsed)) onCommit(Math.min(maximum ?? parsed, Math.max(minimum, parsed)));
     else setDraft(String(value));
   };
-  return <label className="mastering-number-field"><span>{label}</span><div><input type="number" min={minimum} max={maximum} step={step} value={draft} disabled={disabled} onChange={(event) => setDraft(event.target.value)} onBlur={commit} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} /><small>{suffix}</small></div></label>;
+  const reset = (nextValue) => { setDraft(String(nextValue)); onCommit(nextValue); };
+  const resetOptions = { defaultValue, disabled, onReset: reset };
+  return <label className="mastering-number-field"><span>{label}</span><div><input type="number" min={minimum} max={maximum} step={step} value={draft} disabled={disabled} data-option-reset={hasResetDefault(defaultValue) ? "true" : undefined} data-default-value={hasResetDefault(defaultValue) ? String(defaultValue) : undefined} title={optionResetTitle(defaultValue)} aria-keyshortcuts={hasResetDefault(defaultValue) ? "Alt+Enter" : undefined} onPointerDown={(event) => handleOptionReset(event, resetOptions)} onChange={(event) => setDraft(event.target.value)} onBlur={commit} onKeyDown={(event) => { if (handleOptionResetKey(event, resetOptions)) return; if (event.key === "Enter") event.currentTarget.blur(); }} /><small>{suffix}</small></div></label>;
 }
 
 const NumberField = ({ limits, minimum, maximum, ...props }) => (
@@ -21,12 +24,24 @@ const NumberField = ({ limits, minimum, maximum, ...props }) => (
 
 const EMPTY_PRESET_LIBRARY = Object.freeze({});
 
-export const ModuleSwitch = ({ label, checked, onChange }) => (
+export const ModuleSwitch = ({ label, checked, defaultChecked, disabled = false, onChange }) => (
   <label className={`master-module-switch ${checked ? "is-enabled" : ""}`} data-tooltip={checked ? label.replace(/^Enable/, "Disable") : label}>
-    <input type="checkbox" checked={checked} aria-label={label} onChange={(event) => onChange(event.target.checked)} />
+    <input type="checkbox" checked={checked} disabled={disabled} aria-label={label} data-option-reset={hasResetDefault(defaultChecked) ? "true" : undefined} data-default-value={hasResetDefault(defaultChecked) ? String(defaultChecked) : undefined} title={optionResetTitle(defaultChecked)} aria-keyshortcuts={hasResetDefault(defaultChecked) ? "Alt+Enter" : undefined} onClick={(event) => handleOptionReset(event, { defaultValue: defaultChecked, disabled, onReset: onChange })} onKeyDown={(event) => handleOptionResetKey(event, { defaultValue: defaultChecked, disabled, onReset: onChange })} onChange={(event) => onChange(event.target.checked)} />
     <span aria-hidden="true"><i /></span>
   </label>
 );
+
+export function MasteringSelectField({ label, value, defaultValue, options, disabled = false, onChange }) {
+  const resetOptions = { defaultValue, disabled, onReset: onChange };
+  return (
+    <label className="master-select-field">
+      <span>{label}</span>
+      <select value={value} disabled={disabled} data-option-reset={hasResetDefault(defaultValue) ? "true" : undefined} data-default-value={hasResetDefault(defaultValue) ? String(defaultValue) : undefined} title={optionResetTitle(defaultValue)} aria-keyshortcuts={hasResetDefault(defaultValue) ? "Alt+Enter" : undefined} onPointerDown={(event) => handleOptionReset(event, resetOptions)} onKeyDown={(event) => handleOptionResetKey(event, resetOptions)} onChange={(event) => onChange(event.target.value)}>
+        {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+      </select>
+    </label>
+  );
+}
 
 const clamp = (value, minimum, maximum) => Math.min(maximum, Math.max(minimum, value));
 
@@ -61,7 +76,7 @@ const angleFromDialMarks = (value, dialMarks, fallback) => {
   return lower.angle + progress * (upper.angle - lower.angle);
 };
 
-export function RotaryControl({ label, value, limits, minimum, maximum, step = 0.1, suffix = "", precision, scale = "linear", dialMarks, disabled = false, compact = false, className = "", onChange }) {
+export function RotaryControl({ label, value, defaultValue, limits, minimum, maximum, step = 0.1, suffix = "", precision, scale = "linear", dialMarks, disabled = false, compact = false, className = "", onChange }) {
   const [adjusting, setAdjusting] = useState(false);
   const min = limits?.minimum ?? minimum;
   const max = limits?.maximum ?? maximum;
@@ -73,6 +88,8 @@ export function RotaryControl({ label, value, limits, minimum, maximum, step = 0
   const rangeMin = scale === "log" ? 0 : min;
   const rangeMax = scale === "log" ? 1 : max;
   const displayValue = displayControlValue(safeValue, suffix, precision);
+  const defaultDisplayValue = hasResetDefault(defaultValue) ? displayControlValue(defaultValue, suffix, precision) : undefined;
+  const resetOptions = { defaultValue, disabled, onReset: onChange };
   const isAdjustmentKey = (key) => ["ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp", "End", "Home", "PageDown", "PageUp"].includes(key);
   const change = (event) => {
     const raw = Number(event.target.value);
@@ -100,11 +117,15 @@ export function RotaryControl({ label, value, limits, minimum, maximum, step = 0
           aria-valuemax={max}
           aria-valuenow={safeValue}
           aria-valuetext={displayValue}
+          data-option-reset={hasResetDefault(defaultValue) ? "true" : undefined}
+          data-default-value={hasResetDefault(defaultValue) ? String(defaultValue) : undefined}
+          title={optionResetTitle(defaultValue, defaultDisplayValue)}
+          aria-keyshortcuts={hasResetDefault(defaultValue) ? "Alt+Enter" : undefined}
           onDragStart={(event) => event.preventDefault()}
-          onPointerDown={() => setAdjusting(true)}
+          onPointerDown={(event) => { if (!handleOptionReset(event, resetOptions)) setAdjusting(true); }}
           onPointerUp={() => setAdjusting(false)}
           onPointerCancel={() => setAdjusting(false)}
-          onKeyDown={(event) => { if (isAdjustmentKey(event.key)) setAdjusting(true); }}
+          onKeyDown={(event) => { if (handleOptionResetKey(event, resetOptions)) return; if (isAdjustmentKey(event.key)) setAdjusting(true); }}
           onKeyUp={(event) => { if (isAdjustmentKey(event.key)) setAdjusting(false); }}
           onBlur={() => setAdjusting(false)}
           onChange={change}
@@ -357,8 +378,8 @@ export function TrackLevelControl({ value, onChange }) {
         <div><h3>Track Level</h3><p>Applied to this track before fades, transitions, and the album MASTER bus.</p></div>
       </div>
       <div className="track-level-console">
-        <label className="track-level-fader"><span>Track level fader</span><input type="range" min={limits.minimum} max={limits.maximum} step="0.1" value={value} onChange={(event) => onChange(Number(event.target.value))} /><small>{Number(value).toFixed(1)} dB</small></label>
-        <NumberField label="Track gain" value={Number(value).toFixed(1)} limits={limits} step={0.1} suffix="dB" onCommit={onChange} />
+        <label className="track-level-fader"><span>Track level fader</span><input type="range" min={limits.minimum} max={limits.maximum} step="0.1" value={value} data-option-reset="true" data-default-value="0" title="Option-click to reset to 0 dB" aria-keyshortcuts="Alt+Enter" onPointerDown={(event) => handleOptionReset(event, { defaultValue: 0, onReset: onChange })} onKeyDown={(event) => handleOptionResetKey(event, { defaultValue: 0, onReset: onChange })} onChange={(event) => onChange(Number(event.target.value))} /><small>{Number(value).toFixed(1)} dB</small></label>
+        <NumberField label="Track gain" value={Number(value).toFixed(1)} defaultValue={0} limits={limits} step={0.1} suffix="dB" onCommit={onChange} />
       </div>
     </section>
   );
@@ -397,7 +418,7 @@ export function MasterBusControls({ bus, presets = EMPTY_PRESET_LIBRARY, onChang
         <MasteringPresetControls type="master" label="MASTER chain" presets={presets.master} prominent inline onSave={onSavePreset} onLoad={onLoadPreset} onDelete={onDeletePreset} />
         <div className="master-bus-actions">
           <span className="master-bus-status">{status}</span>
-          <label className={`master-bypass-switch ${bus.bypass ? "is-enabled" : ""}`}><input type="checkbox" checked={bus.bypass} onChange={(event) => onChange(["bypass"], event.target.checked)} /><span>Bypass MASTER</span></label>
+          <label className={`master-bypass-switch ${bus.bypass ? "is-enabled" : ""}`}><input type="checkbox" checked={bus.bypass} data-option-reset="true" data-default-value={String(MASTER_BUS_DEFAULTS.bypass)} title="Option-click to reset MASTER bypass" aria-keyshortcuts="Alt+Enter" onClick={(event) => handleOptionReset(event, { defaultValue: MASTER_BUS_DEFAULTS.bypass, onReset: (value) => onChange(["bypass"], value) })} onKeyDown={(event) => handleOptionResetKey(event, { defaultValue: MASTER_BUS_DEFAULTS.bypass, onReset: (value) => onChange(["bypass"], value) })} onChange={(event) => onChange(["bypass"], event.target.checked)} /><span>Bypass MASTER</span></label>
           <button type="button" className="text-button" onClick={onReset}>Reset MASTER</button>
         </div>
       </header>
@@ -408,78 +429,78 @@ export function MasterBusControls({ bus, presets = EMPTY_PRESET_LIBRARY, onChang
 
       <div className="master-module-grid">
         <section className={`master-module master-module--eq ${bus.eq.enabled ? "is-enabled" : ""}`}>
-          <header><div><span>01</span><h4>Equalizer</h4></div><MasteringPresetControls type="eq" label="EQ" presets={presets.eq} inline onSave={onSavePreset} onLoad={onLoadPreset} onDelete={onDeletePreset} /><ModuleSwitch label="Enable MASTER EQ" checked={bus.eq.enabled} onChange={(value) => onChange(["eq", "enabled"], value)} /></header>
+          <header><div><span>01</span><h4>Equalizer</h4></div><MasteringPresetControls type="eq" label="EQ" presets={presets.eq} inline onSave={onSavePreset} onLoad={onLoadPreset} onDelete={onDeletePreset} /><ModuleSwitch label="Enable MASTER EQ" checked={bus.eq.enabled} defaultChecked={MASTER_BUS_DEFAULTS.eq.enabled} onChange={(value) => onChange(["eq", "enabled"], value)} /></header>
           <div className="analog-faceplate analog-faceplate--eq">
             <EqResponseGraph eq={bus.eq} meteringRef={meteringRef} active={eqLive} />
             <div className="eq-band-bank">
-              <section><strong>LF Shelf</strong><div><RotaryControl label="Low shelf frequency" value={bus.eq.lowShelf.frequencyHz} limits={MASTERING_LIMITS.lowShelfFrequencyHz} step={1} suffix="Hz" scale="log" disabled={eqDisabled} onChange={(value) => onChange(["eq", "lowShelf", "frequencyHz"], value)} /><RotaryControl label="Low shelf gain" value={bus.eq.lowShelf.gainDb} limits={MASTERING_LIMITS.eqGainDb} step={0.1} suffix="dB" precision={1} disabled={eqDisabled} onChange={(value) => onChange(["eq", "lowShelf", "gainDb"], value)} /></div></section>
-              <section><strong>MF Bell</strong><div><RotaryControl label="Mid frequency" value={bus.eq.midBand.frequencyHz} limits={MASTERING_LIMITS.midBandFrequencyHz} step={1} suffix="Hz" scale="log" disabled={eqDisabled} onChange={(value) => onChange(["eq", "midBand", "frequencyHz"], value)} /><RotaryControl label="Mid gain" value={bus.eq.midBand.gainDb} limits={MASTERING_LIMITS.eqGainDb} step={0.1} suffix="dB" precision={1} disabled={eqDisabled} onChange={(value) => onChange(["eq", "midBand", "gainDb"], value)} /><RotaryControl label="Mid Q" value={bus.eq.midBand.q} limits={MASTERING_LIMITS.midBandQ} step={0.1} suffix="Q" precision={1} scale="log" disabled={eqDisabled} onChange={(value) => onChange(["eq", "midBand", "q"], value)} /></div></section>
-              <section><strong>HF Shelf</strong><div><RotaryControl label="High shelf frequency" value={bus.eq.highShelf.frequencyHz} limits={MASTERING_LIMITS.highShelfFrequencyHz} step={1} suffix="Hz" scale="log" disabled={eqDisabled} onChange={(value) => onChange(["eq", "highShelf", "frequencyHz"], value)} /><RotaryControl label="High shelf gain" value={bus.eq.highShelf.gainDb} limits={MASTERING_LIMITS.eqGainDb} step={0.1} suffix="dB" precision={1} disabled={eqDisabled} onChange={(value) => onChange(["eq", "highShelf", "gainDb"], value)} /></div></section>
+              <section><strong>LF Shelf</strong><div><RotaryControl label="Low shelf frequency" value={bus.eq.lowShelf.frequencyHz} defaultValue={MASTER_BUS_DEFAULTS.eq.lowShelf.frequencyHz} limits={MASTERING_LIMITS.lowShelfFrequencyHz} step={1} suffix="Hz" scale="log" disabled={eqDisabled} onChange={(value) => onChange(["eq", "lowShelf", "frequencyHz"], value)} /><RotaryControl label="Low shelf gain" value={bus.eq.lowShelf.gainDb} defaultValue={MASTER_BUS_DEFAULTS.eq.lowShelf.gainDb} limits={MASTERING_LIMITS.eqGainDb} step={0.1} suffix="dB" precision={1} disabled={eqDisabled} onChange={(value) => onChange(["eq", "lowShelf", "gainDb"], value)} /></div></section>
+              <section><strong>MF Bell</strong><div><RotaryControl label="Mid frequency" value={bus.eq.midBand.frequencyHz} defaultValue={MASTER_BUS_DEFAULTS.eq.midBand.frequencyHz} limits={MASTERING_LIMITS.midBandFrequencyHz} step={1} suffix="Hz" scale="log" disabled={eqDisabled} onChange={(value) => onChange(["eq", "midBand", "frequencyHz"], value)} /><RotaryControl label="Mid gain" value={bus.eq.midBand.gainDb} defaultValue={MASTER_BUS_DEFAULTS.eq.midBand.gainDb} limits={MASTERING_LIMITS.eqGainDb} step={0.1} suffix="dB" precision={1} disabled={eqDisabled} onChange={(value) => onChange(["eq", "midBand", "gainDb"], value)} /><RotaryControl label="Mid Q" value={bus.eq.midBand.q} defaultValue={MASTER_BUS_DEFAULTS.eq.midBand.q} limits={MASTERING_LIMITS.midBandQ} step={0.1} suffix="Q" precision={1} scale="log" disabled={eqDisabled} onChange={(value) => onChange(["eq", "midBand", "q"], value)} /></div></section>
+              <section><strong>HF Shelf</strong><div><RotaryControl label="High shelf frequency" value={bus.eq.highShelf.frequencyHz} defaultValue={MASTER_BUS_DEFAULTS.eq.highShelf.frequencyHz} limits={MASTERING_LIMITS.highShelfFrequencyHz} step={1} suffix="Hz" scale="log" disabled={eqDisabled} onChange={(value) => onChange(["eq", "highShelf", "frequencyHz"], value)} /><RotaryControl label="High shelf gain" value={bus.eq.highShelf.gainDb} defaultValue={MASTER_BUS_DEFAULTS.eq.highShelf.gainDb} limits={MASTERING_LIMITS.eqGainDb} step={0.1} suffix="dB" precision={1} disabled={eqDisabled} onChange={(value) => onChange(["eq", "highShelf", "gainDb"], value)} /></div></section>
             </div>
           </div>
           <ManualValues><div className="master-module-fields master-module-fields--eq">
-            <NumberField label="Low shelf frequency" value={bus.eq.lowShelf.frequencyHz} limits={MASTERING_LIMITS.lowShelfFrequencyHz} step={1} suffix="Hz" disabled={eqDisabled} onCommit={(value) => onChange(["eq", "lowShelf", "frequencyHz"], value)} />
-            <NumberField label="Low shelf gain" value={bus.eq.lowShelf.gainDb} limits={MASTERING_LIMITS.eqGainDb} step={0.1} suffix="dB" disabled={eqDisabled} onCommit={(value) => onChange(["eq", "lowShelf", "gainDb"], value)} />
-            <NumberField label="Mid frequency" value={bus.eq.midBand.frequencyHz} limits={MASTERING_LIMITS.midBandFrequencyHz} step={1} suffix="Hz" disabled={eqDisabled} onCommit={(value) => onChange(["eq", "midBand", "frequencyHz"], value)} />
-            <NumberField label="Mid gain" value={bus.eq.midBand.gainDb} limits={MASTERING_LIMITS.eqGainDb} step={0.1} suffix="dB" disabled={eqDisabled} onCommit={(value) => onChange(["eq", "midBand", "gainDb"], value)} />
-            <NumberField label="Mid Q" value={bus.eq.midBand.q} limits={MASTERING_LIMITS.midBandQ} step={0.1} suffix="Q" disabled={eqDisabled} onCommit={(value) => onChange(["eq", "midBand", "q"], value)} />
-            <NumberField label="High shelf frequency" value={bus.eq.highShelf.frequencyHz} limits={MASTERING_LIMITS.highShelfFrequencyHz} step={1} suffix="Hz" disabled={eqDisabled} onCommit={(value) => onChange(["eq", "highShelf", "frequencyHz"], value)} />
-            <NumberField label="High shelf gain" value={bus.eq.highShelf.gainDb} limits={MASTERING_LIMITS.eqGainDb} step={0.1} suffix="dB" disabled={eqDisabled} onCommit={(value) => onChange(["eq", "highShelf", "gainDb"], value)} />
+            <NumberField label="Low shelf frequency" value={bus.eq.lowShelf.frequencyHz} defaultValue={MASTER_BUS_DEFAULTS.eq.lowShelf.frequencyHz} limits={MASTERING_LIMITS.lowShelfFrequencyHz} step={1} suffix="Hz" disabled={eqDisabled} onCommit={(value) => onChange(["eq", "lowShelf", "frequencyHz"], value)} />
+            <NumberField label="Low shelf gain" value={bus.eq.lowShelf.gainDb} defaultValue={MASTER_BUS_DEFAULTS.eq.lowShelf.gainDb} limits={MASTERING_LIMITS.eqGainDb} step={0.1} suffix="dB" disabled={eqDisabled} onCommit={(value) => onChange(["eq", "lowShelf", "gainDb"], value)} />
+            <NumberField label="Mid frequency" value={bus.eq.midBand.frequencyHz} defaultValue={MASTER_BUS_DEFAULTS.eq.midBand.frequencyHz} limits={MASTERING_LIMITS.midBandFrequencyHz} step={1} suffix="Hz" disabled={eqDisabled} onCommit={(value) => onChange(["eq", "midBand", "frequencyHz"], value)} />
+            <NumberField label="Mid gain" value={bus.eq.midBand.gainDb} defaultValue={MASTER_BUS_DEFAULTS.eq.midBand.gainDb} limits={MASTERING_LIMITS.eqGainDb} step={0.1} suffix="dB" disabled={eqDisabled} onCommit={(value) => onChange(["eq", "midBand", "gainDb"], value)} />
+            <NumberField label="Mid Q" value={bus.eq.midBand.q} defaultValue={MASTER_BUS_DEFAULTS.eq.midBand.q} limits={MASTERING_LIMITS.midBandQ} step={0.1} suffix="Q" disabled={eqDisabled} onCommit={(value) => onChange(["eq", "midBand", "q"], value)} />
+            <NumberField label="High shelf frequency" value={bus.eq.highShelf.frequencyHz} defaultValue={MASTER_BUS_DEFAULTS.eq.highShelf.frequencyHz} limits={MASTERING_LIMITS.highShelfFrequencyHz} step={1} suffix="Hz" disabled={eqDisabled} onCommit={(value) => onChange(["eq", "highShelf", "frequencyHz"], value)} />
+            <NumberField label="High shelf gain" value={bus.eq.highShelf.gainDb} defaultValue={MASTER_BUS_DEFAULTS.eq.highShelf.gainDb} limits={MASTERING_LIMITS.eqGainDb} step={0.1} suffix="dB" disabled={eqDisabled} onCommit={(value) => onChange(["eq", "highShelf", "gainDb"], value)} />
           </div></ManualValues>
         </section>
 
         <section className={`master-module master-module--compressor ${bus.compressor.enabled ? "is-enabled" : ""}`}>
-          <header><div><span>02</span><h4>Compressor</h4></div><MasteringPresetControls type="compressor" label="Compressor" presets={presets.compressor} inline onSave={onSavePreset} onLoad={onLoadPreset} onDelete={onDeletePreset} /><ModuleSwitch label="Enable MASTER compressor" checked={bus.compressor.enabled} onChange={(value) => onChange(["compressor", "enabled"], value)} /></header>
+          <header><div><span>02</span><h4>Compressor</h4></div><MasteringPresetControls type="compressor" label="Compressor" presets={presets.compressor} inline onSave={onSavePreset} onLoad={onLoadPreset} onDelete={onDeletePreset} /><ModuleSwitch label="Enable MASTER compressor" checked={bus.compressor.enabled} defaultChecked={MASTER_BUS_DEFAULTS.compressor.enabled} onChange={(value) => onChange(["compressor", "enabled"], value)} /></header>
           <div className="analog-faceplate analog-faceplate--compressor">
             <CompressorTransferGraph compressor={bus.compressor} meteringRef={meteringRef} active={compressorLive} />
             <div className="rotary-control-bank rotary-control-bank--compressor">
-              <RotaryControl label="Threshold" value={bus.compressor.thresholdDb} limits={MASTERING_LIMITS.compressorThresholdDb} step={0.1} suffix="dB" precision={1} disabled={compressorDisabled} onChange={(value) => onChange(["compressor", "thresholdDb"], value)} />
-              <RotaryControl label="Ratio" value={bus.compressor.ratio} limits={MASTERING_LIMITS.compressorRatio} step={0.1} suffix=":1" precision={1} scale="log" disabled={compressorDisabled} onChange={(value) => onChange(["compressor", "ratio"], value)} />
-              <RotaryControl label="Attack" value={bus.compressor.attackMs} limits={MASTERING_LIMITS.compressorAttackMs} step={0.1} suffix="ms" scale="log" disabled={compressorDisabled} onChange={(value) => onChange(["compressor", "attackMs"], value)} />
-              <RotaryControl label="Release" value={bus.compressor.releaseMs} limits={MASTERING_LIMITS.compressorReleaseMs} step={1} suffix="ms" scale="log" disabled={compressorDisabled} onChange={(value) => onChange(["compressor", "releaseMs"], value)} />
-              <RotaryControl label="Knee" value={bus.compressor.knee} limits={MASTERING_LIMITS.compressorKnee} step={0.1} precision={1} disabled={compressorDisabled} onChange={(value) => onChange(["compressor", "knee"], value)} />
-              <RotaryControl label="Makeup gain" value={bus.compressor.makeupGainDb} limits={MASTERING_LIMITS.compressorMakeupGainDb} step={0.1} suffix="dB" precision={1} disabled={compressorDisabled} onChange={(value) => onChange(["compressor", "makeupGainDb"], value)} />
-              <RotaryControl label="Parallel mix" value={Math.round(bus.compressor.mix * 100)} minimum={0} maximum={100} step={1} suffix="%" precision={0} disabled={compressorDisabled} onChange={(value) => onChange(["compressor", "mix"], value / 100)} />
+              <RotaryControl label="Threshold" value={bus.compressor.thresholdDb} defaultValue={MASTER_BUS_DEFAULTS.compressor.thresholdDb} limits={MASTERING_LIMITS.compressorThresholdDb} step={0.1} suffix="dB" precision={1} disabled={compressorDisabled} onChange={(value) => onChange(["compressor", "thresholdDb"], value)} />
+              <RotaryControl label="Ratio" value={bus.compressor.ratio} defaultValue={MASTER_BUS_DEFAULTS.compressor.ratio} limits={MASTERING_LIMITS.compressorRatio} step={0.1} suffix=":1" precision={1} scale="log" disabled={compressorDisabled} onChange={(value) => onChange(["compressor", "ratio"], value)} />
+              <RotaryControl label="Attack" value={bus.compressor.attackMs} defaultValue={MASTER_BUS_DEFAULTS.compressor.attackMs} limits={MASTERING_LIMITS.compressorAttackMs} step={0.1} suffix="ms" scale="log" disabled={compressorDisabled} onChange={(value) => onChange(["compressor", "attackMs"], value)} />
+              <RotaryControl label="Release" value={bus.compressor.releaseMs} defaultValue={MASTER_BUS_DEFAULTS.compressor.releaseMs} limits={MASTERING_LIMITS.compressorReleaseMs} step={1} suffix="ms" scale="log" disabled={compressorDisabled} onChange={(value) => onChange(["compressor", "releaseMs"], value)} />
+              <RotaryControl label="Knee" value={bus.compressor.knee} defaultValue={MASTER_BUS_DEFAULTS.compressor.knee} limits={MASTERING_LIMITS.compressorKnee} step={0.1} precision={1} disabled={compressorDisabled} onChange={(value) => onChange(["compressor", "knee"], value)} />
+              <RotaryControl label="Makeup gain" value={bus.compressor.makeupGainDb} defaultValue={MASTER_BUS_DEFAULTS.compressor.makeupGainDb} limits={MASTERING_LIMITS.compressorMakeupGainDb} step={0.1} suffix="dB" precision={1} disabled={compressorDisabled} onChange={(value) => onChange(["compressor", "makeupGainDb"], value)} />
+              <RotaryControl label="Parallel mix" value={Math.round(bus.compressor.mix * 100)} defaultValue={Math.round(MASTER_BUS_DEFAULTS.compressor.mix * 100)} minimum={0} maximum={100} step={1} suffix="%" precision={0} disabled={compressorDisabled} onChange={(value) => onChange(["compressor", "mix"], value / 100)} />
             </div>
           </div>
           <ManualValues><div className="master-module-fields">
-            <NumberField label="Threshold" value={bus.compressor.thresholdDb} limits={MASTERING_LIMITS.compressorThresholdDb} step={0.1} suffix="dB" disabled={compressorDisabled} onCommit={(value) => onChange(["compressor", "thresholdDb"], value)} />
-            <NumberField label="Ratio" value={bus.compressor.ratio} limits={MASTERING_LIMITS.compressorRatio} step={0.1} suffix=":1" disabled={compressorDisabled} onCommit={(value) => onChange(["compressor", "ratio"], value)} />
-            <NumberField label="Attack" value={bus.compressor.attackMs} limits={MASTERING_LIMITS.compressorAttackMs} step={0.1} suffix="ms" disabled={compressorDisabled} onCommit={(value) => onChange(["compressor", "attackMs"], value)} />
-            <NumberField label="Release" value={bus.compressor.releaseMs} limits={MASTERING_LIMITS.compressorReleaseMs} step={1} suffix="ms" disabled={compressorDisabled} onCommit={(value) => onChange(["compressor", "releaseMs"], value)} />
-            <NumberField label="Knee" value={bus.compressor.knee} limits={MASTERING_LIMITS.compressorKnee} step={0.1} suffix="" disabled={compressorDisabled} onCommit={(value) => onChange(["compressor", "knee"], value)} />
-            <NumberField label="Makeup gain" value={bus.compressor.makeupGainDb} limits={MASTERING_LIMITS.compressorMakeupGainDb} step={0.1} suffix="dB" disabled={compressorDisabled} onCommit={(value) => onChange(["compressor", "makeupGainDb"], value)} />
-            <NumberField label="Parallel mix" value={Math.round(bus.compressor.mix * 100)} minimum={0} maximum={100} step={1} suffix="%" disabled={compressorDisabled} onCommit={(value) => onChange(["compressor", "mix"], value / 100)} />
-            <label className="master-select-field"><span>Detection</span><select value={bus.compressor.detection} disabled={compressorDisabled} onChange={(event) => onChange(["compressor", "detection"], event.target.value)}><option value="rms">RMS</option><option value="peak">Peak</option></select></label>
-            <label className="master-select-field"><span>Stereo link</span><select value={bus.compressor.link} disabled={compressorDisabled} onChange={(event) => onChange(["compressor", "link"], event.target.value)}><option value="maximum">Maximum</option><option value="average">Average</option></select></label>
+            <NumberField label="Threshold" value={bus.compressor.thresholdDb} defaultValue={MASTER_BUS_DEFAULTS.compressor.thresholdDb} limits={MASTERING_LIMITS.compressorThresholdDb} step={0.1} suffix="dB" disabled={compressorDisabled} onCommit={(value) => onChange(["compressor", "thresholdDb"], value)} />
+            <NumberField label="Ratio" value={bus.compressor.ratio} defaultValue={MASTER_BUS_DEFAULTS.compressor.ratio} limits={MASTERING_LIMITS.compressorRatio} step={0.1} suffix=":1" disabled={compressorDisabled} onCommit={(value) => onChange(["compressor", "ratio"], value)} />
+            <NumberField label="Attack" value={bus.compressor.attackMs} defaultValue={MASTER_BUS_DEFAULTS.compressor.attackMs} limits={MASTERING_LIMITS.compressorAttackMs} step={0.1} suffix="ms" disabled={compressorDisabled} onCommit={(value) => onChange(["compressor", "attackMs"], value)} />
+            <NumberField label="Release" value={bus.compressor.releaseMs} defaultValue={MASTER_BUS_DEFAULTS.compressor.releaseMs} limits={MASTERING_LIMITS.compressorReleaseMs} step={1} suffix="ms" disabled={compressorDisabled} onCommit={(value) => onChange(["compressor", "releaseMs"], value)} />
+            <NumberField label="Knee" value={bus.compressor.knee} defaultValue={MASTER_BUS_DEFAULTS.compressor.knee} limits={MASTERING_LIMITS.compressorKnee} step={0.1} suffix="" disabled={compressorDisabled} onCommit={(value) => onChange(["compressor", "knee"], value)} />
+            <NumberField label="Makeup gain" value={bus.compressor.makeupGainDb} defaultValue={MASTER_BUS_DEFAULTS.compressor.makeupGainDb} limits={MASTERING_LIMITS.compressorMakeupGainDb} step={0.1} suffix="dB" disabled={compressorDisabled} onCommit={(value) => onChange(["compressor", "makeupGainDb"], value)} />
+            <NumberField label="Parallel mix" value={Math.round(bus.compressor.mix * 100)} defaultValue={Math.round(MASTER_BUS_DEFAULTS.compressor.mix * 100)} minimum={0} maximum={100} step={1} suffix="%" disabled={compressorDisabled} onCommit={(value) => onChange(["compressor", "mix"], value / 100)} />
+            <MasteringSelectField label="Detection" value={bus.compressor.detection} defaultValue={MASTER_BUS_DEFAULTS.compressor.detection} disabled={compressorDisabled} options={[{ value: "rms", label: "RMS" }, { value: "peak", label: "Peak" }]} onChange={(value) => onChange(["compressor", "detection"], value)} />
+            <MasteringSelectField label="Stereo link" value={bus.compressor.link} defaultValue={MASTER_BUS_DEFAULTS.compressor.link} disabled={compressorDisabled} options={[{ value: "maximum", label: "Maximum" }, { value: "average", label: "Average" }]} onChange={(value) => onChange(["compressor", "link"], value)} />
           </div></ManualValues>
         </section>
 
         <section className={`master-module master-module--output ${Math.abs(bus.outputGainDb) > 0.0001 ? "is-enabled" : ""}`}>
           <header><div><span>03</span><h4>Output</h4></div><MasteringPresetControls type="output" label="Output" presets={presets.output} inline onSave={onSavePreset} onLoad={onLoadPreset} onDelete={onDeletePreset} /><small>Post compression</small></header>
           <div className="analog-faceplate analog-faceplate--output">
-            <RotaryControl label="MASTER output gain" value={bus.outputGainDb} limits={MASTERING_LIMITS.outputGainDb} step={0.1} suffix="dB" precision={1} disabled={bus.bypass} onChange={(value) => onChange(["outputGainDb"], value)} />
+            <RotaryControl label="MASTER output gain" value={bus.outputGainDb} defaultValue={MASTER_BUS_DEFAULTS.outputGainDb} limits={MASTERING_LIMITS.outputGainDb} step={0.1} suffix="dB" precision={1} disabled={bus.bypass} onChange={(value) => onChange(["outputGainDb"], value)} />
             <p>Final gain before the safety limiter</p>
           </div>
           <ManualValues><div className="master-module-fields">
-            <NumberField label="MASTER output gain" value={bus.outputGainDb} limits={MASTERING_LIMITS.outputGainDb} step={0.1} suffix="dB" disabled={bus.bypass} onCommit={(value) => onChange(["outputGainDb"], value)} />
+            <NumberField label="MASTER output gain" value={bus.outputGainDb} defaultValue={MASTER_BUS_DEFAULTS.outputGainDb} limits={MASTERING_LIMITS.outputGainDb} step={0.1} suffix="dB" disabled={bus.bypass} onCommit={(value) => onChange(["outputGainDb"], value)} />
           </div></ManualValues>
         </section>
 
         <section className={`master-module master-module--limiter ${bus.limiter.enabled ? "is-enabled" : ""}`}>
-          <header><div><span>04</span><h4>Limiter</h4></div><MasteringPresetControls type="limiter" label="Limiter" presets={presets.limiter} inline onSave={onSavePreset} onLoad={onLoadPreset} onDelete={onDeletePreset} /><ModuleSwitch label="Enable MASTER limiter" checked={bus.limiter.enabled} onChange={(value) => onChange(["limiter", "enabled"], value)} /></header>
+          <header><div><span>04</span><h4>Limiter</h4></div><MasteringPresetControls type="limiter" label="Limiter" presets={presets.limiter} inline onSave={onSavePreset} onLoad={onLoadPreset} onDelete={onDeletePreset} /><ModuleSwitch label="Enable MASTER limiter" checked={bus.limiter.enabled} defaultChecked={MASTER_BUS_DEFAULTS.limiter.enabled} onChange={(value) => onChange(["limiter", "enabled"], value)} /></header>
           <div className="analog-faceplate analog-faceplate--limiter">
             <LimiterTransferGraph limiter={bus.limiter} meteringRef={meteringRef} active={limiterLive} />
             <div className="rotary-control-bank rotary-control-bank--limiter">
-              <RotaryControl compact label="Ceiling" value={bus.limiter.ceilingDbfs} limits={MASTERING_LIMITS.limiterCeilingDbfs} step={0.1} suffix="dBFS" precision={1} disabled={limiterDisabled} onChange={(value) => onChange(["limiter", "ceilingDbfs"], value)} />
-              <RotaryControl compact label="Limiter attack" value={bus.limiter.attackMs} limits={MASTERING_LIMITS.limiterAttackMs} step={0.1} suffix="ms" scale="log" disabled={limiterDisabled} onChange={(value) => onChange(["limiter", "attackMs"], value)} />
-              <RotaryControl compact label="Limiter release" value={bus.limiter.releaseMs} limits={MASTERING_LIMITS.limiterReleaseMs} step={1} suffix="ms" scale="log" disabled={limiterDisabled} onChange={(value) => onChange(["limiter", "releaseMs"], value)} />
+              <RotaryControl compact label="Ceiling" value={bus.limiter.ceilingDbfs} defaultValue={MASTER_BUS_DEFAULTS.limiter.ceilingDbfs} limits={MASTERING_LIMITS.limiterCeilingDbfs} step={0.1} suffix="dBFS" precision={1} disabled={limiterDisabled} onChange={(value) => onChange(["limiter", "ceilingDbfs"], value)} />
+              <RotaryControl compact label="Limiter attack" value={bus.limiter.attackMs} defaultValue={MASTER_BUS_DEFAULTS.limiter.attackMs} limits={MASTERING_LIMITS.limiterAttackMs} step={0.1} suffix="ms" scale="log" disabled={limiterDisabled} onChange={(value) => onChange(["limiter", "attackMs"], value)} />
+              <RotaryControl compact label="Limiter release" value={bus.limiter.releaseMs} defaultValue={MASTER_BUS_DEFAULTS.limiter.releaseMs} limits={MASTERING_LIMITS.limiterReleaseMs} step={1} suffix="ms" scale="log" disabled={limiterDisabled} onChange={(value) => onChange(["limiter", "releaseMs"], value)} />
             </div>
           </div>
           <ManualValues><div className="master-module-fields">
-            <NumberField label="Ceiling" value={bus.limiter.ceilingDbfs} limits={MASTERING_LIMITS.limiterCeilingDbfs} step={0.1} suffix="dBFS" disabled={limiterDisabled} onCommit={(value) => onChange(["limiter", "ceilingDbfs"], value)} />
-            <NumberField label="Limiter attack" value={bus.limiter.attackMs} limits={MASTERING_LIMITS.limiterAttackMs} step={0.1} suffix="ms" disabled={limiterDisabled} onCommit={(value) => onChange(["limiter", "attackMs"], value)} />
-            <NumberField label="Limiter release" value={bus.limiter.releaseMs} limits={MASTERING_LIMITS.limiterReleaseMs} step={1} suffix="ms" disabled={limiterDisabled} onCommit={(value) => onChange(["limiter", "releaseMs"], value)} />
+            <NumberField label="Ceiling" value={bus.limiter.ceilingDbfs} defaultValue={MASTER_BUS_DEFAULTS.limiter.ceilingDbfs} limits={MASTERING_LIMITS.limiterCeilingDbfs} step={0.1} suffix="dBFS" disabled={limiterDisabled} onCommit={(value) => onChange(["limiter", "ceilingDbfs"], value)} />
+            <NumberField label="Limiter attack" value={bus.limiter.attackMs} defaultValue={MASTER_BUS_DEFAULTS.limiter.attackMs} limits={MASTERING_LIMITS.limiterAttackMs} step={0.1} suffix="ms" disabled={limiterDisabled} onCommit={(value) => onChange(["limiter", "attackMs"], value)} />
+            <NumberField label="Limiter release" value={bus.limiter.releaseMs} defaultValue={MASTER_BUS_DEFAULTS.limiter.releaseMs} limits={MASTERING_LIMITS.limiterReleaseMs} step={1} suffix="ms" disabled={limiterDisabled} onCommit={(value) => onChange(["limiter", "releaseMs"], value)} />
           </div></ManualValues>
         </section>
       </div>
