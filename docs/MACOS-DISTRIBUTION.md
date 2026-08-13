@@ -45,7 +45,8 @@ This command compiles the Swift package, passes the self-test and all 16 golden
 comparisons, verifies the query-only hardware handshake, runs three explicit
 silence-only trials, three generated shared-DSP shadow/recovery trials, and
 three 10-second atomic-parameter stress trials. It stages only optimized release
-executables and writes two ignored binaries plus a sanitized schema-4 manifest.
+executables and writes two ignored binaries plus a sanitized schema-5 manifest
+that declares the fixed-capacity C callback safety boundary.
 A distribution build that includes them
 must sign both nested executables with the same Developer ID team; the strict
 release audit checks each fingerprint and rejects missing or invalid nested
@@ -133,9 +134,12 @@ Intel/Apple Silicon testing remain separate product-release gates.
   bootstrap status passed across all three launches.
 - Optional silent/shadow/stress laboratory: short muted hardware trials and
   three 10-second parameter/recovery trials matched the reviewed DSP golden
-  before staging; packaged but never auto-started by the app. Allocation stack
-  logging found one first-callback Swift TLS allocation, so it is not production
-  playback authority.
+  before staging; packaged but never auto-started by the app. The callback was
+  moved to fixed-capacity C without weakening Swift exclusivity, and live stack
+  logging found no allocation event containing either callback symbol.
+  Controlled default-output and 48/44.1 kHz restoration passed, but removable
+  physical-device loss remains untested, so it is not production playback
+  authority.
 - Valid Developer ID identities on this Mac: zero.
 - Signature: ad-hoc/linker only; not Developer ID.
 - Hardened-runtime proof on a Developer ID signature: absent.

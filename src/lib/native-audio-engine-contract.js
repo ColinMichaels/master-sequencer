@@ -169,13 +169,15 @@ export const validateNativeSilentStreamReport = (report) => {
   const normalizedRecovery = {
     defaultDeviceListener: recovery.defaultDeviceListener,
     processorOverloadListener: recovery.processorOverloadListener,
+    sampleRateListener: recovery.sampleRateListener === true,
     simulatedDeviceChange: recovery.simulatedDeviceChange,
     deviceChangesObserved: cleanNonnegativeInteger(recovery.deviceChangesObserved, "device-change count", 100),
+    sampleRateChangesObserved: cleanNonnegativeInteger(recovery.sampleRateChangesObserved ?? 0, "sample-rate-change count", 100),
   };
 
   if (report.available === false) {
     if (report.reasonCode !== "no-output-device" || report.stream != null) throw new Error("Native silent-stream unavailable state is invalid.");
-    if (normalizedRecovery.defaultDeviceListener || normalizedRecovery.processorOverloadListener || normalizedRecovery.simulatedDeviceChange || normalizedRecovery.deviceChangesObserved !== 0 || Object.values(normalizedLifecycle).some((value) => typeof value === "number" && value !== 0)) throw new Error("Native silent-stream unavailable lifecycle is invalid.");
+    if (normalizedRecovery.defaultDeviceListener || normalizedRecovery.processorOverloadListener || normalizedRecovery.sampleRateListener || normalizedRecovery.simulatedDeviceChange || normalizedRecovery.deviceChangesObserved !== 0 || normalizedRecovery.sampleRateChangesObserved !== 0 || Object.values(normalizedLifecycle).some((value) => typeof value === "number" && value !== 0)) throw new Error("Native silent-stream unavailable lifecycle is invalid.");
     return { schemaVersion: 1, capturedAt, mode: "silent-output-lab", available: false, reasonCode: "no-output-device", handshake, isolation: { ...isolation }, lifecycle: normalizedLifecycle, recovery: normalizedRecovery, stream: null };
   }
   if (!normalizedRecovery.defaultDeviceListener || !normalizedRecovery.processorOverloadListener) throw new Error("Native silent-stream recovery listeners were not active.");
@@ -223,7 +225,7 @@ export const validateNativeSilentStreamReport = (report) => {
 
 export const validateNativeShadowStreamReport = (report) => {
   const mode = report?.mode;
-  if (!report || !["muted-shadow-output-lab", "muted-shadow-stress-lab"].includes(mode)) throw new Error("Native muted-shadow mode is invalid.");
+  if (!report || !["muted-shadow-output-lab", "muted-shadow-stress-lab", "muted-shadow-hardware-transition-lab"].includes(mode)) throw new Error("Native muted-shadow mode is invalid.");
   const streamReport = validateNativeSilentStreamReport({ ...report, mode: "silent-output-lab" });
   if (report.isolation?.shadowInput !== "generated-golden-only") throw new Error("Native muted-shadow input isolation is invalid.");
   if (!streamReport.available) {
@@ -319,6 +321,55 @@ export const validateNativeStressStreamReport = (report) => {
   return {
     ...normalized,
     stress: { targetDurationMs, parameterChangesRequested, parameterChangesCompleted, simulatedRecoveryAtMs, systemAudioConfigurationChanged: false },
+  };
+};
+
+export const validateNativeHardwareTransitionReport = (report) => {
+  if (!report || report.mode !== "muted-shadow-hardware-transition-lab") throw new Error("Native hardware-transition mode is invalid.");
+  const normalized = validateNativeShadowStreamReport(report);
+  if (!normalized.available) throw new Error("Native hardware-transition verification requires an output device.");
+  if (report.stress != null) throw new Error("Native hardware-transition report cannot claim stress evidence.");
+  if (normalized.recovery.simulatedDeviceChange || !normalized.recovery.sampleRateListener) throw new Error("Native hardware-transition listeners are incomplete.");
+
+  const evidence = report.hardwareTransitions;
+  if (!evidence || evidence.authorization !== "explicit-cli" || evidence.baselineDefaultOutputRestored !== true || evidence.baselineSampleRateRestored !== true) {
+    throw new Error("Native hardware-transition restoration evidence is invalid.");
+  }
+  const output = evidence.controlledDefaultOutput;
+  if (!output || output.available !== true || !["built-in", "virtual", "aggregate", "usb", "bluetooth", "display-port", "other"].includes(output.targetKind)
+      || output.switchAttempted !== true || output.switchObserved !== true || output.restorationAttempted !== true || output.restorationObserved !== true) {
+    throw new Error("Native controlled default-output transition is incomplete.");
+  }
+  const sampleRate = evidence.sampleRate;
+  if (!sampleRate || sampleRate.available !== true || !NATIVE_AUDIO_SAMPLE_RATES.includes(sampleRate.originalHz) || !NATIVE_AUDIO_SAMPLE_RATES.includes(sampleRate.targetHz)
+      || sampleRate.originalHz === sampleRate.targetHz || sampleRate.changeAttempted !== true || sampleRate.changeObserved !== true
+      || sampleRate.restorationAttempted !== true || sampleRate.restorationObserved !== true) {
+    throw new Error("Native sample-rate transition is incomplete.");
+  }
+  const physical = evidence.physicalDeviceLoss;
+  const removablePhysicalOutputsAvailable = cleanNonnegativeInteger(physical?.removablePhysicalOutputsAvailable, "removable physical output count", 100);
+  if (!physical || typeof physical.removalAttempted !== "boolean" || typeof physical.lossObserved !== "boolean" || typeof physical.reconnectionObserved !== "boolean") {
+    throw new Error("Native physical-device-loss evidence is invalid.");
+  }
+  if (!physical.removalAttempted) {
+    const expectedReason = removablePhysicalOutputsAvailable === 0 ? "no-removable-physical-output" : "manual-removal-required";
+    if (physical.lossObserved || physical.reconnectionObserved || physical.reasonCode !== expectedReason) throw new Error("Native physical-device-loss limitation is inconsistent.");
+  } else if (!physical.lossObserved || !physical.reconnectionObserved || physical.reasonCode !== "observed") {
+    throw new Error("Native physical-device loss and reconnection were not both observed.");
+  }
+  if (normalized.recovery.deviceChangesObserved < 2 || normalized.recovery.sampleRateChangesObserved < 2 || normalized.lifecycle.recoveries < 4) {
+    throw new Error("Native hardware-transition recovery coverage is incomplete.");
+  }
+  return {
+    ...normalized,
+    hardwareTransitions: {
+      authorization: "explicit-cli",
+      controlledDefaultOutput: { ...output },
+      sampleRate: { ...sampleRate },
+      physicalDeviceLoss: { ...physical, removablePhysicalOutputsAvailable },
+      baselineDefaultOutputRestored: true,
+      baselineSampleRateRestored: true,
+    },
   };
 };
 

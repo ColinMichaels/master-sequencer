@@ -206,9 +206,43 @@ a promotion gate.
   no recurring per-block allocation call in the kernel.
 
 Gate 10 proves the parameter-mailbox and muted stress scope, not production
-readiness. Gate 11 is physical default-device loss/sample-rate recovery plus a
-reviewed way to remove the first-callback runtime allocation. Project audio
-remains prohibited until both are proven.
+readiness.
+
+### Gate 11 — allocation-safe callback and available hardware transitions: partial 2026-08-12
+
+- The AudioUnit callback no longer enters the Swift runtime. A fixed-capacity C
+  shadow state is allocated and initialized on the control thread, owns only the
+  generated 4,096-frame fixture/capture buffers, applies the atomic parameter
+  word with bounded loops, and is read only after the AudioUnit stops. Swift
+  exclusivity remains fully enabled for the checked offline reference kernel.
+- The exact optimized-release binary retained bit-exact
+  `74d25b2c...b995` parity. Live malloc stack logging found no allocation event
+  whose stack contained `ps_silence_render_callback` or
+  `ps_realtime_shadow_process`; unrelated Core Audio/AudioAnalytics allocations
+  were not misreported as callback work.
+- `npm run native:hardware:verify` is an explicit system-audio mutation gate.
+  It snapshots the default output and its nominal rate, renders only silence,
+  switches to an available alternate output and back, changes to a supported
+  alternate rate and back, and has an unconditional restoration guard. The
+  normal app, server, and packaged bootstrap cannot invoke this mode.
+- Accepted controlled runs switched from the built-in output to an aggregate
+  output and back and changed 48 kHz to 44.1 kHz and back. The hardened gate
+  forces one owned AudioUnit rebuild after every observed mutation, drains
+  delayed property notifications before stop, and requires at least four
+  recoveries. The latest scripted run completed six recoveries, restored the
+  built-in output and 48 kHz client format, matched the golden, and reported no
+  frame, deadline, timing-gap, render, overload, or shadow failure; its longest
+  callback was below 0.007 ms.
+- This Mac exposed one physical output (built-in speakers) and no removable USB,
+  Bluetooth, or DisplayPort output. A literal physical removal/reconnection was
+  therefore not attempted. The path-free report records
+  `no-removable-physical-output`; the aggregate switch is not labeled a physical
+  unplug.
+
+Gate 11 closes the known callback-allocation and live sample-rate/default-output
+work, but not the physical hot-plug requirement. Project audio remains prohibited
+until loss/reconnection is repeated with removable hardware and the broader
+production gates pass.
 
 ## Decision
 
@@ -314,6 +348,7 @@ Useful verification commands:
 npm run dsp:smoke
 npm run native:devices:verify
 npm run native:realtime:verify
+npm run native:hardware:verify
 npm run native:stage
 npm run desktop:smoke
 npm run desktop:pack
@@ -377,12 +412,15 @@ this checkpoint.
    lock-free timing telemetry without production playback.
 9. **Complete:** the real callback runs generated samples through the Swift
    kernel, matches the reviewed golden, and still emits only zeros.
-10. **Atomic handoff/stress complete; production promotion remains gated:**
-    three coherent parameter generations survive recovery in each 10-second
-    release trial. Stack logging found one first-callback Swift TLS allocation.
-    Next eliminate that allocation without weakening exclusivity and run
-    physical device-loss/sample-rate tests before any user-selected audio enters
-    this path.
+10. **Complete:** three coherent parameter generations survive recovery in each
+    10-second release trial. Stack logging identified one first-callback Swift
+    TLS allocation without weakening exclusivity to conceal it.
+11. **Allocation and available device transitions complete; physical unplug
+    remains gated:** the callback now stays in preallocated C, the exact golden
+    remains stable, callback allocation stacks are absent, and controlled
+    default-output plus 48/44.1 kHz transitions restore safely. Repeat true loss
+    and reconnection when removable physical output hardware is attached before
+    any user-selected audio enters this path.
 
 The promotion gate for shared DSP is measurable parity and recovery—not its UI
 appearance. It must survive buffer-size changes, sample-rate changes, device

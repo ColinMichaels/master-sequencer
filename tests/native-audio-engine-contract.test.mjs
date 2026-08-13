@@ -6,6 +6,7 @@ import {
   normalizeNativeAudioDeviceConfiguration,
   validateNativeAudioEngineHandshake,
   validateNativeAudioHardwareProbe,
+  validateNativeHardwareTransitionReport,
   validateNativeShadowStreamReport,
   validateNativeSilentStreamReport,
   validateNativeStressStreamReport,
@@ -280,4 +281,35 @@ test("muted native stress reports require long callback coverage and a coherent 
   assert.equal(report.stress.systemAudioConfigurationChanged, false);
   assert.throws(() => validateNativeStressStreamReport({ ...stressReport, shadow: { ...stressReport.shadow, parameterHandoff: { ...stressReport.shadow.parameterHandoff, appliedUpdates: 2 } } }), /handoff|sequence/);
   assert.throws(() => validateNativeStressStreamReport({ ...stressReport, stream: { ...stressReport.stream, callbacks: 400, renderedFrames: 204_800 }, shadow: { ...stressReport.shadow, processedCallbacks: 400, processedFrames: 204_800, kernelProcessedFrames: 204_800 } }), /duration/);
+});
+
+test("hardware transition reports require real default-output and sample-rate restoration without overstating physical loss", () => {
+  const hardwareReport = {
+    schemaVersion: 1,
+    capturedAt: "2026-08-12T12:00:00.000Z",
+    mode: "muted-shadow-hardware-transition-lab",
+    available: true,
+    reasonCode: null,
+    handshake: { protocolVersion: 1, dspContractVersion: 2, engineVersion: "0.6.0", engineInstanceId: "engine-abcd1234", implementationFingerprint: "1234567890abcdef1234567890abcdef", capabilities: { offlineRender: true, realTimeOutput: true, deviceNotifications: true, maximumChannels: 2, supportedSampleRates: [48_000] } },
+    isolation: { audioContent: "silence-only", inputAccess: false, sourceMediaAccess: false, productionPlaybackConnected: false, shadowInput: "generated-golden-only" },
+    lifecycle: { startRequests: 5, starts: 5, stopRequests: 5, stops: 5, recoveryRequests: 4, recoveries: 4, invalidTransitions: 0, finalState: "stopped" },
+    recovery: { defaultDeviceListener: true, processorOverloadListener: true, sampleRateListener: true, simulatedDeviceChange: false, deviceChangesObserved: 2, sampleRateChangesObserved: 2 },
+    stream: { sampleRate: 48_000, channels: 2, maximumFramesPerSlice: 512, requestedDurationMs: 10_000, observedDurationMs: 10_010, callbacks: 680, renderedFrames: 348_160, frameMismatches: 0, deadlineMisses: 0, timingGapXruns: 0, renderErrors: 0, processorOverloads: 0, longestCallbackMs: 0.01, lockFreeTelemetry: true },
+    shadow: { fixtureId: "dual-tone-gain", fixtureSampleRate: 48_000, fixtureFrames: 4_096, generatedInput: true, checksumAlgorithm: "sha256-float32le-v1", expectedSha256: "74d25b2c630082715417bc8f213357752cfc56f439d6f930ac2dd7fdbde9b995", actualSha256: "74d25b2c630082715417bc8f213357752cfc56f439d6f930ac2dd7fdbde9b995", checksumMatch: true, processedCallbacks: 680, processedFrames: 348_160, kernelProcessedFrames: 348_160, capturedFrames: 4_096, recoveredSamples: 0, failures: 0, hardwareOutputZeroFilledAfterShadow: true, parameterHandoff: { mailbox: "atomic-u64-generation-float32", lockFree: true, publishedUpdates: 1, appliedUpdates: 1, lastPublishedGeneration: 1, lastAppliedGeneration: 1, lastPublishedOutputGainDb: -0.75, lastAppliedOutputGainDb: -0.75, coherent: true } },
+    stress: null,
+    hardwareTransitions: {
+      authorization: "explicit-cli",
+      controlledDefaultOutput: { available: true, targetKind: "virtual", switchAttempted: true, switchObserved: true, restorationAttempted: true, restorationObserved: true },
+      sampleRate: { available: true, originalHz: 48_000, targetHz: 44_100, changeAttempted: true, changeObserved: true, restorationAttempted: true, restorationObserved: true },
+      physicalDeviceLoss: { removablePhysicalOutputsAvailable: 0, removalAttempted: false, lossObserved: false, reconnectionObserved: false, reasonCode: "no-removable-physical-output" },
+      baselineDefaultOutputRestored: true,
+      baselineSampleRateRestored: true,
+    },
+  };
+  const report = validateNativeHardwareTransitionReport(hardwareReport);
+  assert.equal(report.lifecycle.recoveries, 4);
+  assert.equal(report.hardwareTransitions.baselineSampleRateRestored, true);
+  assert.equal(report.hardwareTransitions.physicalDeviceLoss.reasonCode, "no-removable-physical-output");
+  assert.throws(() => validateNativeHardwareTransitionReport({ ...hardwareReport, hardwareTransitions: { ...hardwareReport.hardwareTransitions, baselineSampleRateRestored: false } }), /restoration/);
+  assert.throws(() => validateNativeHardwareTransitionReport({ ...hardwareReport, hardwareTransitions: { ...hardwareReport.hardwareTransitions, physicalDeviceLoss: { ...hardwareReport.hardwareTransitions.physicalDeviceLoss, lossObserved: true } } }), /physical-device-loss/);
 });

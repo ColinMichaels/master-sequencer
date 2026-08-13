@@ -173,18 +173,23 @@ briefly so a local page cannot create an unbounded child-process loop.
 
 The silence/shadow executable is packaged as inert laboratory code. No server
 route, renderer action, bootstrap, or transport path launches it. Its explicit
-verification command owns the AudioUnit lifecycle, registers default-device and
-processor-overload listeners, writes only zeros into host buffers, and emits
+verification command owns the AudioUnit lifecycle, registers default-device,
+sample-rate, and processor-overload listeners, writes only zeros into host buffers, and emits
 path-free evidence after stopping. A small C module contains the necessary
-host-buffer pointers and lock-free atomics. In muted-shadow mode the callback
-runs only pre-generated golden samples through the memory-safe Swift kernel,
-then C zeroes the hardware buffers. Swift never receives `AudioBufferList`, and
+host-buffer pointers, fixed-capacity generated shadow state, and lock-free
+atomics. In muted-shadow mode the callback remains entirely in C and runs only
+pre-generated golden samples through the reviewed gain slice before zeroing the
+hardware buffers. The checked Swift kernel remains the offline reference and
+never receives `AudioBufferList`, and
 the executable still has no source-media, local API, Settings, or transport
 connection. Stress mode carries a generation plus one bounded Float32 value in
 a single release/acquire 64-bit mailbox word and proves two parameter changes
-across recovery. Staging builds optimized release executables. Current stack
-logging still finds one first-callback Swift exclusivity TLS allocation, so this
-laboratory cannot be promoted to production playback yet.
+across recovery. An additional explicit CLI-only mode snapshots and restores
+the current default output and nominal rate around controlled system changes;
+the app cannot invoke it. Staging builds optimized release executables. Stack
+logging of the final C callback path found no allocation stack containing the
+render or shadow callback symbols. Physical removable-device loss remains
+unproven, so this laboratory cannot be promoted to production playback yet.
 
 Audio delivery supports single HTTP byte ranges, including suffix ranges used
 by media clients. Malformed, multiple, reversed, and out-of-bounds ranges return

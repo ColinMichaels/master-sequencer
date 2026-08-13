@@ -29,6 +29,7 @@
     "native:realtime:verify": "node scripts/verify-native-dsp.mjs --realtime",
     "native:shadow:verify": "node scripts/verify-native-dsp.mjs --shadow",
     "native:stress:verify": "node scripts/verify-native-dsp.mjs --stress",
+    "native:hardware:verify": "node scripts/verify-native-dsp.mjs --hardware-transitions",
     "native:stage": "node scripts/verify-native-dsp.mjs --devices --realtime --shadow --stress --stage",
     "check": "npm test && npm run build",
     "check:full": "npm run check && npm run test:browser && npm run test:browser:online"

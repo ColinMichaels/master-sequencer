@@ -95,10 +95,11 @@ Native/DSP POC checkpoint on `codex/native-dsp-poc`:
 - A SwiftPM native implementation now passes the complete contract-v2 golden
   set at every verified block size. A muted Core Audio laboratory now proves
   lifecycle, recovery, lock-free telemetry, generated shared-DSP shadow work,
-  and a coherent atomic parameter mailbox in optimized release builds. It still
-  emits only silence and has no physical hot-plug, WASM, user-media, or
-  production transport connection; stack logging also finds one first-callback
-  Swift TLS allocation.
+  a coherent atomic parameter mailbox, and an allocation-safe fixed-capacity C
+  callback in optimized release builds. Controlled default-output and
+  48/44.1 kHz transitions recover and restore correctly. It still emits only
+  silence and has no removable physical hot-plug evidence, WASM, user-media, or
+  production transport connection.
 - Packaging remains unsigned and uses installed FFmpeg. Google login, paid
   entitlements, native device I/O, true-peak DSP, and external plug-in hosting
   remain outside this checkpoint. See

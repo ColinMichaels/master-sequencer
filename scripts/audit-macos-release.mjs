@@ -68,7 +68,7 @@ try {
   const manifest = JSON.parse(await readFile(path.join(resourcesPath, "native-audio-runtime-manifest.json"), "utf8"));
   const expectedBinaries = {
     deviceProbe: { name: "shared-dsp-device-probe", capability: "query-only-default-output-probe" },
-    silentStream: { name: "shared-dsp-silent-stream", capability: "silence-muted-shadow-and-stress-realtime-output-lab" },
+    silentStream: { name: "shared-dsp-silent-stream", capability: "silence-muted-shadow-stress-and-opt-in-hardware-transition-lab" },
   };
   const binaries = {};
   for (const [key, expected] of Object.entries(expectedBinaries)) {
@@ -87,10 +87,13 @@ try {
     };
   }
   nativeAudio = {
-    manifest: manifest?.schemaVersion === 4
+    manifest: manifest?.schemaVersion === 5
       && manifest?.buildConfiguration === "release"
       && manifest?.protocolVersion === 1
-      && manifest?.dspContractVersion === 2,
+      && manifest?.dspContractVersion === 2
+      && manifest?.realtimeSafety?.callbackShadowImplementation === "preallocated-fixed-capacity-c"
+      && manifest?.realtimeSafety?.callbackHeapAllocationAllowed === false
+      && manifest?.realtimeSafety?.swiftRuntimeEntryFromCallback === false,
     binaries,
   };
 } catch {

@@ -5,7 +5,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { generateFixtureInput, loadSharedDspGoldenFixtures } from "../tests/helpers/shared-dsp-golden.mjs";
-import { validateNativeAudioHardwareProbe, validateNativeShadowStreamReport, validateNativeSilentStreamReport, validateNativeStressStreamReport } from "../src/lib/native-audio-engine-contract.js";
+import { validateNativeAudioHardwareProbe, validateNativeHardwareTransitionReport, validateNativeShadowStreamReport, validateNativeSilentStreamReport, validateNativeStressStreamReport } from "../src/lib/native-audio-engine-contract.js";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const packagePath = path.join(repositoryRoot, "native", "SharedDspEngine");
@@ -82,6 +82,7 @@ let hardwareProbe = null;
 let realtimeTrials = null;
 let shadowTrials = null;
 let stressTrials = null;
+let hardwareTransitionTrial = null;
 let staging = null;
 const stagingEntries = {};
 if (process.argv.includes("--devices")) {
@@ -262,21 +263,62 @@ if (process.argv.includes("--stress")) {
       ...stagingEntries.silentStream,
       path: "native/shared-dsp-silent-stream",
       sha256: fingerprint,
-      capability: "silence-muted-shadow-and-stress-realtime-output-lab",
-      engineVersion: "0.5.0",
+      capability: "silence-muted-shadow-stress-and-opt-in-hardware-transition-lab",
+      engineVersion: "0.6.0",
       stressTrials: stressTrials.length,
     };
   }
 }
 
+if (process.argv.includes("--hardware-transitions")) {
+  const streamPath = path.join(binaryPath, "shared-dsp-silent-stream");
+  const fingerprint = createHash("sha256").update(await readFile(streamPath)).digest("hex");
+  const stream = spawnSync(streamPath, ["--hardware-transitions", "--allow-system-audio-mutation", "--duration-ms", "10000"], {
+    encoding: "utf8",
+    timeout: 30_000,
+    env: { ...process.env, PROJECT_SEQUENCER_ENGINE_FINGERPRINT: fingerprint },
+  });
+  if (stream.status !== 0) throw new Error(stream.stderr || "Native hardware-transition trial failed.");
+  const report = validateNativeHardwareTransitionReport(JSON.parse(stream.stdout));
+  if (report.handshake.implementationFingerprint !== fingerprint) throw new Error("Native hardware-transition fingerprint does not match its compiled binary.");
+  if (report.stream.frameMismatches || report.stream.deadlineMisses || report.stream.timingGapXruns || report.stream.renderErrors || report.stream.processorOverloads) {
+    throw new Error("Native hardware-transition trial reported callback, timing, or overload failures.");
+  }
+  hardwareTransitionTrial = {
+    sampleRate: report.stream.sampleRate,
+    callbacks: report.stream.callbacks,
+    renderedFrames: report.stream.renderedFrames,
+    recoveries: report.lifecycle.recoveries,
+    longestCallbackMs: report.stream.longestCallbackMs,
+    defaultOutputTargetKind: report.hardwareTransitions.controlledDefaultOutput.targetKind,
+    defaultOutputSwitchObserved: report.hardwareTransitions.controlledDefaultOutput.switchObserved,
+    defaultOutputRestorationObserved: report.hardwareTransitions.controlledDefaultOutput.restorationObserved,
+    originalSampleRateHz: report.hardwareTransitions.sampleRate.originalHz,
+    targetSampleRateHz: report.hardwareTransitions.sampleRate.targetHz,
+    sampleRateChangeObserved: report.hardwareTransitions.sampleRate.changeObserved,
+    sampleRateRestorationObserved: report.hardwareTransitions.sampleRate.restorationObserved,
+    physicalDeviceLoss: report.hardwareTransitions.physicalDeviceLoss,
+    baselineDefaultOutputRestored: report.hardwareTransitions.baselineDefaultOutputRestored,
+    baselineSampleRateRestored: report.hardwareTransitions.baselineSampleRateRestored,
+    checksumMatch: report.shadow.checksumMatch,
+    shadowFailures: report.shadow.failures,
+    hardwareOutput: report.isolation.audioContent,
+  };
+}
+
 if (stageRequested) {
   if (!stagingEntries.deviceProbe || !stagingEntries.silentStream?.silenceTrials || !stagingEntries.silentStream?.shadowTrials || !stagingEntries.silentStream?.stressTrials) throw new Error("Native audio staging requires --devices, --realtime, --shadow, and --stress verification gates.");
   const manifest = {
-    schemaVersion: 4,
+    schemaVersion: 5,
     stagedAt: new Date().toISOString(),
     buildConfiguration,
     protocolVersion: hardwareProbe.handshake.protocolVersion,
     dspContractVersion: hardwareProbe.handshake.dspContractVersion,
+    realtimeSafety: {
+      callbackShadowImplementation: "preallocated-fixed-capacity-c",
+      callbackHeapAllocationAllowed: false,
+      swiftRuntimeEntryFromCallback: false,
+    },
     binaries: stagingEntries,
   };
   await writeFile(stagedManifestPath, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o644 });
@@ -294,5 +336,6 @@ process.stdout.write(`${JSON.stringify({
   ...(realtimeTrials ? { realtimeTrials } : {}),
   ...(shadowTrials ? { shadowTrials } : {}),
   ...(stressTrials ? { stressTrials } : {}),
+  ...(hardwareTransitionTrial ? { hardwareTransitionTrial } : {}),
   ...(staging ? { staging } : {}),
 }, null, 2)}\n`);

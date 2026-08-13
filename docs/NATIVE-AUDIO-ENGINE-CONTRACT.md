@@ -1,7 +1,8 @@
 # Native audio engine contract
 
-Status: compiled memory-safe DSP/offline proof plus muted real-time shadow,
-atomic parameter handoff, and stress evidence; not a production audio engine
+Status: compiled memory-safe DSP/offline proof plus allocation-safe muted
+real-time shadow, atomic parameter handoff, stress, and controlled hardware
+transition evidence; not a production audio engine
 
 ## Compiled Swift package
 
@@ -15,14 +16,13 @@ atomic parameter handoff, and stress evidence; not a production audio engine
 | `shared-dsp-device-probe` | Query-only Core Audio bridge for the current default-output format and reported latency |
 | `shared-dsp-silent-stream` | Explicit silence-only and muted shared-DSP AudioUnit laboratory |
 
-The processing method performs no file, network, UI, logging, or explicit
-allocation work. Hosts own the input/output buffers. Reset and sample-rate
-reconfiguration are control-thread operations and may replace state arrays.
-The implementation uses checked Swift arrays and contains no unsafe pointer or
-foreign-memory code. Release-mode stack logging nevertheless found one 32-byte
-Swift exclusivity TLS allocation on the first hardware callback. That runtime
-allocation is a known promotion blocker even though the kernel contains no
-per-block allocation call.
+The offline/reference processing method performs no file, network, UI, logging,
+or explicit allocation work. Hosts own its input/output buffers. Reset and
+sample-rate reconfiguration are control-thread operations and may replace state
+arrays. The reference implementation keeps checked Swift arrays and contains no
+unsafe pointer or foreign-memory code. The AudioUnit callback now remains in a
+separate fixed-capacity C boundary because entering Swift caused one first-use
+exclusivity TLS allocation. Swift safety checks remain enabled.
 
 Run:
 
@@ -48,16 +48,22 @@ npm run native:devices:verify
 npm run native:realtime:verify
 npm run native:shadow:verify
 npm run native:stress:verify
+npm run native:hardware:verify
 npm run native:stage
 ```
 
 The first command verifies the same compiled parity authority, fingerprints the
 probe binary, executes it, and requires an exact protocol/DSP/fingerprint
-handshake. The real-time command runs three short silence-only trials, and the
+handshake. The real-time command runs three short silence-only trials, the
 shadow command runs three muted shared-DSP trials against a reviewed golden,
-and the stress command runs three 10-second parameter/recovery trials. Staging
+the stress command runs three 10-second parameter/recovery trials, and the
+explicit hardware command performs restorable default-output and nominal-rate
+changes. Staging
 requires all four gates before copying two optimized release executables and a
-path-free schema-4 manifest into ignored desktop staging. It never stages audio.
+path-free schema-5 manifest into ignored desktop staging. The manifest declares
+the preallocated C callback boundary and prohibits callback heap allocation and
+Swift runtime entry. It never stages audio or automatically runs the
+system-mutation gate.
 Staging clears any older native probe first, so a failed build or handshake
 cannot leave a stale executable for a later package command to pick up.
 
@@ -118,14 +124,14 @@ certification.
 ## Muted shared-DSP shadow boundary
 
 `npm run native:shadow:verify` enables a second explicit mode in the same inert
-laboratory executable. On the control thread it preallocates two-channel input,
-output, and golden-capture arrays and generates the existing 4,096-frame
-`dual-tone-gain` fixture. The callback passes only an opaque processor context
-and frame count into Swift; it never passes the hardware `AudioBufferList`, a
-file path, project media, or input-device samples.
+laboratory executable. On the control thread it allocates one fixed-capacity C
+state block and generates the existing 4,096-frame `dual-tone-gain` fixture.
+The callback runs a bounded C implementation of this reviewed gain-only slice;
+it never enters Swift or receives a file path, project media, or input-device
+samples.
 
-Every callback runs `SharedDspKernel` over the generated fixture, then the C
-boundary zero-fills the hardware buffers. After the stream has fully stopped,
+Every callback processes the generated fixture, then zero-fills the hardware
+buffers. After the stream has fully stopped,
 the control thread hashes the first complete output fixture with the same
 Float32 little-endian layout used by the reviewed golden runner. Reports fail
 closed unless every hardware callback has matching shadow work, the kernel and
@@ -138,14 +144,16 @@ Each completed one simulated recovery with exact golden parity and no shadow
 failures, callback errors, deadline misses, timing-gap xruns, or processor
 overloads. The slowest observed callback was below 0.072 ms against the current
 10.67 ms 512-frame period. This proves generated shadow processing on one
-machine; it is not permission to route user audio.
+machine. The general checked Swift kernel remains the offline parity authority;
+the C shadow is not yet a complete production implementation and is not
+permission to route user audio.
 
 ## Atomic parameter and stress boundary
 
 The control thread publishes one coherent 64-bit word containing a monotonically
 increasing generation and one bounded Float32 output-gain value. The C callback
-loads that word once with acquire ordering. Swift applies a generation at most
-once; reports reconcile C publishes with Swift applies and reject stale,
+loads that word once with acquire ordering and applies a generation at most
+once; reports reconcile publishes with applies and reject stale,
 malformed, torn, or missing state. This avoids a callback lock and prevents a
 generation from being paired with a value from another update.
 
@@ -160,13 +168,34 @@ three publishes with three applies at generation 3, matched the reviewed golden,
 emitted hardware silence, and reported zero callback, deadline, timing-gap,
 render, overload, or shadow failures. The worst callback was below 0.073 ms.
 
-Malloc stack logging against the exact staged release fingerprint
-`5b48b8f1...d9429c4b` attributed one 32-byte allocation to Swift exclusivity TLS
-initialization on the first callback. Control-thread construction/reset
-allocations were separate. Disabling runtime exclusivity across the shared DSP
-library was rejected as the wrong safety tradeoff. A production callback must
-move this boundary to an allocation-free implementation or otherwise remove the
-runtime allocation without weakening exclusivity checks.
+Malloc stack logging first attributed one 32-byte allocation to Swift
+exclusivity TLS initialization on the first callback. Disabling runtime
+exclusivity across the shared library was rejected. After moving the shadow to
+preallocated fixed-capacity C, a complete live allocation-event scan of the
+exact release process found no stack containing either callback symbol. The
+same profiled run processed more than two million muted shadow frames with exact
+golden parity. Profiling overhead can cause Core Audio timing/overload counters,
+so performance acceptance remains a separate uninstrumented gate.
+
+## Controlled hardware-transition boundary
+
+`npm run native:hardware:verify` requires the explicit
+`--allow-system-audio-mutation` child-process flag. It snapshots the current
+default output and nominal sample rate, registers both property listeners,
+emits only silence, switches to an alternate output and back, changes to a
+supported alternate sample rate and back, forces an owned AudioUnit rebuild for
+every observed mutation, and drains delayed property notifications before
+stopping. A `defer` guard repeats restoration on every normal Swift error path.
+Reports contain only device kind and rates, never IDs,
+UIDs, names, or paths.
+
+On the 2026-08-12 machine, accepted runs completed an aggregate-output round
+trip and a 48 kHz -> 44.1 kHz -> 48 kHz round trip with at least four
+recoveries, exact golden parity, and final baseline restoration. The latest
+hardened scripted run completed six recoveries with no callback/timing failure.
+The machine had no removable physical
+output, so actual cable/device removal was unavailable and is explicitly
+reported rather than inferred from the aggregate switch.
 
 ## Latency authority
 
@@ -206,11 +235,11 @@ log stores reason codes and timestamps, never absolute paths or audio data.
 ## Remaining production work
 
 This checkpoint does not route project audio or shared-DSP output into hardware
-buffers. It also does not provide full device enumeration, aggregate-device
-support, physical hot-plug tests, WASM, a background service, production stream
+buffers. It also does not provide production device selection, aggregate-device
+management, completed physical hot-plug evidence, WASM, a background service, production stream
 IPC, or native offline printing. The golden runner remains a test bridge. The
 query-only and laboratory binaries can be packaged into the POC, but promotion
-still requires elimination of the first-callback Swift runtime allocation,
-representative long-duration/device profiling, physical device-loss and
-sample-rate tests, measured loopback latency, Developer ID signing/notarization,
+still requires representative long-duration/device profiling, physical
+device-loss/reconnection on removable hardware, measured loopback latency,
+Developer ID signing/notarization,
 and the existing source-safe rendered-audio checks.

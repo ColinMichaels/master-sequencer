@@ -1,9 +1,32 @@
 #include "SharedDspRealtimeSupport.h"
 
 #include <mach/mach_time.h>
+#include <math.h>
 #include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
+
+#define PS_SHADOW_CHANNELS 2
+#define PS_SHADOW_FIXTURE_FRAMES 4096
+#define PS_SHADOW_MAXIMUM_CALLBACK_FRAMES 4096
+#define PS_SHADOW_FIXTURE_SAMPLE_RATE 48000.0
+#define PS_SHADOW_INPUT_GAIN_DB 3.5
+#define PS_SHADOW_INITIAL_OUTPUT_GAIN_DB -0.75f
+
+typedef struct {
+    int enabled;
+    float fixtureInput[PS_SHADOW_CHANNELS][PS_SHADOW_FIXTURE_FRAMES];
+    float capturedOutput[PS_SHADOW_CHANNELS][PS_SHADOW_FIXTURE_FRAMES];
+    uint32_t fixtureCursor;
+    uint32_t capturedFrames;
+    uint32_t appliedUpdates;
+    uint32_t lastAppliedGeneration;
+    float lastAppliedOutputGainDb;
+    double currentGain;
+    double targetGain;
+    uint64_t processedFrames;
+    uint64_t recoveredSamples;
+} PSRealtimeShadow;
 
 struct PSRealtimeMetrics {
     _Atomic uint64_t callbacks;
@@ -14,6 +37,7 @@ struct PSRealtimeMetrics {
     _Atomic uint64_t renderErrors;
     _Atomic uint64_t processorOverloads;
     _Atomic uint64_t deviceChanges;
+    _Atomic uint64_t sampleRateChanges;
     _Atomic uint64_t shadowCallbacks;
     _Atomic uint64_t shadowFrames;
     _Atomic uint64_t shadowFailures;
@@ -24,10 +48,8 @@ struct PSRealtimeMetrics {
     _Atomic uint64_t deadlineTicks;
     _Atomic uint64_t ticksPerFrame;
     _Atomic uint32_t expectedFrames;
-    void *shadowContext;
+    PSRealtimeShadow shadow;
 };
-
-extern int32_t ps_shared_dsp_shadow_process(void *context, uint32_t frameCount, uint64_t parameterWord);
 
 static uint64_t ps_seconds_to_host_ticks(double seconds) {
     mach_timebase_info_data_t info;
@@ -72,9 +94,20 @@ void ps_realtime_metrics_configure(PSRealtimeMetrics *metrics, uint32_t expected
     atomic_store_explicit(&metrics->previousOutputHostTime, 0, memory_order_relaxed);
 }
 
-void ps_realtime_metrics_configure_shadow(PSRealtimeMetrics *metrics, void *shadowContext) {
+void ps_realtime_metrics_configure_shadow(PSRealtimeMetrics *metrics, int enabled) {
     if (!metrics) return;
-    metrics->shadowContext = shadowContext;
+    PSRealtimeShadow *shadow = &metrics->shadow;
+    memset(shadow, 0, sizeof(*shadow));
+    shadow->enabled = enabled ? 1 : 0;
+    if (!shadow->enabled) return;
+
+    for (uint32_t frame = 0; frame < PS_SHADOW_FIXTURE_FRAMES; frame += 1) {
+        shadow->fixtureInput[0][frame] = (float)(0.27 * sin((2.0 * M_PI * 997.0 * (double)frame) / PS_SHADOW_FIXTURE_SAMPLE_RATE));
+        shadow->fixtureInput[1][frame] = (float)(0.27 * sin((2.0 * M_PI * 503.0 * (double)frame) / PS_SHADOW_FIXTURE_SAMPLE_RATE));
+    }
+    shadow->lastAppliedOutputGainDb = PS_SHADOW_INITIAL_OUTPUT_GAIN_DB;
+    shadow->currentGain = pow(10.0, (PS_SHADOW_INPUT_GAIN_DB + (double)PS_SHADOW_INITIAL_OUTPUT_GAIN_DB) / 20.0);
+    shadow->targetGain = shadow->currentGain;
 }
 
 void ps_realtime_publish_shadow_output_gain(PSRealtimeMetrics *metrics, uint32_t generation, float outputGainDb) {
@@ -109,11 +142,43 @@ PS_GETTER(ps_realtime_timing_gap_xruns, timingGapXruns)
 PS_GETTER(ps_realtime_render_errors, renderErrors)
 PS_GETTER(ps_realtime_processor_overloads, processorOverloads)
 PS_GETTER(ps_realtime_device_changes, deviceChanges)
+PS_GETTER(ps_realtime_sample_rate_changes, sampleRateChanges)
 PS_GETTER(ps_realtime_shadow_callbacks, shadowCallbacks)
 PS_GETTER(ps_realtime_shadow_frames, shadowFrames)
 PS_GETTER(ps_realtime_shadow_failures, shadowFailures)
 PS_GETTER(ps_realtime_shadow_parameter_word, shadowParameterWord)
 PS_GETTER(ps_realtime_shadow_parameter_publishes, shadowParameterPublishes)
+
+uint64_t ps_realtime_shadow_kernel_processed_frames(const PSRealtimeMetrics *metrics) {
+    return metrics ? metrics->shadow.processedFrames : 0;
+}
+
+uint32_t ps_realtime_shadow_captured_frames(const PSRealtimeMetrics *metrics) {
+    return metrics ? metrics->shadow.capturedFrames : 0;
+}
+
+uint64_t ps_realtime_shadow_recovered_samples(const PSRealtimeMetrics *metrics) {
+    return metrics ? metrics->shadow.recoveredSamples : 0;
+}
+
+uint32_t ps_realtime_shadow_applied_updates(const PSRealtimeMetrics *metrics) {
+    return metrics ? metrics->shadow.appliedUpdates : 0;
+}
+
+uint32_t ps_realtime_shadow_last_applied_generation(const PSRealtimeMetrics *metrics) {
+    return metrics ? metrics->shadow.lastAppliedGeneration : 0;
+}
+
+float ps_realtime_shadow_last_applied_output_gain_db(const PSRealtimeMetrics *metrics) {
+    return metrics ? metrics->shadow.lastAppliedOutputGainDb : 0;
+}
+
+uint32_t ps_realtime_shadow_capture_sample_bits(const PSRealtimeMetrics *metrics, uint32_t channel, uint32_t frame) {
+    if (!metrics || channel >= PS_SHADOW_CHANNELS || frame >= metrics->shadow.capturedFrames) return 0;
+    uint32_t bits = 0;
+    memcpy(&bits, &metrics->shadow.capturedOutput[channel][frame], sizeof(bits));
+    return bits;
+}
 
 double ps_realtime_longest_callback_ms(const PSRealtimeMetrics *metrics) {
     return metrics ? ps_host_ticks_to_milliseconds(atomic_load_explicit(&metrics->longestCallbackTicks, memory_order_relaxed)) : 0;
@@ -123,6 +188,7 @@ int ps_realtime_metrics_are_lock_free(const PSRealtimeMetrics *metrics) {
     if (!metrics) return 0;
     return atomic_is_lock_free(&metrics->callbacks)
         && atomic_is_lock_free(&metrics->renderedFrames)
+        && atomic_is_lock_free(&metrics->sampleRateChanges)
         && atomic_is_lock_free(&metrics->shadowCallbacks)
         && atomic_is_lock_free(&metrics->longestCallbackTicks)
         && atomic_is_lock_free(&metrics->expectedFrames);
@@ -130,6 +196,46 @@ int ps_realtime_metrics_are_lock_free(const PSRealtimeMetrics *metrics) {
 
 int ps_realtime_shadow_parameter_word_is_lock_free(const PSRealtimeMetrics *metrics) {
     return metrics && atomic_is_lock_free(&metrics->shadowParameterWord);
+}
+
+static int32_t ps_realtime_shadow_process(PSRealtimeShadow *shadow, uint32_t frameCount, uint64_t parameterWord) {
+    uint32_t generation = (uint32_t)(parameterWord >> 32);
+    uint32_t gainBits = (uint32_t)(parameterWord & UINT64_C(0xffffffff));
+    float outputGainDb = 0;
+    memcpy(&outputGainDb, &gainBits, sizeof(outputGainDb));
+    if (!shadow || !shadow->enabled || frameCount == 0 || frameCount > PS_SHADOW_MAXIMUM_CALLBACK_FRAMES
+        || generation == 0 || !isfinite(outputGainDb) || outputGainDb < -48.0f || outputGainDb > 12.0f
+        || generation < shadow->lastAppliedGeneration) return 1;
+
+    if (generation > shadow->lastAppliedGeneration) {
+        shadow->targetGain = pow(10.0, (PS_SHADOW_INPUT_GAIN_DB + (double)outputGainDb) / 20.0);
+        shadow->lastAppliedGeneration = generation;
+        shadow->lastAppliedOutputGainDb = outputGainDb;
+        shadow->appliedUpdates += 1;
+    }
+
+    uint32_t captureCount = frameCount;
+    if (captureCount > PS_SHADOW_FIXTURE_FRAMES - shadow->capturedFrames) {
+        captureCount = PS_SHADOW_FIXTURE_FRAMES - shadow->capturedFrames;
+    }
+    for (uint32_t frame = 0; frame < frameCount; frame += 1) {
+        // The reviewed fixture uses zero smoothing, bypass off, no DC blocker,
+        // and no peak guard. Keep the arithmetic order identical to the Swift
+        // contract kernel so the captured Float32 stream remains bit-exact.
+        shadow->currentGain = shadow->targetGain;
+        for (uint32_t channel = 0; channel < PS_SHADOW_CHANNELS; channel += 1) {
+            double sample = (double)shadow->fixtureInput[channel][shadow->fixtureCursor];
+            float processed = (float)(sample * shadow->currentGain);
+            if (frame < captureCount) {
+                shadow->capturedOutput[channel][shadow->capturedFrames + frame] = processed;
+            }
+        }
+        shadow->fixtureCursor += 1;
+        if (shadow->fixtureCursor == PS_SHADOW_FIXTURE_FRAMES) shadow->fixtureCursor = 0;
+    }
+    shadow->capturedFrames += captureCount;
+    shadow->processedFrames += frameCount;
+    return 0;
 }
 
 OSStatus ps_silence_render_callback(
@@ -145,9 +251,9 @@ OSStatus ps_silence_render_callback(
     if (!metrics || !ioData) return noErr;
     uint64_t startedAt = mach_absolute_time();
 
-    if (metrics->shadowContext) {
+    if (metrics->shadow.enabled) {
         uint64_t parameterWord = atomic_load_explicit(&metrics->shadowParameterWord, memory_order_acquire);
-        int32_t shadowStatus = ps_shared_dsp_shadow_process(metrics->shadowContext, inNumberFrames, parameterWord);
+        int32_t shadowStatus = ps_realtime_shadow_process(&metrics->shadow, inNumberFrames, parameterWord);
         if (shadowStatus == 0) {
             atomic_fetch_add_explicit(&metrics->shadowCallbacks, 1, memory_order_relaxed);
             atomic_fetch_add_explicit(&metrics->shadowFrames, inNumberFrames, memory_order_relaxed);
@@ -226,6 +332,20 @@ static OSStatus ps_processor_overload_listener(
     return noErr;
 }
 
+static OSStatus ps_sample_rate_listener(
+    AudioObjectID inObjectID,
+    UInt32 inNumberAddresses,
+    const AudioObjectPropertyAddress inAddresses[],
+    void *inClientData
+) {
+    (void)inObjectID;
+    (void)inNumberAddresses;
+    (void)inAddresses;
+    PSRealtimeMetrics *metrics = (PSRealtimeMetrics *)inClientData;
+    if (metrics) atomic_fetch_add_explicit(&metrics->sampleRateChanges, 1, memory_order_relaxed);
+    return noErr;
+}
+
 OSStatus ps_install_default_output_listener(PSRealtimeMetrics *metrics) {
     AudioObjectPropertyAddress address = {
         .mSelector = kAudioHardwarePropertyDefaultOutputDevice,
@@ -270,4 +390,22 @@ OSStatus ps_remove_processor_overload_listener(AudioObjectID deviceID, PSRealtim
         .mElement = kAudioObjectPropertyElementMain,
     };
     return AudioObjectRemovePropertyListener(deviceID, &address, ps_processor_overload_listener, metrics);
+}
+
+OSStatus ps_install_sample_rate_listener(AudioObjectID deviceID, PSRealtimeMetrics *metrics) {
+    AudioObjectPropertyAddress address = {
+        .mSelector = kAudioDevicePropertyNominalSampleRate,
+        .mScope = kAudioObjectPropertyScopeGlobal,
+        .mElement = kAudioObjectPropertyElementMain,
+    };
+    return AudioObjectAddPropertyListener(deviceID, &address, ps_sample_rate_listener, metrics);
+}
+
+OSStatus ps_remove_sample_rate_listener(AudioObjectID deviceID, PSRealtimeMetrics *metrics) {
+    AudioObjectPropertyAddress address = {
+        .mSelector = kAudioDevicePropertyNominalSampleRate,
+        .mScope = kAudioObjectPropertyScopeGlobal,
+        .mElement = kAudioObjectPropertyElementMain,
+    };
+    return AudioObjectRemovePropertyListener(deviceID, &address, ps_sample_rate_listener, metrics);
 }

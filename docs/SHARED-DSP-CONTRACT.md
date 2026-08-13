@@ -80,8 +80,10 @@ version and review the fixtures; tests must never rewrite the expected hashes.
 The Swift native implementation passes the current goldens but is not yet a
 production replacement. WASM must independently pass them. Promotion also
 requires frequency response, dynamics envelopes, channel linking, automation
-ramps, denormal handling, allocation-free hardware callbacks, and physical
-device-loss recovery. The current release-mode muted laboratory has a coherent
-atomic parameter mailbox but stack logging identifies one 32-byte Swift TLS
-allocation on its first callback. Each authoritative print must record the DSP
+ramps, denormal handling, and physical device-loss recovery. The current
+release-mode muted laboratory uses a coherent atomic parameter mailbox and a
+preallocated fixed-capacity C callback path; live stack logging found no
+allocation event containing either callback symbol. Controlled default-output
+and 48/44.1 kHz round trips passed, while removable physical hot-plug remains
+unavailable on the current machine. Each authoritative print must record the DSP
 contract version and implementation fingerprint in its manifest.

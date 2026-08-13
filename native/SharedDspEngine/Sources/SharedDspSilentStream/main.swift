@@ -44,8 +44,10 @@ private struct Lifecycle: Encodable {
 private struct Recovery: Encodable {
     let defaultDeviceListener: Bool
     let processorOverloadListener: Bool
+    let sampleRateListener: Bool
     let simulatedDeviceChange: Bool
     let deviceChangesObserved: UInt64
+    let sampleRateChangesObserved: UInt64
 }
 
 private struct StreamMetrics: Encodable {
@@ -104,6 +106,42 @@ private struct StressEvidence: Encodable {
     let systemAudioConfigurationChanged: Bool
 }
 
+private struct ControlledDefaultOutputEvidence: Encodable {
+    let available: Bool
+    let targetKind: String?
+    let switchAttempted: Bool
+    let switchObserved: Bool
+    let restorationAttempted: Bool
+    let restorationObserved: Bool
+}
+
+private struct SampleRateTransitionEvidence: Encodable {
+    let available: Bool
+    let originalHz: Int
+    let targetHz: Int?
+    let changeAttempted: Bool
+    let changeObserved: Bool
+    let restorationAttempted: Bool
+    let restorationObserved: Bool
+}
+
+private struct PhysicalDeviceLossEvidence: Encodable {
+    let removablePhysicalOutputsAvailable: Int
+    let removalAttempted: Bool
+    let lossObserved: Bool
+    let reconnectionObserved: Bool
+    let reasonCode: String
+}
+
+private struct HardwareTransitionEvidence: Encodable {
+    let authorization = "explicit-cli"
+    let controlledDefaultOutput: ControlledDefaultOutputEvidence
+    let sampleRate: SampleRateTransitionEvidence
+    let physicalDeviceLoss: PhysicalDeviceLossEvidence
+    let baselineDefaultOutputRestored: Bool
+    let baselineSampleRateRestored: Bool
+}
+
 private struct SilentStreamReport: Encodable {
     let schemaVersion = 1
     let capturedAt: String
@@ -117,6 +155,7 @@ private struct SilentStreamReport: Encodable {
     let stream: StreamMetrics?
     let shadow: ShadowEvidence?
     let stress: StressEvidence?
+    let hardwareTransitions: HardwareTransitionEvidence?
 }
 
 private enum EngineState: String {
@@ -174,7 +213,224 @@ private func nominalSampleRate(for device: AudioObjectID) throws -> Double {
     return sampleRate
 }
 
-private final class GoldenShadowProcessor {
+private struct OutputDeviceDescriptor {
+    let id: AudioObjectID
+    let transport: UInt32
+    let channels: Int
+    let alive: Bool
+
+    var kind: String {
+        switch transport {
+        case kAudioDeviceTransportTypeBuiltIn: return "built-in"
+        case kAudioDeviceTransportTypeVirtual: return "virtual"
+        case kAudioDeviceTransportTypeAggregate: return "aggregate"
+        case kAudioDeviceTransportTypeUSB: return "usb"
+        case kAudioDeviceTransportTypeBluetooth, kAudioDeviceTransportTypeBluetoothLE: return "bluetooth"
+        case kAudioDeviceTransportTypeDisplayPort: return "display-port"
+        default: return "other"
+        }
+    }
+
+    var isPhysical: Bool { !["virtual", "aggregate"].contains(kind) }
+    var isRemovablePhysical: Bool { ["usb", "bluetooth", "display-port", "other"].contains(kind) }
+}
+
+private func scalarProperty<T>(_ object: AudioObjectID, selector: AudioObjectPropertySelector, scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal, as: T.Type) throws -> T {
+    var address = AudioObjectPropertyAddress(mSelector: selector, mScope: scope, mElement: kAudioObjectPropertyElementMain)
+    let value = UnsafeMutablePointer<T>.allocate(capacity: 1)
+    defer { value.deallocate() }
+    var size = UInt32(MemoryLayout<T>.size)
+    try requireNoError(AudioObjectGetPropertyData(object, &address, 0, nil, &size, value), "read Core Audio property")
+    return value.pointee
+}
+
+private func outputChannelCount(for device: AudioObjectID) -> Int {
+    var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreamConfiguration, mScope: kAudioDevicePropertyScopeOutput, mElement: kAudioObjectPropertyElementMain)
+    var size: UInt32 = 0
+    guard AudioObjectGetPropertyDataSize(device, &address, 0, nil, &size) == noErr, size > 0 else { return 0 }
+    let storage = UnsafeMutableRawPointer.allocate(byteCount: Int(size), alignment: MemoryLayout<AudioBufferList>.alignment)
+    defer { storage.deallocate() }
+    guard AudioObjectGetPropertyData(device, &address, 0, nil, &size, storage) == noErr else { return 0 }
+    return UnsafeMutableAudioBufferListPointer(storage.assumingMemoryBound(to: AudioBufferList.self)).reduce(0) { $0 + Int($1.mNumberChannels) }
+}
+
+private func outputDevices() throws -> [OutputDeviceDescriptor] {
+    let systemObject = AudioObjectID(kAudioObjectSystemObject)
+    var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+    var size: UInt32 = 0
+    try requireNoError(AudioObjectGetPropertyDataSize(systemObject, &address, 0, nil, &size), "read Core Audio device-list size")
+    var identifiers = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
+    guard !identifiers.isEmpty else { return [] }
+    let status = identifiers.withUnsafeMutableBytes { bytes in
+        AudioObjectGetPropertyData(systemObject, &address, 0, nil, &size, bytes.baseAddress!)
+    }
+    try requireNoError(status, "read Core Audio device list")
+    return try identifiers.compactMap { device in
+        let channels = outputChannelCount(for: device)
+        guard channels > 0 else { return nil }
+        let transport: UInt32 = try scalarProperty(device, selector: kAudioDevicePropertyTransportType, as: UInt32.self)
+        let alive: UInt32 = try scalarProperty(device, selector: kAudioDevicePropertyDeviceIsAlive, as: UInt32.self)
+        return OutputDeviceDescriptor(id: device, transport: transport, channels: channels, alive: alive != 0)
+    }
+}
+
+private func availableNominalSampleRates(for device: AudioObjectID) throws -> [Double] {
+    var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyAvailableNominalSampleRates, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+    var size: UInt32 = 0
+    try requireNoError(AudioObjectGetPropertyDataSize(device, &address, 0, nil, &size), "read available sample-rate size")
+    var ranges = [AudioValueRange](repeating: AudioValueRange(), count: Int(size) / MemoryLayout<AudioValueRange>.size)
+    guard !ranges.isEmpty else { return [] }
+    let status = ranges.withUnsafeMutableBytes { bytes in
+        AudioObjectGetPropertyData(device, &address, 0, nil, &size, bytes.baseAddress!)
+    }
+    try requireNoError(status, "read available sample rates")
+    let preferred = [44_100.0, 48_000.0, 88_200.0, 96_000.0, 176_400.0, 192_000.0]
+    return preferred.filter { rate in ranges.contains { rate >= $0.mMinimum && rate <= $0.mMaximum } }
+}
+
+private func propertyIsSettable(_ object: AudioObjectID, selector: AudioObjectPropertySelector) -> Bool {
+    var address = AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+    var settable = DarwinBoolean(false)
+    return AudioObjectIsPropertySettable(object, &address, &settable) == noErr && settable.boolValue
+}
+
+private func setDefaultOutputDevice(_ device: AudioObjectID) throws {
+    var address = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultOutputDevice, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+    var value = device
+    try requireNoError(AudioObjectSetPropertyData(AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, UInt32(MemoryLayout<AudioObjectID>.size), &value), "set default output device")
+}
+
+private func setNominalSampleRate(_ sampleRate: Double, for device: AudioObjectID) throws {
+    var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyNominalSampleRate, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+    var value = Float64(sampleRate)
+    try requireNoError(AudioObjectSetPropertyData(device, &address, 0, nil, UInt32(MemoryLayout<Float64>.size), &value), "set nominal sample rate")
+}
+
+private func waitUntil(timeout: TimeInterval = 2, _ condition: () -> Bool) -> Bool {
+    let deadline = Date().addingTimeInterval(timeout)
+    while Date() < deadline {
+        if condition() { return true }
+        Thread.sleep(forTimeInterval: 0.01)
+    }
+    return condition()
+}
+
+private final class HardwareTransitionController {
+    let baselineDevice: AudioObjectID
+    let baselineSampleRate: Double
+    let alternateDevice: OutputDeviceDescriptor?
+    let targetSampleRate: Double?
+    let removablePhysicalOutputs: Int
+    private(set) var switchAttempted = false
+    private(set) var switchObserved = false
+    private(set) var defaultRestorationAttempted = false
+    private(set) var defaultRestorationObserved = false
+    private(set) var rateChangeAttempted = false
+    private(set) var rateChangeObserved = false
+    private(set) var rateRestorationAttempted = false
+    private(set) var rateRestorationObserved = false
+
+    init(baselineDevice: AudioObjectID, baselineSampleRate: Double) throws {
+        self.baselineDevice = baselineDevice
+        self.baselineSampleRate = baselineSampleRate
+        let devices = try outputDevices().filter(\.alive)
+        let candidates = devices.filter { $0.id != baselineDevice }
+        alternateDevice = candidates.sorted {
+            if $0.isPhysical != $1.isPhysical { return $0.isPhysical && !$1.isPhysical }
+            if ($0.channels == 2) != ($1.channels == 2) { return $0.channels == 2 }
+            return $0.id < $1.id
+        }.first
+        removablePhysicalOutputs = devices.filter(\.isRemovablePhysical).count
+        let rates = try availableNominalSampleRates(for: baselineDevice)
+        targetSampleRate = rates.first { abs($0 - baselineSampleRate) > 0.5 }
+    }
+
+    func switchToAlternate() {
+        guard let alternateDevice,
+              propertyIsSettable(AudioObjectID(kAudioObjectSystemObject), selector: kAudioHardwarePropertyDefaultOutputDevice) else { return }
+        switchAttempted = true
+        do {
+            try setDefaultOutputDevice(alternateDevice.id)
+            switchObserved = waitUntil { (try? defaultOutputDevice()) == alternateDevice.id }
+        } catch {}
+    }
+
+    func restoreDefault() {
+        guard switchAttempted else { return }
+        defaultRestorationAttempted = true
+        if (try? defaultOutputDevice()) == baselineDevice {
+            defaultRestorationObserved = true
+            return
+        }
+        do {
+            try setDefaultOutputDevice(baselineDevice)
+            defaultRestorationObserved = waitUntil { (try? defaultOutputDevice()) == self.baselineDevice }
+        } catch {}
+    }
+
+    func changeSampleRate() {
+        guard let targetSampleRate,
+              propertyIsSettable(baselineDevice, selector: kAudioDevicePropertyNominalSampleRate) else { return }
+        rateChangeAttempted = true
+        do {
+            try setNominalSampleRate(targetSampleRate, for: baselineDevice)
+            rateChangeObserved = waitUntil { abs(((try? nominalSampleRate(for: self.baselineDevice)) ?? 0) - targetSampleRate) < 0.5 }
+        } catch {}
+    }
+
+    func restoreSampleRate() {
+        guard rateChangeAttempted else { return }
+        rateRestorationAttempted = true
+        if abs(((try? nominalSampleRate(for: baselineDevice)) ?? 0) - baselineSampleRate) < 0.5 {
+            rateRestorationObserved = true
+            return
+        }
+        do {
+            try setNominalSampleRate(baselineSampleRate, for: baselineDevice)
+            rateRestorationObserved = waitUntil { abs(((try? nominalSampleRate(for: self.baselineDevice)) ?? 0) - self.baselineSampleRate) < 0.5 }
+        } catch {}
+    }
+
+    func restoreAll() {
+        restoreSampleRate()
+        restoreDefault()
+    }
+
+    func evidence() -> HardwareTransitionEvidence {
+        let defaultRestored = (try? defaultOutputDevice()) == baselineDevice
+        let rateRestored = abs(((try? nominalSampleRate(for: baselineDevice)) ?? 0) - baselineSampleRate) < 0.5
+        return HardwareTransitionEvidence(
+            controlledDefaultOutput: ControlledDefaultOutputEvidence(
+                available: alternateDevice != nil,
+                targetKind: alternateDevice?.kind,
+                switchAttempted: switchAttempted,
+                switchObserved: switchObserved,
+                restorationAttempted: defaultRestorationAttempted,
+                restorationObserved: defaultRestorationObserved
+            ),
+            sampleRate: SampleRateTransitionEvidence(
+                available: targetSampleRate != nil,
+                originalHz: Int(baselineSampleRate.rounded()),
+                targetHz: targetSampleRate.map { Int($0.rounded()) },
+                changeAttempted: rateChangeAttempted,
+                changeObserved: rateChangeObserved,
+                restorationAttempted: rateRestorationAttempted,
+                restorationObserved: rateRestorationObserved
+            ),
+            physicalDeviceLoss: PhysicalDeviceLossEvidence(
+                removablePhysicalOutputsAvailable: removablePhysicalOutputs,
+                removalAttempted: false,
+                lossObserved: false,
+                reconnectionObserved: false,
+                reasonCode: removablePhysicalOutputs == 0 ? "no-removable-physical-output" : "manual-removal-required"
+            ),
+            baselineDefaultOutputRestored: defaultRestored,
+            baselineSampleRateRestored: rateRestored
+        )
+    }
+}
+
+private enum GoldenShadowFixture {
     static let fixtureId = "dual-tone-gain"
     static let fixtureSampleRate = 48_000
     static let fixtureFrames = 4_096
@@ -182,107 +438,26 @@ private final class GoldenShadowProcessor {
     static let initialOutputGainDb: Float = -0.75
     static let expectedSha256 = "74d25b2c630082715417bc8f213357752cfc56f439d6f930ac2dd7fdbde9b995"
 
-    private let fixtureInput: [[Float]]
-    private var scratchInput = [[Float](repeating: 0, count: maximumCallbackFrames), [Float](repeating: 0, count: maximumCallbackFrames)]
-    private var scratchOutput = [[Float](repeating: 0, count: maximumCallbackFrames), [Float](repeating: 0, count: maximumCallbackFrames)]
-    private var capturedOutput = [[Float](repeating: 0, count: fixtureFrames), [Float](repeating: 0, count: fixtureFrames)]
-    private let kernel: SharedDspKernel
-    private var fixtureCursor = 0
-    private(set) var capturedFrames = 0
-    private(set) var appliedUpdates = 0
-    private(set) var lastAppliedGeneration: UInt32 = 0
-    private(set) var lastAppliedOutputGainDb = Double(GoldenShadowProcessor.initialOutputGainDb)
-
-    init() {
-        var left = [Float](repeating: 0, count: Self.fixtureFrames)
-        var right = [Float](repeating: 0, count: Self.fixtureFrames)
-        for frame in 0..<Self.fixtureFrames {
-            left[frame] = Float(0.27 * sin((2 * Double.pi * 997 * Double(frame)) / Double(Self.fixtureSampleRate)))
-            right[frame] = Float(0.27 * sin((2 * Double.pi * 503 * Double(frame)) / Double(Self.fixtureSampleRate)))
-        }
-        fixtureInput = [left, right]
-        kernel = SharedDspKernel(
-            sampleRate: Double(Self.fixtureSampleRate),
-            settings: Self.settings(outputGainDb: Double(Self.initialOutputGainDb))
-        )
-        // Force any lazy Swift/Array setup onto the control thread before the
-        // AudioUnit owns this processor. Reset is also control-thread-only.
-        scratchInput[0][0] = fixtureInput[0][0]
-        scratchInput[1][0] = fixtureInput[1][0]
-        kernel.process(inputChannels: scratchInput, outputChannels: &scratchOutput, startFrame: 0, frameCount: 1)
-        kernel.reset()
-    }
-
-    func process(frameCount: UInt32, parameterWord: UInt64) -> Bool {
-        let count = Int(frameCount)
-        let generation = UInt32(parameterWord >> 32)
-        let outputGainDb = Float(bitPattern: UInt32(parameterWord & 0xffff_ffff))
-        guard count > 0,
-              count <= Self.maximumCallbackFrames,
-              generation > 0,
-              outputGainDb.isFinite,
-              outputGainDb >= -48,
-              outputGainDb <= 12,
-              generation >= lastAppliedGeneration else { return false }
-
-        if generation > lastAppliedGeneration {
-            kernel.setSettings(Self.settings(outputGainDb: Double(outputGainDb)))
-            lastAppliedGeneration = generation
-            lastAppliedOutputGainDb = Double(outputGainDb)
-            appliedUpdates += 1
-        }
-
-        for frame in 0..<count {
-            scratchInput[0][frame] = fixtureInput[0][fixtureCursor]
-            scratchInput[1][frame] = fixtureInput[1][fixtureCursor]
-            fixtureCursor += 1
-            if fixtureCursor == Self.fixtureFrames { fixtureCursor = 0 }
-        }
-        kernel.process(inputChannels: scratchInput, outputChannels: &scratchOutput, startFrame: 0, frameCount: count)
-
-        let captureCount = min(count, Self.fixtureFrames - capturedFrames)
-        if captureCount > 0 {
-            for frame in 0..<captureCount {
-                capturedOutput[0][capturedFrames + frame] = scratchOutput[0][frame]
-                capturedOutput[1][capturedFrames + frame] = scratchOutput[1][frame]
-            }
-            capturedFrames += captureCount
-        }
-        return true
-    }
-
-    func sha256() -> String {
-        guard capturedFrames == Self.fixtureFrames else { return "" }
+    static func sha256(metrics: OpaquePointer) -> String {
+        guard ps_realtime_shadow_captured_frames(metrics) == UInt32(Self.fixtureFrames) else { return "" }
         var bytes = [UInt8]()
         bytes.reserveCapacity(8 + 2 * Self.fixtureFrames * MemoryLayout<UInt32>.size)
         appendLittleEndian(UInt32(2), to: &bytes)
         appendLittleEndian(UInt32(Self.fixtureFrames), to: &bytes)
-        for channel in capturedOutput {
-            for sample in channel { appendLittleEndian(sample.bitPattern, to: &bytes) }
+        for channel in 0..<2 {
+            for frame in 0..<Self.fixtureFrames {
+                appendLittleEndian(ps_realtime_shadow_capture_sample_bits(metrics, UInt32(channel), UInt32(frame)), to: &bytes)
+            }
         }
         return SHA256.hash(data: Data(bytes)).map { String(format: "%02x", $0) }.joined()
     }
 
-    var processedFrames: Int { kernel.metrics.processedFrames }
-    var recoveredSamples: Int { kernel.metrics.recoveredSamples }
-
-    private static func settings(outputGainDb: Double) -> SharedDspSettings {
-        SharedDspSettings(inputGainDb: 3.5, outputGainDb: outputGainDb, peakGuardEnabled: false, smoothingMs: 0)
-    }
-
-    private func appendLittleEndian(_ value: UInt32, to bytes: inout [UInt8]) {
+    private static func appendLittleEndian(_ value: UInt32, to bytes: inout [UInt8]) {
         bytes.append(UInt8(value & 0xff))
         bytes.append(UInt8((value >> 8) & 0xff))
         bytes.append(UInt8((value >> 16) & 0xff))
         bytes.append(UInt8((value >> 24) & 0xff))
     }
-}
-
-@_cdecl("ps_shared_dsp_shadow_process")
-func psSharedDspShadowProcess(_ context: UnsafeMutableRawPointer?, _ frameCount: UInt32, _ parameterWord: UInt64) -> Int32 {
-    guard let context else { return 1 }
-    let processor = Unmanaged<GoldenShadowProcessor>.fromOpaque(context).takeUnretainedValue()
-    return processor.process(frameCount: frameCount, parameterWord: parameterWord) ? 0 : 1
 }
 
 private final class SilentOutputEngine {
@@ -296,32 +471,33 @@ private final class SilentOutputEngine {
     private(set) var invalidTransitions = 0
     private(set) var defaultListenerEverRegistered = false
     private(set) var overloadListenerEverRegistered = false
+    private(set) var sampleRateListenerEverRegistered = false
     private(set) var sampleRate = 0.0
     private(set) var channels = 0
     private(set) var maximumFramesPerSlice: UInt32 = 0
     private(set) var lastPublishedGeneration: UInt32 = 0
-    private(set) var lastPublishedOutputGainDb = Double(GoldenShadowProcessor.initialOutputGainDb)
+    private(set) var lastPublishedOutputGainDb = Double(GoldenShadowFixture.initialOutputGainDb)
 
     let metrics: OpaquePointer
-    let shadowProcessor: GoldenShadowProcessor?
+    let shadowEnabled: Bool
     private var audioUnit: AudioUnit?
     private var outputDevice = kAudioObjectUnknown
     private var defaultListenerRegistered = false
     private var overloadListenerRegistered = false
+    private var sampleRateListenerRegistered = false
 
     init(metrics: OpaquePointer, shadowEnabled: Bool) {
         self.metrics = metrics
-        shadowProcessor = shadowEnabled ? GoldenShadowProcessor() : nil
-        let context = shadowProcessor.map { Unmanaged.passUnretained($0).toOpaque() }
-        ps_realtime_metrics_configure_shadow(metrics, context)
-        if shadowProcessor != nil {
+        self.shadowEnabled = shadowEnabled
+        ps_realtime_metrics_configure_shadow(metrics, shadowEnabled ? 1 : 0)
+        if shadowEnabled {
             lastPublishedGeneration = 1
-            ps_realtime_publish_shadow_output_gain(metrics, lastPublishedGeneration, GoldenShadowProcessor.initialOutputGainDb)
+            ps_realtime_publish_shadow_output_gain(metrics, lastPublishedGeneration, GoldenShadowFixture.initialOutputGainDb)
         }
     }
 
     func publishShadowOutputGain(generation: UInt32, outputGainDb: Float) throws {
-        guard shadowProcessor != nil else { throw EngineError.invalidArgument("shadow parameter mailbox is disabled") }
+        guard shadowEnabled else { throw EngineError.invalidArgument("shadow parameter mailbox is disabled") }
         guard state == .running else { throw EngineError.invalidTransition(state, "publish shadow parameter") }
         guard generation > lastPublishedGeneration, outputGainDb.isFinite, outputGainDb >= -48, outputGainDb <= 12 else {
             throw EngineError.invalidArgument("shadow parameter update is invalid")
@@ -360,6 +536,19 @@ private final class SilentOutputEngine {
         guard overloadListenerRegistered, outputDevice != kAudioObjectUnknown else { return }
         ps_remove_processor_overload_listener(outputDevice, metrics)
         overloadListenerRegistered = false
+    }
+
+    private func installSampleRateListener() throws {
+        guard outputDevice != kAudioObjectUnknown else { throw EngineError.noOutputDevice }
+        try requireNoError(ps_install_sample_rate_listener(outputDevice, metrics), "install sample-rate listener")
+        sampleRateListenerRegistered = true
+        sampleRateListenerEverRegistered = true
+    }
+
+    private func removeSampleRateListener() {
+        guard sampleRateListenerRegistered, outputDevice != kAudioObjectUnknown else { return }
+        ps_remove_sample_rate_listener(outputDevice, metrics)
+        sampleRateListenerRegistered = false
     }
 
     private func buildAndStartUnit() throws {
@@ -405,10 +594,12 @@ private final class SilentOutputEngine {
 
             ps_realtime_metrics_configure(metrics, maximumFrames, sampleRate)
             try installOverloadListener()
+            try installSampleRateListener()
             try requireNoError(AudioUnitInitialize(unit), "initialize default-output unit")
             try requireNoError(AudioOutputUnitStart(unit), "start default-output unit")
         } catch {
             AudioUnitUninitialize(unit)
+            removeSampleRateListener()
             removeOverloadListener()
             AudioComponentInstanceDispose(unit)
             audioUnit = nil
@@ -421,6 +612,7 @@ private final class SilentOutputEngine {
         guard let unit = audioUnit else { return }
         try requireNoError(AudioOutputUnitStop(unit), "stop default-output unit")
         try requireNoError(AudioUnitUninitialize(unit), "uninitialize default-output unit")
+        removeSampleRateListener()
         removeOverloadListener()
         try requireNoError(AudioComponentInstanceDispose(unit), "dispose default-output unit")
         audioUnit = nil
@@ -483,6 +675,7 @@ private final class SilentOutputEngine {
         if let unit = audioUnit {
             AudioOutputUnitStop(unit)
             AudioUnitUninitialize(unit)
+            removeSampleRateListener()
             removeOverloadListener()
             AudioComponentInstanceDispose(unit)
             audioUnit = nil
@@ -518,12 +711,21 @@ do {
         throw EngineError.invalidArgument("PROJECT_SEQUENCER_ENGINE_FINGERPRINT is missing or invalid")
     }
     let stressEnabled = CommandLine.arguments.contains("--stress")
-    let durationMs = try boundedMilliseconds("--duration-ms", default: stressEnabled ? 10_000 : 750, minimum: 100, maximum: 60_000)
+    let hardwareTransitionsEnabled = CommandLine.arguments.contains("--hardware-transitions")
+    if hardwareTransitionsEnabled && !CommandLine.arguments.contains("--allow-system-audio-mutation") {
+        throw EngineError.invalidArgument("--hardware-transitions requires --allow-system-audio-mutation")
+    }
+    let durationMs = try boundedMilliseconds("--duration-ms", default: hardwareTransitionsEnabled ? 10_000 : stressEnabled ? 10_000 : 750, minimum: 100, maximum: 60_000)
     let simulateAtMs = try boundedMilliseconds("--simulate-device-change-ms", default: stressEnabled ? 5_000 : 250, minimum: 50, maximum: 59_000)
-    let shadowEnabled = CommandLine.arguments.contains("--shadow") || stressEnabled
-    let reportMode = stressEnabled ? "muted-shadow-stress-lab" : shadowEnabled ? "muted-shadow-output-lab" : "silent-output-lab"
+    let shadowEnabled = CommandLine.arguments.contains("--shadow") || stressEnabled || hardwareTransitionsEnabled
+    let reportMode = hardwareTransitionsEnabled ? "muted-shadow-hardware-transition-lab" : stressEnabled ? "muted-shadow-stress-lab" : shadowEnabled ? "muted-shadow-output-lab" : "silent-output-lab"
     let isolation = Isolation(shadowInput: shadowEnabled ? "generated-golden-only" : "disabled")
-    guard simulateAtMs < durationMs - 50 else { throw EngineError.invalidArgument("simulated device change must leave at least 50 milliseconds for recovery") }
+    if !hardwareTransitionsEnabled && simulateAtMs >= durationMs - 50 {
+        throw EngineError.invalidArgument("simulated device change must leave at least 50 milliseconds for recovery")
+    }
+    if hardwareTransitionsEnabled && durationMs < 9_000 {
+        throw EngineError.invalidArgument("hardware transition testing requires at least 9000 milliseconds")
+    }
     let firstParameterChangeAtMs = durationMs * 0.3
     let secondParameterChangeAtMs = durationMs * 0.7
 
@@ -536,7 +738,7 @@ do {
         let handshake = Handshake(
             protocolVersion: 1,
             dspContractVersion: sharedDspContractVersion,
-            engineVersion: "0.5.0",
+            engineVersion: "0.6.0",
             engineInstanceId: UUID().uuidString.lowercased(),
             implementationFingerprint: fingerprint.lowercased(),
             capabilities: Capabilities(offlineRender: true, realTimeOutput: true, deviceNotifications: true, maximumChannels: 2, supportedSampleRates: [])
@@ -549,24 +751,56 @@ do {
             handshake: handshake,
             isolation: isolation,
             lifecycle: Lifecycle(startRequests: 0, starts: 0, stopRequests: 0, stops: 0, recoveryRequests: 0, recoveries: 0, invalidTransitions: 0, finalState: "stopped"),
-            recovery: Recovery(defaultDeviceListener: false, processorOverloadListener: false, simulatedDeviceChange: false, deviceChangesObserved: 0),
+            recovery: Recovery(defaultDeviceListener: false, processorOverloadListener: false, sampleRateListener: false, simulatedDeviceChange: false, deviceChangesObserved: 0, sampleRateChangesObserved: 0),
             stream: nil,
             shadow: nil,
-            stress: stressEnabled ? StressEvidence(targetDurationMs: durationMs, parameterChangesRequested: 2, parameterChangesCompleted: 0, simulatedRecoveryAtMs: simulateAtMs, systemAudioConfigurationChanged: false) : nil
+            stress: stressEnabled ? StressEvidence(targetDurationMs: durationMs, parameterChangesRequested: 2, parameterChangesCompleted: 0, simulatedRecoveryAtMs: simulateAtMs, systemAudioConfigurationChanged: false) : nil,
+            hardwareTransitions: nil
         ))
         exit(0)
     }
     guard let metrics = ps_realtime_metrics_create() else { throw EngineError.invalidArgument("could not allocate control-thread metrics") }
     defer { ps_realtime_metrics_destroy(metrics) }
+    let hardwareController = hardwareTransitionsEnabled ? try HardwareTransitionController(baselineDevice: startingDefaultOutput, baselineSampleRate: startingNominalSampleRate) : nil
+    defer { hardwareController?.restoreAll() }
 
     let engine = SilentOutputEngine(metrics: metrics, shadowEnabled: shadowEnabled)
     defer { engine.forceCleanup() }
     let startedAt = Date()
     var simulated = false
     var handledDeviceChanges: UInt64 = 0
+    var handledSampleRateChanges: UInt64 = 0
     var parameterChangesCompleted = 0
+    var hardwareStage = 0
 
     try engine.start()
+
+    func performHardwareStage() throws {
+        guard let hardwareController else { return }
+        let mutationObserved: Bool
+        switch hardwareStage {
+        case 0:
+            hardwareController.switchToAlternate()
+            mutationObserved = hardwareController.switchObserved
+        case 1:
+            hardwareController.restoreDefault()
+            mutationObserved = hardwareController.defaultRestorationObserved
+        case 2:
+            hardwareController.changeSampleRate()
+            mutationObserved = hardwareController.rateChangeObserved
+        case 3:
+            hardwareController.restoreSampleRate()
+            mutationObserved = hardwareController.rateRestorationObserved
+        default:
+            return
+        }
+        hardwareStage += 1
+        if mutationObserved {
+            try engine.recover()
+            handledDeviceChanges = ps_realtime_device_changes(metrics)
+            handledSampleRateChanges = ps_realtime_sample_rate_changes(metrics)
+        }
+    }
 
     while Date().timeIntervalSince(startedAt) * 1_000 < durationMs {
         let elapsedMs = Date().timeIntervalSince(startedAt) * 1_000
@@ -574,25 +808,56 @@ do {
             try engine.publishShadowOutputGain(generation: 2, outputGainDb: -6)
             parameterChangesCompleted = 1
         }
-        if !simulated && elapsedMs >= simulateAtMs {
+        if !hardwareTransitionsEnabled && !simulated && elapsedMs >= simulateAtMs {
             ps_realtime_metrics_record_device_change(metrics)
             simulated = true
         }
+        if hardwareController != nil {
+            if hardwareStage == 0 && elapsedMs >= durationMs * 0.15 {
+                try performHardwareStage()
+            } else if hardwareStage == 1 && elapsedMs >= durationMs * 0.35 {
+                try performHardwareStage()
+            } else if hardwareStage == 2 && elapsedMs >= durationMs * 0.55 {
+                try performHardwareStage()
+            } else if hardwareStage == 3 && elapsedMs >= durationMs * 0.75 {
+                try performHardwareStage()
+            }
+        }
         let observedChanges = ps_realtime_device_changes(metrics)
-        if observedChanges > handledDeviceChanges {
+        let observedSampleRateChanges = ps_realtime_sample_rate_changes(metrics)
+        if observedChanges > handledDeviceChanges || observedSampleRateChanges > handledSampleRateChanges {
             handledDeviceChanges = observedChanges
+            handledSampleRateChanges = observedSampleRateChanges
             try engine.recover()
             handledDeviceChanges = ps_realtime_device_changes(metrics)
+            handledSampleRateChanges = ps_realtime_sample_rate_changes(metrics)
         }
         if stressEnabled && parameterChangesCompleted == 1 && elapsedMs >= secondParameterChangeAtMs {
-            try engine.publishShadowOutputGain(generation: 3, outputGainDb: GoldenShadowProcessor.initialOutputGainDb)
+            try engine.publishShadowOutputGain(generation: 3, outputGainDb: GoldenShadowFixture.initialOutputGainDb)
             parameterChangesCompleted = 2
         }
         Thread.sleep(forTimeInterval: 0.005)
     }
+    while hardwareStage < 4, hardwareController != nil {
+        try performHardwareStage()
+    }
+    if hardwareTransitionsEnabled {
+        let settleDeadline = Date().addingTimeInterval(0.25)
+        while Date() < settleDeadline {
+            let observedChanges = ps_realtime_device_changes(metrics)
+            let observedSampleRateChanges = ps_realtime_sample_rate_changes(metrics)
+            if observedChanges > handledDeviceChanges || observedSampleRateChanges > handledSampleRateChanges {
+                try engine.recover()
+                handledDeviceChanges = ps_realtime_device_changes(metrics)
+                handledSampleRateChanges = ps_realtime_sample_rate_changes(metrics)
+            }
+            Thread.sleep(forTimeInterval: 0.005)
+        }
+    }
     try engine.stop()
+    hardwareController?.restoreAll()
     let systemAudioConfigurationChanged: Bool
-    if stressEnabled {
+    if stressEnabled || hardwareTransitionsEnabled {
         let endingDefaultOutput = try defaultOutputDevice()
         let endingNominalSampleRate = try nominalSampleRate(for: endingDefaultOutput)
         systemAudioConfigurationChanged = endingDefaultOutput != startingDefaultOutput
@@ -607,7 +872,7 @@ do {
     let handshake = Handshake(
         protocolVersion: 1,
         dspContractVersion: sharedDspContractVersion,
-        engineVersion: "0.5.0",
+        engineVersion: "0.6.0",
         engineInstanceId: UUID().uuidString.lowercased(),
         implementationFingerprint: fingerprint.lowercased(),
         capabilities: Capabilities(
@@ -619,40 +884,43 @@ do {
         )
     )
     let shadowEvidence: ShadowEvidence?
-    if let processor = engine.shadowProcessor {
-        let actualSha256 = processor.sha256()
+    if engine.shadowEnabled {
+        let actualSha256 = GoldenShadowFixture.sha256(metrics: metrics)
         let parameterWord = ps_realtime_shadow_parameter_word(metrics)
         let publishedGeneration = UInt32(parameterWord >> 32)
         let publishedOutputGainDb = Double(Float(bitPattern: UInt32(parameterWord & 0xffff_ffff)))
+        let appliedUpdates = ps_realtime_shadow_applied_updates(metrics)
+        let lastAppliedGeneration = ps_realtime_shadow_last_applied_generation(metrics)
+        let lastAppliedOutputGainDb = Double(ps_realtime_shadow_last_applied_output_gain_db(metrics))
         let parameterCoherent = publishedGeneration == engine.lastPublishedGeneration
-            && publishedGeneration == processor.lastAppliedGeneration
+            && publishedGeneration == lastAppliedGeneration
             && publishedOutputGainDb == engine.lastPublishedOutputGainDb
-            && publishedOutputGainDb == processor.lastAppliedOutputGainDb
-            && ps_realtime_shadow_parameter_publishes(metrics) == UInt64(processor.appliedUpdates)
+            && publishedOutputGainDb == lastAppliedOutputGainDb
+            && ps_realtime_shadow_parameter_publishes(metrics) == UInt64(appliedUpdates)
         shadowEvidence = ShadowEvidence(
-            fixtureId: GoldenShadowProcessor.fixtureId,
-            fixtureSampleRate: GoldenShadowProcessor.fixtureSampleRate,
-            fixtureFrames: GoldenShadowProcessor.fixtureFrames,
+            fixtureId: GoldenShadowFixture.fixtureId,
+            fixtureSampleRate: GoldenShadowFixture.fixtureSampleRate,
+            fixtureFrames: GoldenShadowFixture.fixtureFrames,
             generatedInput: true,
             checksumAlgorithm: "sha256-float32le-v1",
-            expectedSha256: GoldenShadowProcessor.expectedSha256,
+            expectedSha256: GoldenShadowFixture.expectedSha256,
             actualSha256: actualSha256,
-            checksumMatch: actualSha256 == GoldenShadowProcessor.expectedSha256,
+            checksumMatch: actualSha256 == GoldenShadowFixture.expectedSha256,
             processedCallbacks: ps_realtime_shadow_callbacks(metrics),
             processedFrames: ps_realtime_shadow_frames(metrics),
-            kernelProcessedFrames: processor.processedFrames,
-            capturedFrames: processor.capturedFrames,
-            recoveredSamples: processor.recoveredSamples,
+            kernelProcessedFrames: Int(ps_realtime_shadow_kernel_processed_frames(metrics)),
+            capturedFrames: Int(ps_realtime_shadow_captured_frames(metrics)),
+            recoveredSamples: Int(ps_realtime_shadow_recovered_samples(metrics)),
             failures: ps_realtime_shadow_failures(metrics),
             hardwareOutputZeroFilledAfterShadow: true,
             parameterHandoff: ParameterHandoffEvidence(
                 lockFree: ps_realtime_shadow_parameter_word_is_lock_free(metrics) == 1,
                 publishedUpdates: ps_realtime_shadow_parameter_publishes(metrics),
-                appliedUpdates: processor.appliedUpdates,
+                appliedUpdates: Int(appliedUpdates),
                 lastPublishedGeneration: publishedGeneration,
-                lastAppliedGeneration: processor.lastAppliedGeneration,
+                lastAppliedGeneration: lastAppliedGeneration,
                 lastPublishedOutputGainDb: publishedOutputGainDb,
-                lastAppliedOutputGainDb: processor.lastAppliedOutputGainDb,
+                lastAppliedOutputGainDb: lastAppliedOutputGainDb,
                 coherent: parameterCoherent
             )
         )
@@ -679,8 +947,10 @@ do {
         recovery: Recovery(
             defaultDeviceListener: engine.defaultListenerEverRegistered,
             processorOverloadListener: engine.overloadListenerEverRegistered,
+            sampleRateListener: engine.sampleRateListenerEverRegistered,
             simulatedDeviceChange: simulated,
-            deviceChangesObserved: ps_realtime_device_changes(metrics)
+            deviceChangesObserved: ps_realtime_device_changes(metrics),
+            sampleRateChangesObserved: ps_realtime_sample_rate_changes(metrics)
         ),
         stream: StreamMetrics(
             sampleRate: engine.sampleRate,
@@ -705,7 +975,8 @@ do {
             parameterChangesCompleted: parameterChangesCompleted,
             simulatedRecoveryAtMs: simulateAtMs,
             systemAudioConfigurationChanged: systemAudioConfigurationChanged
-        ) : nil
+        ) : nil,
+        hardwareTransitions: hardwareController?.evidence()
     ))
 } catch {
     FileHandle.standardError.write(Data("shared-dsp-silent-stream: \(error)\n".utf8))
