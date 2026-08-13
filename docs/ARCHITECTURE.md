@@ -30,6 +30,38 @@ waveform analysis, and rendering identify a source through its indexed key.
 Protected sources use an opaque `privateSourceId`; their original filename and
 relative path are removed before library data reaches the browser.
 
+## Runtime profiles
+
+The product now has one implemented local architecture and two distribution
+profiles under development:
+
+| Profile | UI | Project documents | Media and processing |
+| --- | --- | --- | --- |
+| Current local web app | React in a browser | Ignored local JSON through Node | Indexed local sources, Web Audio audition, FFmpeg print |
+| Free hosted web | Same React workspace | Planned account/cloud documents plus local recovery | Browser-approved local files, Web Audio/AudioWorklet, no audio upload by default |
+| Pro native POC | Same built React workspace in Electron | OS application-data JSON now; account sync later | Embedded loopback Node engine, persistent local paths, system FFmpeg now, shared/native DSP later |
+
+### Single frontend rule
+
+Web and native are product profiles, not separate frontends. All navigation,
+workspace components, accessibility behavior, design tokens, responsive rules,
+and project-state interactions live once under `src/`. The selected API adapter
+and sanitized bootstrap capabilities determine which device operations are
+available. A profile may add or omit a capability-specific control, but it must
+not copy a workspace, maintain a second CSS theme, or fork project behavior.
+
+The hosted build selects the browser adapter with `VITE_ONLINE_APP=true`; the
+desktop build serves the same compiled React application and supplies its
+authenticated loopback services. Native Engine Lab state remains transient
+runtime state outside project autosave. Future account and subscription tiers
+should extend the capability/bootstrap contract rather than introduce a second
+UI tree.
+
+The desktop engine is owned by the desktop app and listens on a random
+`127.0.0.1` port. It is not a separately installed background daemon. See
+[NATIVE-DSP-POC.md](./NATIVE-DSP-POC.md) for the product boundary and release
+gates.
+
 ## Core invariants
 
 Every feature must preserve these rules:
@@ -81,6 +113,9 @@ Every feature must preserve these rules:
 | `server/audio-renderer.mjs` | Normalize edit instructions, build FFmpeg graphs, enforce timeout/cancellation, and atomically publish documented derivatives |
 | `server/project-assets.mjs` | Convert selected images/lyrics into safe configured-root references |
 | `server/native-picker.mjs` | Register paths selected by the native macOS picker without copying files |
+| `server/tool-paths.mjs` | Resolve injected FFmpeg/ffprobe executables for local and packaged runtimes |
+| `server/shared-dsp-host.mjs` | Node adapter for the versioned shared-DSP portability prototype |
+| `server/native-audio-service.mjs` | Execute the optional fingerprinted Swift hardware probe and publish only sanitized query-only status |
 
 The state and configuration stores serialize writes before replacing their
 target file. This prevents overlapping requests from sharing a temporary write
@@ -100,6 +135,9 @@ baseline order references before disk state changes.
 | `src/lib/project-commands.js` | Immutable commands for albums, tracks, candidates, assets, and sequence edits |
 | `src/lib/library-search.js` | Build the in-memory catalog index and define portable saved-filter records |
 | `src/lib/*.js` | Pure import, sequence, formatting, appearance, and mastering rules |
+| `src/dsp/*` | Opt-in shared processing contract and AudioWorklet adapter; not production authority yet |
+| `native/SharedDspEngine/*` | Swift contract-v2 kernel, golden tools, query-only probe, and isolated generated-fixture AudioUnit laboratory with muted/stress and double-opt-in audible modes; not production device authority |
+| `desktop-resources/staged/*` | Ignored FFmpeg artifacts and optional verified native-audio executables copied into desktop builds |
 | `src/styles/*.css` | Tokens/base rules, shell chrome, workspace features, and responsive/motion rules |
 
 Autosave uses a short debounce for editing comfort, then puts each snapshot on a
@@ -131,9 +169,46 @@ for responsive auditioning only—FFmpeg remains authoritative for every print.
 The default server binds to `127.0.0.1`. It accepts only the configured local
 Host and port, and state-changing browser requests must have a matching Origin.
 This limits DNS-rebinding and cross-site request risks against the local API.
+When the server is owned by the desktop shell, Electron also supplies a random
+per-launch engine token through a private renderer session. The server requires
+that header on API, media, and static requests, while ordinary browser mode
+remains compatible when no engine token is configured.
 Responses deny framing, disable MIME sniffing, use a same-origin resource
 policy, and apply a restrictive content security policy. User-supplied SVG
 assets receive an additional sandbox policy.
+
+The optional native-audio executables are never selected from the shell `PATH`.
+The desktop shell accepts the query probe only from an explicit local path or
+its packaged resources location. The service hashes it before every probe,
+requires that
+exact fingerprint in the versioned handshake, and strips binary paths,
+fingerprints, instance IDs, and process errors from HTTP responses. The current
+capability is query-only and cannot become playback authority through the
+status endpoint. Concurrent requests share one probe and status is cached
+briefly so a local page cannot create an unbounded child-process loop.
+
+The generated-fixture executable is packaged as inert laboratory code and does
+not auto-start. The local server can launch it only through the Settings lab;
+transport cannot invoke it. The single-owner service fingerprints every run,
+caps process output, rejects concurrency, and publishes only path-free state.
+A muted check performs one simulated recovery and zero-fills hardware. An
+audible check requires explicit UI acknowledgement plus two child-process flags,
+runs for three seconds at a fixed -30 dB, fades both edges, and has a visible
+process-level Stop control. Both modes reject microphone, source-media,
+project-path, and production-playback access. A small C module contains the necessary
+host-buffer pointers, fixed-capacity generated shadow state, and lock-free
+atomics. In muted-shadow mode the callback remains entirely in C and runs only
+pre-generated golden samples through the reviewed gain slice before zeroing the
+hardware buffers. The checked Swift kernel remains the offline reference and
+never receives `AudioBufferList`, and
+the executable still has no source-media or transport connection. Stress mode carries a generation plus one bounded Float32 value in
+a single release/acquire 64-bit mailbox word and proves two parameter changes
+across recovery. An additional explicit CLI-only mode snapshots and restores
+the current default output and nominal rate around controlled system changes;
+the app cannot invoke it. Staging builds optimized release executables. Stack
+logging of the final C callback path found no allocation stack containing the
+render or shadow callback symbols. Physical removable-device loss remains
+unproven, so this laboratory cannot be promoted to production playback yet.
 
 Audio delivery supports single HTTP byte ranges, including suffix ranges used
 by media clients. Malformed, multiple, reversed, and out-of-bounds ranges return
@@ -224,6 +299,10 @@ Basic remains the default after migration, and each path keeps independent
 state. The higher-fidelity shared DSP core and isolated native plug-in companion
 remain specified separately in
 [ADVANCED-MASTERING-AUDIO-PIPELINE-PLAN.md](./ADVANCED-MASTERING-AUDIO-PIPELINE-PLAN.md).
+The first executable shell and contract proof are documented in
+[NATIVE-DSP-POC.md](./NATIVE-DSP-POC.md) and
+[SHARED-DSP-CONTRACT.md](./SHARED-DSP-CONTRACT.md); neither changes the current
+Web Audio/FFmpeg authority boundary.
 The original analog-style visual direction and per-processor faceplate roadmap
 are tracked in
 [MASTERING-PLUGIN-VISUAL-DESIGN-NOTES.md](./MASTERING-PLUGIN-VISUAL-DESIGN-NOTES.md).

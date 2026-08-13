@@ -39,9 +39,9 @@ export function AudioLibraryWorkspace({ state, activeAlbum, library, roots, form
   const searchIndex = useMemo(() => createLibrarySearchIndex(library), [library]);
   const matchingKeys = useMemo(() => searchIndex.search(query), [searchIndex, query]);
   const savedFilters = state.settings?.librarySavedFilters || [];
-  const sessionFileCount = useMemo(() => {
-    const sessionRootIds = new Set(roots.filter((root) => root.kind === "browser-session").map((root) => root.id));
-    return library.filter((file) => sessionRootIds.has(file.rootId)).length;
+  const deviceFileCount = useMemo(() => {
+    const deviceRootIds = new Set(roots.filter((root) => root.kind?.startsWith("browser-")).map((root) => root.id));
+    return library.filter((file) => deviceRootIds.has(file.rootId)).length;
   }, [library, roots]);
 
   const filtered = useMemo(() => library.filter((file) => {
@@ -162,11 +162,11 @@ export function AudioLibraryWorkspace({ state, activeAlbum, library, roots, form
       <aside className="library-inspector">
         <section className="source-summary">
           <h2>Audio Sources</h2>
-          <p className="watch-status"><strong>{onlineApp ? "Album previews + device audio" : watching?.enabled ? "Watching connected folders" : watching?.configured ? "Watching unavailable" : "Manual incremental rescans"}</strong><span>{onlineApp ? `${sessionFileCount} device file${sessionFileCount === 1 ? "" : "s"} in this session · never uploaded` : scan ? `${scan.reusedMetadata} cached · ${scan.probedMetadata} updated` : "Scan status unavailable"}</span></p>
-          <div className="source-summary-actions"><button type="button" className="text-button" disabled={scanning} title={onlineApp ? "Choose audio files from this device for the current browser session" : "Add audio files"} onClick={() => importIntoLibrary(onImportFiles)}><MusicIcon /> {scanning ? "Indexing…" : "Add Files"}</button><button type="button" className="text-button" disabled={scanning} title={onlineApp ? "Choose an audio folder from this device for the current browser session" : "Add an audio folder"} onClick={() => importIntoLibrary(onImportFolder)}><FolderIcon /> {scanning ? "Indexing…" : "Add Folder"}</button></div>
+          <p className="watch-status"><strong>{onlineApp ? "Album previews + device audio" : watching?.enabled ? "Watching connected folders" : watching?.configured ? "Watching unavailable" : "Manual incremental rescans"}</strong><span>{onlineApp ? `${deviceFileCount} device file${deviceFileCount === 1 ? "" : "s"} connected · never uploaded` : scan ? `${scan.reusedMetadata} cached · ${scan.probedMetadata} updated` : "Scan status unavailable"}</span></p>
+          <div className="source-summary-actions"><button type="button" className="text-button" disabled={scanning} title={onlineApp ? "Choose audio files from this device" : "Add audio files"} onClick={() => importIntoLibrary(onImportFiles)}><MusicIcon /> {scanning ? "Indexing…" : "Add Files"}</button><button type="button" className="text-button" disabled={scanning} title={onlineApp ? "Choose an audio folder from this device" : "Add an audio folder"} onClick={() => importIntoLibrary(onImportFolder)}><FolderIcon /> {scanning ? "Indexing…" : "Add Folder"}</button></div>
           {importNotice && <p className={`library-import-status is-${importNotice.kind}`} role="status">{importNotice.message}</p>}
           <ul>{roots.map((root) => <li key={root.id}><span>{root.label}<small>{root.path}</small></span><strong className={root.connected ? "is-connected" : "is-offline"}>{root.connectionState === "reconnected" ? "Reconnected" : root.connected ? "Connected" : "Offline"}</strong></li>)}</ul>
-          <p>{onlineApp ? "Selected audio plays directly from this device for the current session. Reloading disconnects it; no audio is uploaded or copied." : "Audio remains in its original location."}</p>
+          <p>{onlineApp ? "Selected audio plays directly from this device. Supported browsers retain a revocable handle and may ask you to reconnect after reload; no audio is uploaded or copied." : "Audio remains in its original location."}</p>
         </section>
         <dl className="scan-summary">
           <div><dt>{library.length}</dt><dd>Files</dd></div>

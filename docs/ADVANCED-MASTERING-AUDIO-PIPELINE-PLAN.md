@@ -2,7 +2,10 @@
 
 Plan date: 2026-08-11 · implementation and visual follow-up updated 2026-08-12
 
-Status: ownership-aware serial plug-in rack, spatial/creative built-ins, monitoring, Web Audio audition, and authoritative FFmpeg prints implemented; isolated native VST3/AU host remains planned; not a release approval
+Status: ownership-aware serial plug-in rack, spatial/creative built-ins,
+monitoring, Web Audio audition, authoritative FFmpeg prints, native Electron
+shell POC, and shared DSP contract POC implemented; analog-modelled native DSP
+and the isolated native VST3/AU host remain planned; not a release approval
 
 The follow-up analog faceplate and interaction brief for every new built-in is
 maintained in
@@ -75,6 +78,33 @@ Implemented in the schema-7 plug-in wave:
   interaction. The C++ analog-modelled DSP core, BS.1770 true-peak
   qualification, external key input, and colored compressor modes remain Phase
   3 work and must not be claimed as complete.
+
+Native/DSP POC checkpoint on `codex/native-dsp-poc`:
+
+- The existing production Node server and built React UI can launch as one
+  Electron desktop application with isolated application data and a random
+  loopback port.
+- All current FFmpeg/ffprobe call sites accept an executable supplied by the
+  desktop host, which is the first step toward a bundled media-tool runtime.
+- Shared DSP contract v2 runs the same JavaScript kernel through an
+  AudioWorklet adapter and a Node host adapter. It proves gain, smoothing,
+  exact bypass, sample-peak guarding, optional DC blocking, sample-rate reset,
+  non-finite recovery, and versioned golden parity across multiple block sizes
+  and sample rates. It is lab-gated and is not connected to the production
+  transport or print path.
+- A SwiftPM native implementation now passes the complete contract-v2 golden
+  set at every verified block size. A muted Core Audio laboratory now proves
+  lifecycle, recovery, lock-free telemetry, generated shared-DSP shadow work,
+  a coherent atomic parameter mailbox, and an allocation-safe fixed-capacity C
+  callback in optimized release builds. Controlled default-output and
+  48/44.1 kHz transitions recover and restore correctly. It still emits only
+  silence and has no removable physical hot-plug evidence, WASM, user-media, or
+  production transport connection.
+- Packaging remains unsigned and uses installed FFmpeg. Google login, paid
+  entitlements, native device I/O, true-peak DSP, and external plug-in hosting
+  remain outside this checkpoint. See
+  [NATIVE-DSP-POC.md](./NATIVE-DSP-POC.md) and
+  [SHARED-DSP-CONTRACT.md](./SHARED-DSP-CONTRACT.md).
 
 ## Faceplate control duty audit — 2026-08-12
 

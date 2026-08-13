@@ -1,5 +1,6 @@
 node_modules
 dist/
+release/
 exports/
 data/sequencer-state.json
 data/sequencer-state.json.tmp
@@ -10,6 +11,13 @@ data/sequencer-projects.json
 data/sequencer-projects.json.tmp
 data/projects/
 config/sequencer.local.json
+config/ffmpeg-bundle-manifest.local.json
 .DS_Store
 .idea/
+native/**/.build/
+desktop-resources/staged/bin/
+desktop-resources/staged/licenses/
+desktop-resources/staged/ffmpeg-runtime-manifest.json
+desktop-resources/staged/native/
+desktop-resources/staged/native-audio-runtime-manifest.json
 npm-debug.log*

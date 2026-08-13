@@ -501,6 +501,16 @@ test("page title follows the active tab, album, track, and saved project", async
   await expect(page).toHaveTitle("Sequence | Next Album | Fixture Artist — Fixture Album");
 });
 
+test("Settings explains the native engine lab boundary when no packaged engine is configured", async ({ page }) => {
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const lab = page.getByRole("region", { name: "Native Engine Lab" });
+  await expect(lab).toBeVisible();
+  await expect(lab.getByText("Not included", { exact: true })).toBeVisible();
+  await expect(lab.getByText("This build has no installable native lab.")).toBeVisible();
+  await expect(lab.getByRole("button", { name: "Run muted check" })).toHaveCount(0);
+  await expect(lab.getByText(/no microphone, no indexed source, no project path, no transport routing, and no upload/i)).toBeVisible();
+});
+
 test("number row and numeric keypad shortcuts switch primary views without hijacking editing or dialogs", async ({ page }) => {
   const navigation = page.getByRole("navigation", { name: "Project views" });
   const sequence = navigation.getByRole("button", { name: "Sequence", exact: true });
@@ -570,6 +580,25 @@ test("quick display settings stay behind one far-right gear menu", async ({ page
   await page.getByRole("dialog", { name: "Quick Settings" }).getByRole("button", { name: /Colors & fonts/ }).click();
   await expect(navigation.getByRole("button", { name: "Settings", exact: true })).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("heading", { name: "Screen Appearance" })).toBeVisible();
+});
+
+test("Modern is the reset typography and fun font choices remain responsive", async ({ page }) => {
+  const navigation = page.getByRole("navigation", { name: "Project views" });
+  await navigation.getByRole("button", { name: "Settings", exact: true }).click();
+  const appearance = page.locator("#appearance-settings");
+
+  await appearance.getByRole("button", { name: /Reset Original/ }).click();
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.font)).toBe("modern");
+  await expect(appearance.getByRole("button", { name: /Modern Clean, open, and neutral/ })).toHaveAttribute("aria-pressed", "true");
+
+  for (const [name, id] of [["Space Age", "space-age"], ["Groove", "groove"], ["Rounded", "rounded"]]) {
+    await appearance.getByRole("button", { name: new RegExp(name) }).click();
+    await expect.poll(() => page.evaluate(() => document.documentElement.dataset.font)).toBe(id);
+  }
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(appearance.locator(".font-theme-grid")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
 });
 
 test("light and dark modes preserve readable surfaces and distinct interaction states across every workspace", async ({ page }) => {

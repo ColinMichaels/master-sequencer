@@ -159,6 +159,10 @@
   .color-theme-grid, .font-theme-grid { grid-template-columns: 1fr 1fr; }
   .root-form { grid-template-columns: 1fr; }
   .native-path-grid { grid-template-columns: 1fr; }
+  .native-engine-lab__grid, .native-engine-runtime { grid-template-columns: 1fr; }
+  .native-engine-runtime__device { border-right: 0; border-bottom: 1px solid var(--line-soft); }
+  .native-engine-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .native-engine-metrics div:nth-child(4) { border-left: 0; }
   .modal--first-run { max-height: calc(100vh - 1rem); }
   .first-run-guide { display: block; }
   .first-run-intro { min-height: 0; padding: 1rem; border-right: 0; }
@@ -261,6 +265,15 @@
   .settings-section-heading > .text-button { width: 100%; }
   .project-lifecycle-panel { grid-template-columns: 1fr; }
   .project-lifecycle-panel > div { display: grid; grid-template-columns: 1fr; }
+  .native-engine-lab__heading { display: grid; }
+  .native-engine-module, .native-engine-module--audible { grid-template-columns: 34px minmax(0, 1fr); grid-template-rows: auto auto auto; }
+  .native-engine-module > .primary-button, .native-engine-module--audible > .primary-button { grid-column: 1 / -1; grid-row: auto; width: 100%; }
+  .native-engine-consent { grid-column: 1 / -1; }
+  .native-engine-runtime__active { grid-template-columns: 16px minmax(0, 1fr); }
+  .native-engine-stop { grid-column: 1 / -1; }
+  .native-engine-metrics { grid-template-columns: 1fr 1fr; }
+  .native-engine-metrics div:nth-child(odd) { border-left: 0; }
+  .native-engine-metrics div:nth-child(4) { border-left: 1px solid var(--line-soft); }
   .saved-project-list li { grid-template-columns: 1fr; }
   .saved-project-list .saved-project-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
   .saved-project-list li .text-button { width: 100%; }

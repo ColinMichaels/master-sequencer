@@ -53,7 +53,7 @@ test("selected device audio joins the session library and plays without upload",
   await expect(page.getByRole("status").filter({ hasText: "1 audio file added and shown below" })).toBeVisible();
   await expect(page.getByPlaceholder("Search files")).toHaveValue("");
   await expect(page.getByRole("row", { name: /Reference Tone\.wav/ })).toBeVisible();
-  await expect(page.getByText("1 device file in this session · never uploaded")).toBeVisible();
+  await expect(page.getByText("1 device file connected · never uploaded")).toBeVisible();
   await page.getByRole("button", { name: "Preview Reference Tone.wav" }).click();
   await expect.poll(() => page.locator(".transport-audio-source").evaluate((audio) => audio.currentTime)).toBeGreaterThan(0);
   const playback = await page.locator(".transport-audio-source").evaluate((audio) => ({ currentTime: audio.currentTime, source: audio.currentSrc }));
@@ -76,4 +76,11 @@ test("folder selection indexes nested supported audio and ignores other files", 
   await expect(page.getByRole("status").filter({ hasText: "1 audio file added and shown below" })).toBeVisible();
   await expect(page.getByRole("row", { name: /Nested Mix\.wav/ })).toBeVisible();
   await expect(page.getByText("Session Notes.txt", { exact: true })).toHaveCount(0);
+});
+
+test("free web Settings omits native engine controls", async ({ page }) => {
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Browser Audio" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Native Engine Lab" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Play 3-second test tone" })).toHaveCount(0);
 });

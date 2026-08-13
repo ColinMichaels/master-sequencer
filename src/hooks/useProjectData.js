@@ -8,6 +8,8 @@ export const useProjectData = () => {
   const [formats, setFormats] = useState([]);
   const [scan, setScan] = useState(null);
   const [watching, setWatching] = useState({ configured: false, enabled: false, watchedRootIds: [] });
+  const [nativeAudio, setNativeAudio] = useState({ schemaVersion: 1, configured: false, available: false, reasonCode: "loading" });
+  const [nativeAudioLab, setNativeAudioLab] = useState({ schemaVersion: 1, configured: false, state: "idle", running: false, activeRun: null, lastRun: null });
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [pickingAssets, setPickingAssets] = useState(false);
@@ -62,6 +64,8 @@ export const useProjectData = () => {
       setFormats(payload.supportedFormats);
       setScan(payload.scan || null);
       setWatching(payload.watching || { configured: false, enabled: false, watchedRootIds: [] });
+      setNativeAudio(payload.nativeAudio || { schemaVersion: 1, configured: false, available: false, reasonCode: api.onlineApp ? "browser-only" : "not-configured" });
+      setNativeAudioLab(payload.nativeAudioLab || { schemaVersion: 1, configured: false, state: "idle", running: false, activeRun: null, lastRun: null });
       setRecovery(payload.recovery || { required: false });
       setProjects(payload.projects || []);
       setActiveProjectId(payload.activeProjectId || "");
@@ -149,6 +153,35 @@ export const useProjectData = () => {
     return () => window.clearInterval(timer);
   }, [applyLibraryPayload, watching.configured]);
 
+  useEffect(() => {
+    if (!nativeAudioLab.running || api.onlineApp) return undefined;
+    const refresh = () => api.nativeAudioLabStatus().then(setNativeAudioLab).catch(() => {});
+    const timer = window.setInterval(refresh, 250);
+    return () => window.clearInterval(timer);
+  }, [nativeAudioLab.running]);
+
+  const startNativeAudioLab = useCallback(async (details) => {
+    setError("");
+    try {
+      setNativeAudioLab(await api.startNativeAudioLab(details));
+      return true;
+    } catch (reason) {
+      setError(reason.message);
+      return false;
+    }
+  }, []);
+
+  const stopNativeAudioLab = useCallback(async () => {
+    setError("");
+    try {
+      setNativeAudioLab(await api.stopNativeAudioLab());
+      return true;
+    } catch (reason) {
+      setError(reason.message);
+      return false;
+    }
+  }, []);
+
   const rescan = useCallback(async () => {
     setScanning(true);
     setError("");
@@ -207,6 +240,20 @@ export const useProjectData = () => {
       applyLibraryPayload(await api.removeSource(rootId));
     } catch (reason) {
       setError(reason.message);
+    } finally {
+      setScanning(false);
+    }
+  }, [applyLibraryPayload]);
+
+  const reconnectRoot = useCallback(async (rootId) => {
+    setScanning(true);
+    setError("");
+    try {
+      applyLibraryPayload(await api.reconnectSource(rootId));
+      return true;
+    } catch (reason) {
+      setError(reason.message);
+      return false;
     } finally {
       setScanning(false);
     }
@@ -357,6 +404,8 @@ export const useProjectData = () => {
     formats,
     scan,
     watching,
+    nativeAudio,
+    nativeAudioLab,
     loading,
     scanning,
     pickingAssets,
@@ -388,5 +437,8 @@ export const useProjectData = () => {
     chooseProjectAssets,
     addRoot,
     removeRoot,
+    reconnectRoot,
+    startNativeAudioLab,
+    stopNativeAudioLab,
   };
 };

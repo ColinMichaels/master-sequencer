@@ -1,0 +1,38 @@
+{
+  "contractVersion": 2,
+  "blockSizes": [1, 17, 128, 511],
+  "fixtures": [
+    {
+      "id": "stereo-impulse-dc-block",
+      "sampleRate": 44100,
+      "frames": 1024,
+      "generator": { "type": "stereo-impulse", "left": 0.75, "right": -0.5 },
+      "settings": { "dcBlockEnabled": true, "dcBlockFrequencyHz": 18, "peakGuardEnabled": false, "smoothingMs": 0 },
+      "expectedSha256": "0294f79c55c7046419b95f48f7ac935ac5cb471f7d9d8fbe2d21c933d4f75dd4"
+    },
+    {
+      "id": "dual-tone-gain",
+      "sampleRate": 48000,
+      "frames": 4096,
+      "generator": { "type": "dual-tone", "leftHz": 997, "rightHz": 503, "amplitude": 0.27 },
+      "settings": { "inputGainDb": 3.5, "outputGainDb": -0.75, "peakGuardEnabled": false, "smoothingMs": 0 },
+      "expectedSha256": "74d25b2c630082715417bc8f213357752cfc56f439d6f930ac2dd7fdbde9b995"
+    },
+    {
+      "id": "stereo-peak-guard",
+      "sampleRate": 96000,
+      "frames": 257,
+      "generator": { "type": "peak-train" },
+      "settings": { "inputGainDb": 9, "ceilingDbfs": -1.2, "peakGuardEnabled": true, "smoothingMs": 0 },
+      "expectedSha256": "3c488695b8e027c32d7d3f4856502bc5000a029b0b426fe694b08f22532a271c"
+    },
+    {
+      "id": "non-finite-recovery",
+      "sampleRate": 48000,
+      "frames": 64,
+      "generator": { "type": "non-finite" },
+      "settings": { "outputGainDb": -2, "peakGuardEnabled": false, "smoothingMs": 0 },
+      "expectedSha256": "d71689e58d7d799c24a865023b688599a8ac44bdc0d1943ba87972a5ee14b61d"
+    }
+  ]
+}

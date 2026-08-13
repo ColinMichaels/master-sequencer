@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   adjustTextScale,
   DEFAULT_APPEARANCE,
+  FONT_THEMES,
   mergeAppearance,
   normalizeAppearance,
   resolveAppearanceMode,
@@ -11,6 +12,8 @@ import {
 
 test("appearance normalization preserves supported settings and fills older project records", () => {
   assert.deepEqual(normalizeAppearance(), DEFAULT_APPEARANCE);
+  assert.equal(DEFAULT_APPEARANCE.fontTheme, "modern");
+  assert.deepEqual(FONT_THEMES.slice(-3).map((theme) => theme.id), ["space-age", "groove", "rounded"]);
   assert.deepEqual(normalizeAppearance({ mode: "light", colorTheme: "ocean", fontTheme: "mono", textScale: 1.2 }), {
     mode: "light",
     colorTheme: "ocean",
@@ -18,6 +21,12 @@ test("appearance normalization preserves supported settings and fills older proj
     textScale: 1.2,
   });
   assert.deepEqual(normalizeAppearance({ mode: "unknown", colorTheme: "laser", fontTheme: "comic", textScale: 4 }), DEFAULT_APPEARANCE);
+});
+
+test("fun font themes remain portable appearance choices", () => {
+  for (const fontTheme of ["space-age", "groove", "rounded"]) {
+    assert.equal(normalizeAppearance({ fontTheme }).fontTheme, fontTheme);
+  }
 });
 
 test("system mode resolves from the current operating-system preference", () => {

@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "desktop/main.mjs",
   "description": "A local-first, multi-album sequencing and master-review workspace.",
   "scripts": {
     "dev": "node server/index.mjs --dev",
@@ -13,6 +14,24 @@
     "test:browser": "playwright test",
     "test:browser:online": "playwright test --config=playwright.online.config.js",
     "test:browser:headed": "playwright test --headed",
+    "desktop:run": "npm run build && electron desktop/main.mjs",
+    "desktop:smoke": "npm run build && node scripts/desktop-smoke.mjs",
+    "desktop:media-smoke": "npm run build && node scripts/desktop-media-smoke.mjs",
+    "desktop:media-smoke:packaged": "node scripts/desktop-media-smoke.mjs --packaged",
+    "desktop:pack": "npm run build && electron-builder --dir",
+    "desktop:audit": "node scripts/audit-macos-release.mjs",
+    "desktop:dist": "node scripts/build-macos-distribution.mjs",
+    "ffmpeg:stage": "node scripts/stage-ffmpeg-runtime.mjs",
+    "dsp:smoke": "node scripts/shared-dsp-smoke.mjs",
+    "dsp:golden": "node --test tests/shared-dsp.test.mjs tests/shared-dsp-golden.test.mjs",
+    "dsp:native:verify": "node scripts/verify-native-dsp.mjs",
+    "native:devices:verify": "node scripts/verify-native-dsp.mjs --devices",
+    "native:realtime:verify": "node scripts/verify-native-dsp.mjs --realtime",
+    "native:shadow:verify": "node scripts/verify-native-dsp.mjs --shadow",
+    "native:stress:verify": "node scripts/verify-native-dsp.mjs --stress",
+    "native:hardware:verify": "node scripts/verify-native-dsp.mjs --hardware-transitions",
+    "native:audible:verify": "node scripts/verify-native-dsp.mjs --audible-preview",
+    "native:stage": "node scripts/verify-native-dsp.mjs --devices --realtime --shadow --stress --stage",
     "check": "npm test && npm run build",
     "check:full": "npm run check && npm run test:browser && npm run test:browser:online"
   },
@@ -26,6 +45,49 @@
     "vite": "8.2.1"
   },
   "devDependencies": {
-    "@playwright/test": "1.62.1"
+    "@playwright/test": "1.62.1",
+    "electron": "43.4.0",
+    "electron-builder": "26.15.3"
+  },
+    "build": {
+    "appId": "com.projectsequencer.desktop",
+    "productName": "Project Sequencer",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "desktop/**/*",
+      "dist/**/*",
+      "server/**/*",
+      "src/dsp/**/*",
+      "src/lib/**/*.js",
+      "data/seed-state.json",
+      "config/sequencer.config.json",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "desktop-resources/staged",
+        "to": ".",
+        "filter": [
+          "bin/**",
+          "licenses/**",
+          "ffmpeg-runtime-manifest.json",
+          "native/**",
+          "native-audio-runtime-manifest.json"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.music",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.inherit.plist",
+      "target": [
+        "dir"
+      ]
+    }
   }
 }

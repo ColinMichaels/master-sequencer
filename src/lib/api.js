@@ -50,6 +50,10 @@ const renderAudio = async (details, options = {}) => {
 const localApi = {
   onlineApp: false,
   bootstrap: () => jsonFetch("/api/bootstrap"),
+  nativeAudioStatus: () => jsonFetch("/api/native-audio/status"),
+  nativeAudioLabStatus: () => jsonFetch("/api/native-audio/lab"),
+  startNativeAudioLab: (details) => jsonFetch("/api/native-audio/lab", { method: "POST", body: JSON.stringify(details) }),
+  stopNativeAudioLab: () => jsonFetch("/api/native-audio/lab", { method: "DELETE" }),
   saveState: (state) => jsonFetch("/api/state", { method: "PUT", body: JSON.stringify(state) }),
   createProject: (details) => jsonFetch("/api/projects", { method: "POST", body: JSON.stringify(details) }),
   loadProject: (projectId) => jsonFetch(`/api/projects/${encodeURIComponent(projectId)}/load`, { method: "POST" }),
