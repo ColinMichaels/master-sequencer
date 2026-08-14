@@ -129,9 +129,12 @@ normal arrow-key behavior.
 
 On phone widths, the shell removes duplicate count panels and hover-only
 tooltips, keeps the active album and primary actions above the fold, and
-separates Sequence status from its touch controls. Library filter recall remains
-available while desktop-only filter management and scan counters stay out of
-the narrow layout.
+separates Sequence status from its touch controls. The seven workspace tabs
+remain pinned to the top edge while the meter, edit-history controls, album rail,
+and active workspace scroll normally beneath them, preserving navigation without
+spending a second row of screen space. Library filter recall remains available
+while desktop-only filter management and scan counters stay out of the narrow
+layout.
 
 Mastering keeps delivery/profile controls beside Print / Export, collapses the
 A/B reference controls while preserving the live A/B state in its summary, and
