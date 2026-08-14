@@ -655,6 +655,27 @@ test("Modern is the reset typography and fun font choices remain responsive", as
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
 });
 
+test("mobile project tabs remain pinned while workspaces scroll", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const navigation = page.getByRole("navigation", { name: "Project views" });
+  await navigation.getByRole("button", { name: "Mastering", exact: true }).click();
+  await expect(page.locator("main.mastering-workspace")).toBeVisible();
+
+  await expect(navigation).toHaveCSS("position", "sticky");
+  const initialBox = await navigation.boundingBox();
+  expect(initialBox.y).toBe(0);
+
+  await page.evaluate(() => window.scrollTo(0, Math.min(1200, document.documentElement.scrollHeight - window.innerHeight)));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(500);
+  const scrolledBox = await navigation.boundingBox();
+  expect(Math.abs(scrolledBox.y)).toBeLessThanOrEqual(1);
+
+  await navigation.getByRole("button", { name: "Track Review", exact: true }).click();
+  await expect(navigation.getByRole("button", { name: "Track Review", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(page.locator("main.review-workspace")).toBeVisible();
+  expect((await navigation.boundingBox()).y).toBe(0);
+});
+
 test("light and dark modes preserve readable surfaces and distinct interaction states across every workspace", async ({ page }) => {
   const viewNames = ["Sequence", "Mastering", "Track Review", "Album Decisions", "Assets", "Audio Library", "Settings"];
   const navigation = page.getByRole("navigation", { name: "Project views" });
@@ -906,15 +927,17 @@ test("library filters are functional and primary workspaces do not overflow a ph
 test("phone layout removes redundant counters and keeps sequence controls separated", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
 
-  const header = page.locator(".app-header");
+  const navigation = page.getByRole("navigation", { name: "Project views" });
+  const headerControls = page.locator(".app-header-controls");
   const albumRail = page.locator(".album-rail.is-collapsed");
   await expect(page.locator(".header-summary-shell")).toBeHidden();
-  expect((await header.boundingBox()).height).toBeLessThanOrEqual(104);
+  expect((await navigation.boundingBox()).height).toBeLessThanOrEqual(42);
+  expect((await headerControls.boundingBox()).height).toBeLessThanOrEqual(54);
   expect((await albumRail.boundingBox()).height).toBeLessThanOrEqual(52);
   await expect(albumRail.locator(".compact-album-button:visible")).toHaveCount(1);
   await expect(albumRail.locator(".compact-rail-actions")).toBeHidden();
 
-  const activeNav = page.getByRole("navigation", { name: "Project views" }).getByRole("button", { name: "Sequence", exact: true });
+  const activeNav = navigation.getByRole("button", { name: "Sequence", exact: true });
   expect(await activeNav.evaluate((element) => getComputedStyle(element, "::after").display)).toBe("none");
 
   const firstTrack = page.locator(".sequence-track").first();

@@ -27,6 +27,18 @@ risk reduction and user value rather than feature count.
 
 ## Changes completed in this pass
 
+### 2026-08-14 mobile navigation follow-up
+
+- The seven primary workspace tabs now remain pinned at the top edge on phone
+  widths while header utilities, the compact album rail, and workspace content
+  continue to scroll normally.
+- The utility controls stay grouped separately from the tab row so the mobile
+  sticky container is not clipped by the desktop header, while desktop retains
+  its existing single-row header order.
+- Browser regression coverage scrolls the 390×844 Mastering workspace, verifies
+  the tab row remains at `top: 0`, switches to Track Review from the pinned row,
+  and checks the existing desktop quick-settings layout.
+
 ### 2026-08-11 mobile layout pass
 
 - Phone chrome now omits duplicate album counters and redundant workspace

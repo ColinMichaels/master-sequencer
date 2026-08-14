@@ -64,8 +64,10 @@
 
 @media (max-width: 820px) {
   .app-shell, .app-shell.albums-collapsed { display: block; height: auto; min-height: 100vh; overflow: visible; padding-bottom: 122px; }
-  .app-header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 0.4rem; margin: 0 0.4rem; padding: 0.35rem 0; }
-  .primary-nav { grid-column: 1 / -1; width: 100%; grid-template-columns: repeat(var(--nav-count, 6), minmax(0, 1fr)); }
+  /* Remove header containment so the tab row can stick while utility controls scroll normally. */
+  .app-header { display: contents; }
+  .app-header-controls { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 0.4rem; align-items: center; margin: 0 0.4rem; padding: 0.35rem 0; border-bottom: 1px solid var(--line); }
+  .primary-nav { position: sticky; z-index: 70; top: 0; width: calc(100% - 0.8rem); margin: 0 0.4rem; grid-template-columns: repeat(var(--nav-count, 6), minmax(0, 1fr)); background: var(--ink); box-shadow: 0 8px 18px rgb(0 0 0 / 34%); }
   .primary-nav button { width: 100%; min-width: 0; min-height: 40px; }
   /* Touch layouts keep the accessible labels but drop hover-only overlays that can stick above content. */
   .app-header button[data-tooltip]::after, .album-rail button[data-tooltip]::after { display: none !important; }

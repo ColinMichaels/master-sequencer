@@ -90,36 +90,39 @@ export function AppHeader({ activeView, onViewChange, onViewIntent = () => {}, a
           </button>
         ))}
       </nav>
-      <div className="command-history" role="group" aria-label="Project edit history"><button type="button" disabled={!commandHistory.canUndo} onClick={commandHistory.undo} aria-label={commandHistory.canUndo ? `Undo ${commandHistory.undoLabel}` : "Nothing to undo"}>↶</button><button type="button" disabled={!commandHistory.canRedo} onClick={commandHistory.redo} aria-label={commandHistory.canRedo ? `Redo ${commandHistory.redoLabel}` : "Nothing to redo"}>↷</button></div>
-      <MasterOutputMeters compact meteringRef={meteringRef} available={meteringAvailable} playing={playing} monitorLabel={monitorLabel} monitorRouting={monitorRouting} effectsActive={masterEffectsActive} onOpenMastering={() => openView("mastering")} />
-      <div className="header-summary-shell" ref={summaryRef}>
-        <div className="header-summary" role="group" aria-label={`${album?.title || "Album"} statistics`}>
-          {summaryStats.map(({ id, label, Icon, count }) => (
-            <button key={id} type="button" className={`header-stat-button ${id === "missing" && count ? "is-warning" : ""} ${expandedStat === id ? "is-open" : ""}`} data-stat-id={id} onClick={() => setExpandedStat((current) => current === id ? "" : id)} aria-expanded={expandedStat === id} aria-controls="album-statistics-popover" aria-label={`${label}: ${count}. Show album statistics`} data-tooltip={`${label}: ${count}`}>
-              <Icon size={21} />
-              <span className="header-stat-badge" aria-hidden="true">{count}</span>
-              <span className="sr-only">{label}</span>
-            </button>
-          ))}
-        </div>
-        {expandedStat && <section id="album-statistics-popover" className="header-stats-popover" role="dialog" aria-modal="false" aria-labelledby="album-statistics-title">
-          <header>
-            <div><strong id="album-statistics-title">Album Statistics</strong><small>{album?.title || "Current album"}</small></div>
-            <button type="button" onClick={() => setExpandedStat("")} aria-label="Close album statistics">×</button>
-          </header>
-          <div className="header-stat-details">
-            {summaryStats.map(({ id, label, Icon, count, detail, action, view }) => (
-              <button key={id} type="button" className={expandedStat === id ? "is-selected" : ""} onClick={() => openView(view)} aria-label={`${label}: ${count}. ${action}`}>
-                <Icon size={20} />
-                <span><strong>{label}</strong><small>{detail}</small></span>
-                <b>{count}</b>
-                <em>{action} →</em>
+      {/* Keep utilities grouped so phone layouts can pin only the workspace tabs. */}
+      <div className="app-header-controls">
+        <div className="command-history" role="group" aria-label="Project edit history"><button type="button" disabled={!commandHistory.canUndo} onClick={commandHistory.undo} aria-label={commandHistory.canUndo ? `Undo ${commandHistory.undoLabel}` : "Nothing to undo"}>↶</button><button type="button" disabled={!commandHistory.canRedo} onClick={commandHistory.redo} aria-label={commandHistory.canRedo ? `Redo ${commandHistory.redoLabel}` : "Nothing to redo"}>↷</button></div>
+        <MasterOutputMeters compact meteringRef={meteringRef} available={meteringAvailable} playing={playing} monitorLabel={monitorLabel} monitorRouting={monitorRouting} effectsActive={masterEffectsActive} onOpenMastering={() => openView("mastering")} />
+        <div className="header-summary-shell" ref={summaryRef}>
+          <div className="header-summary" role="group" aria-label={`${album?.title || "Album"} statistics`}>
+            {summaryStats.map(({ id, label, Icon, count }) => (
+              <button key={id} type="button" className={`header-stat-button ${id === "missing" && count ? "is-warning" : ""} ${expandedStat === id ? "is-open" : ""}`} data-stat-id={id} onClick={() => setExpandedStat((current) => current === id ? "" : id)} aria-expanded={expandedStat === id} aria-controls="album-statistics-popover" aria-label={`${label}: ${count}. Show album statistics`} data-tooltip={`${label}: ${count}`}>
+                <Icon size={21} />
+                <span className="header-stat-badge" aria-hidden="true">{count}</span>
+                <span className="sr-only">{label}</span>
               </button>
             ))}
           </div>
-        </section>}
+          {expandedStat && <section id="album-statistics-popover" className="header-stats-popover" role="dialog" aria-modal="false" aria-labelledby="album-statistics-title">
+            <header>
+              <div><strong id="album-statistics-title">Album Statistics</strong><small>{album?.title || "Current album"}</small></div>
+              <button type="button" onClick={() => setExpandedStat("")} aria-label="Close album statistics">×</button>
+            </header>
+            <div className="header-stat-details">
+              {summaryStats.map(({ id, label, Icon, count, detail, action, view }) => (
+                <button key={id} type="button" className={expandedStat === id ? "is-selected" : ""} onClick={() => openView(view)} aria-label={`${label}: ${count}. ${action}`}>
+                  <Icon size={20} />
+                  <span><strong>{label}</strong><small>{detail}</small></span>
+                  <b>{count}</b>
+                  <em>{action} →</em>
+                </button>
+              ))}
+            </div>
+          </section>}
+        </div>
+        <ScreenControls appearance={appearance} resolvedMode={resolvedMode} onChange={onAppearanceChange} onOpenSettings={onOpenAppearance} onOpenHelp={onOpenHelp} />
       </div>
-      <ScreenControls appearance={appearance} resolvedMode={resolvedMode} onChange={onAppearanceChange} onOpenSettings={onOpenAppearance} onOpenHelp={onOpenHelp} />
     </header>
   );
 }

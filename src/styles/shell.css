@@ -25,6 +25,7 @@
   margin: 0 0.9rem;
   border-bottom: 1px solid var(--line);
 }
+.app-header-controls { display: contents; }
 .primary-nav { display: grid; width: max-content; grid-template-columns: repeat(var(--nav-count, 5), 46px); border: 1px solid var(--line-soft); }
 .primary-nav button { position: relative; display: grid; width: 46px; min-height: 46px; padding: 0; border: 0; background: transparent; color: var(--bone-muted); cursor: pointer; place-items: center; }
 .primary-nav button:hover { color: var(--bone); background: rgb(var(--bone-rgb) / 3%); }
