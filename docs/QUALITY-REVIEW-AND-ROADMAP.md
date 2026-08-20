@@ -27,6 +27,20 @@ risk reduction and user value rather than feature count.
 
 ## Changes completed in this pass
 
+### 2026-08-20 browser-audio and input follow-up
+
+- Browser-selected files and folders now retain permission handles in IndexedDB
+  when the File System Access API is available. Bootstrap queries permission
+  silently, restores readable sources, and shows an explicit Reconnect action
+  only when a user gesture is required. Audio bytes and absolute paths remain
+  outside project storage, and file-input fallback remains session-only.
+- Space now controls transport from the workspace while focused form controls
+  and open dialogs retain native typing and activation behavior. This restores
+  ordinary album-title and search editing without allowing modal shortcuts to
+  leak into the player.
+- Modern is the default font pairing, with Space Age, Groove, and Rounded added
+  as portable appearance choices alongside the existing options.
+
 ### 2026-08-14 mobile navigation follow-up
 
 - The seven primary workspace tabs now remain pinned at the top edge on phone
@@ -109,10 +123,9 @@ risk reduction and user value rather than feature count.
 
 - Dialogs focus their first useful control, keep keyboard focus inside, close
   with Escape, and restore focus to the opener.
-- Space is exclusively owned by the shared transport in capture phase. It
-  toggles playback from text fields, selects, sliders, switches, and buttons,
-  suppresses the focused control's native Space action, and focuses the main
-  play/pause button.
+- Space toggles the shared transport while focus is in the workspace. Focused
+  fields, selects, sliders, switches, buttons, and open dialogs retain their
+  native Space behavior so editing and control activation remain predictable.
 - Up Arrow and Down Arrow navigate the shared player through the main sequence,
   skip unavailable sources, preserve play/pause intent, and keep the selected
   row visible. Editable controls, sliders, waveform controls, and modal dialogs

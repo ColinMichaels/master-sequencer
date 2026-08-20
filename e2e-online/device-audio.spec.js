@@ -38,7 +38,7 @@ test.beforeEach(async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Audio Library" })).toBeVisible();
 });
 
-test("selected device audio joins the session library and plays without upload", async ({ page }) => {
+test("selected device audio joins the library and plays without upload", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Add Files" })).toBeEnabled();
   await expect(page.getByRole("button", { name: "Add Folder" })).toBeEnabled();
   await page.getByPlaceholder("Search files").fill("does-not-match");
@@ -53,12 +53,40 @@ test("selected device audio joins the session library and plays without upload",
   await expect(page.getByRole("status").filter({ hasText: "1 audio file added and shown below" })).toBeVisible();
   await expect(page.getByPlaceholder("Search files")).toHaveValue("");
   await expect(page.getByRole("row", { name: /Reference Tone\.wav/ })).toBeVisible();
-  await expect(page.getByText("1 device file connected · never uploaded")).toBeVisible();
+  await expect(page.getByText("1 device file ready · never uploaded")).toBeVisible();
   await page.getByRole("button", { name: "Preview Reference Tone.wav" }).click();
   await expect.poll(() => page.locator(".transport-audio-source").evaluate((audio) => audio.currentTime)).toBeGreaterThan(0);
   const playback = await page.locator(".transport-audio-source").evaluate((audio) => ({ currentTime: audio.currentTime, source: audio.currentSrc }));
   expect(playback.currentTime).toBeGreaterThan(0);
   expect(playback.source).toMatch(/^blob:/);
+});
+
+test("a remembered audio folder reconnects and plays after a full reload", async ({ page }) => {
+  const waveBytes = [...createWaveFile({ seconds: 1.5, frequency: 520 })];
+  await page.evaluate(async (bytes) => {
+    const storageRoot = await navigator.storage.getDirectory();
+    await storageRoot.removeEntry("Remembered Album", { recursive: true }).catch(() => {});
+    const albumFolder = await storageRoot.getDirectoryHandle("Remembered Album", { create: true });
+    const audioHandle = await albumFolder.getFileHandle("Reloaded Mix.wav", { create: true });
+    const writable = await audioHandle.createWritable();
+    await writable.write(new Uint8Array(bytes));
+    await writable.close();
+    globalThis.showDirectoryPicker = async () => albumFolder;
+  }, waveBytes);
+
+  await page.getByRole("button", { name: "Add Folder" }).click();
+  await expect(page.getByRole("row", { name: /Reloaded Mix\.wav/ })).toBeVisible();
+  await expect(page.getByText("Remembered on this device · reconnects after reload")).toBeVisible();
+  await page.getByRole("button", { name: "Preview Reloaded Mix.wav" }).click();
+  await expect.poll(() => page.locator(".transport-audio-source").evaluate((audio) => audio.currentTime)).toBeGreaterThan(0);
+
+  await page.reload();
+  await page.getByRole("button", { name: "Audio Library" }).click();
+  await expect(page.getByRole("row", { name: /Reloaded Mix\.wav/ })).toBeVisible();
+  await expect(page.getByText("1 device file ready · never uploaded")).toBeVisible();
+  await expect(page.getByText("Remembered on this device · reconnects after reload")).toBeVisible();
+  await page.getByRole("button", { name: "Preview Reloaded Mix.wav" }).click();
+  await expect.poll(() => page.locator(".transport-audio-source").evaluate((audio) => audio.currentTime)).toBeGreaterThan(0);
 });
 
 test("folder selection indexes nested supported audio and ignores other files", async ({ page }, testInfo) => {
@@ -80,7 +108,7 @@ test("folder selection indexes nested supported audio and ignores other files", 
 
 test("free web Settings omits native engine controls", async ({ page }) => {
   await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Browser Audio" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Remembered Audio" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Native Engine Lab" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Play 3-second test tone" })).toHaveCount(0);
 });

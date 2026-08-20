@@ -245,7 +245,7 @@ export const useProjectData = () => {
     }
   }, [applyLibraryPayload]);
 
-  const reconnectRoot = useCallback(async (rootId) => {
+  const reconnectSource = useCallback(async (rootId) => {
     setScanning(true);
     setError("");
     try {
@@ -434,10 +434,10 @@ export const useProjectData = () => {
     rescan,
     registerSource,
     chooseSources,
+    reconnectSource,
     chooseProjectAssets,
     addRoot,
     removeRoot,
-    reconnectRoot,
     startNativeAudioLab,
     stopNativeAudioLab,
   };

@@ -418,7 +418,7 @@ export const createOnlineAppApi = ({ storage, sourcePicker = pickBrowserAudioSou
     browserRoots.push({
       id: rootId,
       label: String(label || "Selected audio").slice(0, 120),
-      path: persistent ? "Permission retained on this device · audio is never uploaded" : "Selected from this device · current browser session only",
+      path: persistent ? "Remembered on this device · reconnects after reload" : "Selected from this device · current browser session only",
       kind: persistent ? "browser-persistent" : "browser-session",
       connected: true,
       connectionState,

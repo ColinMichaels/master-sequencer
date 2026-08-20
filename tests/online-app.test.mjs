@@ -224,7 +224,7 @@ test("online app restores a persisted browser folder without prompting and requi
   const selected = await first.chooseSources("folder");
   const persistentRoot = selected.roots.at(-1);
   assert.equal(persistentRoot.kind, "browser-persistent");
-  assert.match(persistentRoot.path, /Permission retained/);
+  assert.match(persistentRoot.path, /reconnects after reload/);
   assert.equal(records.size, 1);
 
   const restored = await createOnlineAppApi(options).bootstrap();

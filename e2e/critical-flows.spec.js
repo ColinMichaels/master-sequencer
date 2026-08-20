@@ -676,6 +676,25 @@ test("mobile project tabs remain pinned while workspaces scroll", async ({ page 
   expect((await navigation.boundingBox()).y).toBe(0);
 });
 
+test("Modern is the reset typography and fun font choices remain responsive", async ({ page }) => {
+  const navigation = page.getByRole("navigation", { name: "Project views" });
+  await navigation.getByRole("button", { name: "Settings", exact: true }).click();
+  const appearance = page.locator("#appearance-settings");
+
+  await appearance.getByRole("button", { name: /Reset Original/ }).click();
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.font)).toBe("modern");
+  await expect(appearance.getByRole("button", { name: /Modern Clean, open, and neutral/ })).toHaveAttribute("aria-pressed", "true");
+
+  for (const [name, id] of [["Space Age", "space-age"], ["Groove", "groove"], ["Rounded", "rounded"]]) {
+    await appearance.getByRole("button", { name: new RegExp(name) }).click();
+    await expect.poll(() => page.evaluate(() => document.documentElement.dataset.font)).toBe(id);
+  }
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(appearance.locator(".font-theme-grid")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
+});
+
 test("light and dark modes preserve readable surfaces and distinct interaction states across every workspace", async ({ page }) => {
   const viewNames = ["Sequence", "Mastering", "Track Review", "Album Decisions", "Assets", "Audio Library", "Settings"];
   const navigation = page.getByRole("navigation", { name: "Project views" });
@@ -1043,7 +1062,7 @@ test("the transport waveform stays inside its desktop and phone footer", async (
   expect(bounds.player.bottom).toBeLessThanOrEqual(bounds.bar.bottom);
 });
 
-test("space exclusively owns transport playback and returns focus there from every control type", async ({ page }) => {
+test("space toggles transport from the workspace and remains available to focused controls and album-title typing", async ({ page }) => {
   const transportToggle = page.locator(".transport-playback-toggle");
   await transportToggle.click();
   await expect(transportToggle).toHaveAttribute("aria-label", "Pause playback");
@@ -1072,9 +1091,9 @@ test("space exclusively owns transport playback and returns focus there from eve
   await search.focus();
   await expect(search).toHaveValue("alpha tone");
   await page.keyboard.press("Space");
-  await expect(transportToggle).toHaveAttribute("aria-label", "Pause playback");
-  await expect(search).toHaveValue("alpha tone");
-  await expect(transportToggle).toBeFocused();
+  await expect(transportToggle).toHaveAttribute("aria-label", "Resume playback");
+  await expect(search).toHaveValue("alpha tone ");
+  await expect(search).toBeFocused();
 
   const formatFilter = page.getByRole("combobox", { name: "Filter by format" });
   await formatFilter.focus();
@@ -1082,43 +1101,45 @@ test("space exclusively owns transport playback and returns focus there from eve
   await page.keyboard.press("Space");
   await expect(transportToggle).toHaveAttribute("aria-label", "Resume playback");
   await expect(formatFilter).toHaveValue(formatBeforeSpace);
-  await expect(transportToggle).toBeFocused();
+  await expect(formatFilter).toBeFocused();
+  await page.keyboard.press("Escape");
 
   await page.getByRole("button", { name: "Mastering", exact: true }).click();
   const approvedMaster = page.getByLabel("Approved master");
   const approvalBeforeSpace = await approvedMaster.isChecked();
   await approvedMaster.focus();
   await page.keyboard.press("Space");
-  await expect(transportToggle).toHaveAttribute("aria-label", "Pause playback");
+  await expect(transportToggle).toHaveAttribute("aria-label", "Resume playback");
+  expect(await approvedMaster.isChecked()).toBe(!approvalBeforeSpace);
+  await expect(approvedMaster).toBeFocused();
+  await page.keyboard.press("Space");
   expect(await approvedMaster.isChecked()).toBe(approvalBeforeSpace);
-  await expect(transportToggle).toBeFocused();
 
   const printButton = page.getByRole("button", { name: "Print / Export Audio" });
   await printButton.focus();
   await page.keyboard.press("Space");
   await expect(transportToggle).toHaveAttribute("aria-label", "Resume playback");
-  await expect(page.getByRole("dialog", { name: "Print / Export Audio" })).toHaveCount(0);
-  await expect(transportToggle).toBeFocused();
+  const printDialog = page.getByRole("dialog", { name: "Print / Export Audio" });
+  await expect(printDialog).toBeVisible();
+  await printDialog.getByRole("button", { name: "Cancel", exact: true }).click();
 
   await page.getByRole("button", { name: /PREMIUM Analog Rack/ }).click();
   const threshold = page.getByRole("slider", { name: "Threshold graphical control", exact: true });
   const thresholdBeforeSpace = await threshold.inputValue();
   await threshold.focus();
   await page.keyboard.press("Space");
-  await expect(transportToggle).toHaveAttribute("aria-label", "Pause playback");
+  await expect(transportToggle).toHaveAttribute("aria-label", "Resume playback");
   await expect(threshold).toHaveValue(thresholdBeforeSpace);
-  await expect(transportToggle).toBeFocused();
+  await expect(threshold).toBeFocused();
 
   await page.getByRole("button", { name: "Add Album", exact: true }).click();
   const addAlbumDialog = page.getByRole("dialog", { name: "Add Album" });
   const albumTitle = addAlbumDialog.getByLabel("Album title");
-  await albumTitle.fill("Space remains transport");
-  await albumTitle.focus();
-  await page.keyboard.press("Space");
+  await albumTitle.pressSequentially("A New Album With Spaces");
   await expect(transportToggle).toHaveAttribute("aria-label", "Resume playback");
-  await expect(albumTitle).toHaveValue("Space remains transport");
+  await expect(albumTitle).toHaveValue("A New Album With Spaces");
   await expect(addAlbumDialog).toBeVisible();
-  await expect(transportToggle).toBeFocused();
+  await expect(albumTitle).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(addAlbumDialog).toBeHidden();
 });

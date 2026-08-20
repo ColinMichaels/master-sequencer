@@ -146,6 +146,8 @@
 .source-summary li span { display: grid; min-width: 0; }
 .source-summary li small { overflow: hidden; color: var(--bone-muted); font-family: var(--ui); font-size: 0.56rem; letter-spacing: 0; text-overflow: ellipsis; white-space: nowrap; }
 .source-summary li strong { font-size: 0.58rem; text-transform: uppercase; }
+.source-connection, .source-root-actions { display: flex; gap: 0.35rem; align-items: center; }
+.source-connection .icon-button, .source-root-actions .icon-button { width: 34px; height: 34px; }
 .is-connected { color: var(--lime); }
 .is-offline { color: var(--orange); }
 .source-summary p { margin: 0.55rem 0; color: var(--bone-muted); font-family: var(--ui); font-size: 0.63rem; font-style: italic; }
@@ -274,6 +276,7 @@
 .root-list li > span { display: grid; min-width: 0; }
 .root-list small { overflow: hidden; color: var(--bone-muted); font-family: var(--ui); font-size: 0.62rem; letter-spacing: 0; text-overflow: ellipsis; white-space: nowrap; }
 .root-list em { font-size: 0.62rem; font-style: normal; text-transform: uppercase; }
+.source-root-actions:empty { width: 0; }
 .root-form { display: grid; grid-template-columns: 0.65fr 1.35fr auto; gap: 0.55rem; align-items: end; margin-top: 1rem; }
 .root-form label { display: grid; gap: 0.3rem; font-size: 0.62rem; text-transform: uppercase; }
 .root-form input { min-width: 0; min-height: 40px; border: 1px solid var(--line); border-radius: 0; background: var(--ink); color: var(--bone); font-family: var(--ui); font-size: 0.7rem; }
