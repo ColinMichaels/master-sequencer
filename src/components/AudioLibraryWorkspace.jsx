@@ -5,7 +5,7 @@ import { addFileAsNewTrack, addFileCandidate } from "../lib/import-tracks.js";
 import { createLibrarySearchIndex, saveLibraryFilter } from "../lib/library-search.js";
 import { FolderIcon, LockIcon, MusicIcon, PlayIcon, PlusIcon, RefreshIcon, SearchIcon, WaveIcon } from "./Icons.jsx";
 
-export function AudioLibraryWorkspace({ state, activeAlbum, library, roots, formats, scan, watching, onlineApp = false, revealPrivateFilenames, scanning, draggedAudioKey = "", onRescan, onPreviewFile, onProjectChange, onAlbumChangeById, onAudioDragStart, onAudioDragEnd, onImportFiles, onImportFolder }) {
+export function AudioLibraryWorkspace({ state, activeAlbum, library, roots, formats, scan, watching, onlineApp = false, revealPrivateFilenames, scanning, draggedAudioKey = "", onRescan, onReconnectSource, onPreviewFile, onProjectChange, onAlbumChangeById, onAudioDragStart, onAudioDragEnd, onImportFiles, onImportFolder }) {
   const [query, setQuery] = useState("");
   const [format, setFormat] = useState("all");
   const [rootId, setRootId] = useState("all");
@@ -39,9 +39,9 @@ export function AudioLibraryWorkspace({ state, activeAlbum, library, roots, form
   const searchIndex = useMemo(() => createLibrarySearchIndex(library), [library]);
   const matchingKeys = useMemo(() => searchIndex.search(query), [searchIndex, query]);
   const savedFilters = state.settings?.librarySavedFilters || [];
-  const sessionFileCount = useMemo(() => {
-    const sessionRootIds = new Set(roots.filter((root) => root.kind === "browser-session").map((root) => root.id));
-    return library.filter((file) => sessionRootIds.has(file.rootId)).length;
+  const deviceFileCount = useMemo(() => {
+    const deviceRootIds = new Set(roots.filter((root) => root.kind === "browser-session" || root.kind === "browser-persistent").map((root) => root.id));
+    return library.filter((file) => deviceRootIds.has(file.rootId)).length;
   }, [library, roots]);
 
   const filtered = useMemo(() => library.filter((file) => {
@@ -134,7 +134,7 @@ export function AudioLibraryWorkspace({ state, activeAlbum, library, roots, form
           <select aria-label="Filter by format" value={format} onChange={(event) => setFormat(event.target.value)}><option value="all">All formats</option>{formats.map((item) => <option key={item} value={item}>{item.toUpperCase()}</option>)}</select>
           <select aria-label="Filter by root" value={rootId} onChange={(event) => setRootId(event.target.value)}><option value="all">All roots</option>{roots.map((root) => <option key={root.id} value={root.id}>{root.label}</option>)}</select>
           <select aria-label="Filter by usage" value={usageFilter} onChange={(event) => setUsageFilter(event.target.value)}><option value="all">All usage</option><option value="unassigned">Unassigned</option><option value="assigned">Assigned</option></select>
-          <button type="button" className="text-button" disabled={scanning} title={onlineApp ? "Refresh the current browser-session library" : "Rescan configured sources"} onClick={onRescan}><RefreshIcon /> {scanning ? "Scanning…" : onlineApp ? "Refresh" : "Rescan"}</button>
+          <button type="button" className="text-button" disabled={scanning} title={onlineApp ? "Refresh remembered and connected audio sources" : "Rescan configured sources"} onClick={onRescan}><RefreshIcon /> {scanning ? "Scanning…" : onlineApp ? "Refresh" : "Rescan"}</button>
         </div>
         <div className="saved-filter-bar"><label>Saved filter<select value={savedFilterId} onChange={(event) => applySavedFilter(event.target.value)}><option value="">Choose saved filter</option>{savedFilters.map((filter) => <option key={filter.id} value={filter.id}>{filter.name}</option>)}</select></label><form onSubmit={saveCurrentFilter}><input aria-label="Saved filter name" required value={filterName} onChange={(event) => setFilterName(event.target.value)} placeholder="Filter name" /><button type="submit" className="text-button">Save Current</button></form><button type="button" className="text-button text-button--danger" disabled={!savedFilterId} onClick={deleteSavedFilter}>Delete</button></div>
         <div className="audio-table" role="table" aria-label="Audio files">
@@ -162,11 +162,11 @@ export function AudioLibraryWorkspace({ state, activeAlbum, library, roots, form
       <aside className="library-inspector">
         <section className="source-summary">
           <h2>Audio Sources</h2>
-          <p className="watch-status"><strong>{onlineApp ? "Album previews + device audio" : watching?.enabled ? "Watching connected folders" : watching?.configured ? "Watching unavailable" : "Manual incremental rescans"}</strong><span>{onlineApp ? `${sessionFileCount} device file${sessionFileCount === 1 ? "" : "s"} in this session · never uploaded` : scan ? `${scan.reusedMetadata} cached · ${scan.probedMetadata} updated` : "Scan status unavailable"}</span></p>
-          <div className="source-summary-actions"><button type="button" className="text-button" disabled={scanning} title={onlineApp ? "Choose audio files from this device for the current browser session" : "Add audio files"} onClick={() => importIntoLibrary(onImportFiles)}><MusicIcon /> {scanning ? "Indexing…" : "Add Files"}</button><button type="button" className="text-button" disabled={scanning} title={onlineApp ? "Choose an audio folder from this device for the current browser session" : "Add an audio folder"} onClick={() => importIntoLibrary(onImportFolder)}><FolderIcon /> {scanning ? "Indexing…" : "Add Folder"}</button></div>
+          <p className="watch-status"><strong>{onlineApp ? "Album previews + remembered device audio" : watching?.enabled ? "Watching connected folders" : watching?.configured ? "Watching unavailable" : "Manual incremental rescans"}</strong><span>{onlineApp ? `${deviceFileCount} device file${deviceFileCount === 1 ? "" : "s"} ready · never uploaded` : scan ? `${scan.reusedMetadata} cached · ${scan.probedMetadata} updated` : "Scan status unavailable"}</span></p>
+          <div className="source-summary-actions"><button type="button" className="text-button" disabled={scanning} title={onlineApp ? "Choose audio files and remember access when the browser supports it" : "Add audio files"} onClick={() => importIntoLibrary(onImportFiles)}><MusicIcon /> {scanning ? "Indexing…" : "Add Files"}</button><button type="button" className="text-button" disabled={scanning} title={onlineApp ? "Choose an audio folder and remember access when the browser supports it" : "Add an audio folder"} onClick={() => importIntoLibrary(onImportFolder)}><FolderIcon /> {scanning ? "Indexing…" : "Add Folder"}</button></div>
           {importNotice && <p className={`library-import-status is-${importNotice.kind}`} role="status">{importNotice.message}</p>}
-          <ul>{roots.map((root) => <li key={root.id}><span>{root.label}<small>{root.path}</small></span><strong className={root.connected ? "is-connected" : "is-offline"}>{root.connectionState === "reconnected" ? "Reconnected" : root.connected ? "Connected" : "Offline"}</strong></li>)}</ul>
-          <p>{onlineApp ? "Selected audio plays directly from this device for the current session. Reloading disconnects it; no audio is uploaded or copied." : "Audio remains in its original location."}</p>
+          <ul>{roots.map((root) => <li key={root.id}><span>{root.label}<small>{root.path}</small></span><div className="source-connection"><strong className={root.connected ? "is-connected" : "is-offline"}>{root.connectionState === "reconnected" ? "Reconnected" : root.connectionState === "permission-required" ? "Access needed" : root.connected ? "Connected" : "Offline"}</strong>{onlineApp && root.kind === "browser-persistent" && !root.connected ? <button type="button" className="icon-button" disabled={scanning} aria-label={`Reconnect ${root.label}`} title={`Reconnect ${root.label}`} onClick={() => onReconnectSource(root.id)}><RefreshIcon /></button> : null}</div></li>)}</ul>
+          <p>{onlineApp ? "Remembered sources reconnect automatically after reload. If the browser pauses access, use Reconnect once—there is no need to find the folder again. Audio is never uploaded or copied." : "Audio remains in its original location."}</p>
         </section>
         <dl className="scan-summary">
           <div><dt>{library.length}</dt><dd>Files</dd></div>

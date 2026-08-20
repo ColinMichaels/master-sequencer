@@ -1,7 +1,7 @@
 export const DEFAULT_APPEARANCE = Object.freeze({
   mode: "dark",
   colorTheme: "signal",
-  fontTheme: "condensed",
+  fontTheme: "modern",
   textScale: 1,
 });
 
@@ -23,6 +23,9 @@ export const FONT_THEMES = Object.freeze([
   { id: "modern", label: "Modern", description: "Clean, open, and neutral", sample: "Sequence 01" },
   { id: "editorial", label: "Editorial", description: "Album-notes character with a serif lead", sample: "Sequence 01" },
   { id: "mono", label: "Studio Mono", description: "Technical cue-sheet pairing", sample: "Sequence 01" },
+  { id: "space-age", label: "Space Age", description: "Geometric sci-fi headings with clean controls", sample: "Orbit 07" },
+  { id: "groove", label: "Groove", description: "Warm vinyl-era display character", sample: "Side B" },
+  { id: "rounded", label: "Rounded", description: "Friendly curves for an easygoing studio", sample: "Play All" },
 ]);
 
 export const TEXT_SCALES = Object.freeze([0.9, 1, 1.1, 1.2]);

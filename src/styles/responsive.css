@@ -282,7 +282,7 @@
   .audio-row .icon-button { width: 36px; height: 36px; }
   .scan-summary { display: none; }
   .selected-file > label { grid-template-columns: 1fr; gap: 0.25rem; }
-  .root-list li { grid-template-columns: 34px minmax(0, 1fr) 36px; }
+  .root-list li { grid-template-columns: 34px minmax(0, 1fr) auto; }
   .root-list em { display: none; }
   .privacy-toggle { align-items: flex-start; }
   .inline-path-form { grid-template-columns: 1fr; }

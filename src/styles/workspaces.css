@@ -146,6 +146,8 @@
 .source-summary li span { display: grid; min-width: 0; }
 .source-summary li small { overflow: hidden; color: var(--bone-muted); font-family: var(--ui); font-size: 0.56rem; letter-spacing: 0; text-overflow: ellipsis; white-space: nowrap; }
 .source-summary li strong { font-size: 0.58rem; text-transform: uppercase; }
+.source-connection, .source-root-actions { display: flex; gap: 0.35rem; align-items: center; }
+.source-connection .icon-button, .source-root-actions .icon-button { width: 34px; height: 34px; }
 .is-connected { color: var(--lime); }
 .is-offline { color: var(--orange); }
 .source-summary p { margin: 0.55rem 0; color: var(--bone-muted); font-family: var(--ui); font-size: 0.63rem; font-style: italic; }
@@ -214,7 +216,8 @@
 .text-scale-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.25rem; margin-top: 0.35rem; }
 .text-scale-steps button { min-height: 24px; border: 1px solid var(--line-soft); background: transparent; color: var(--bone-muted); font-size: 0.52rem; cursor: pointer; }
 .text-scale-steps button:hover, .text-scale-steps button.is-selected { border-color: var(--lime); color: var(--lime); }
-.color-theme-grid, .font-theme-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.45rem; }
+.color-theme-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.45rem; }
+.font-theme-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 0.45rem; }
 .color-theme-grid button, .font-theme-grid button { position: relative; display: grid; grid-template-columns: 45px minmax(0, 1fr) 18px; gap: 0.4rem; align-items: center; min-height: 54px; padding: 0.45rem; border: 1px solid var(--line-soft); background: var(--ink); color: var(--bone); text-align: left; cursor: pointer; }
 .font-theme-grid button { grid-template-columns: minmax(0, 1fr) 18px; grid-template-rows: auto auto; align-items: end; }
 .color-theme-grid button:hover, .color-theme-grid button.is-selected, .font-theme-grid button:hover, .font-theme-grid button.is-selected { border-color: var(--lime); box-shadow: inset 0 -2px 0 var(--lime); }
@@ -232,6 +235,9 @@
 .font-option--modern .font-option-sample { font-family: "Avenir Next", "Helvetica Neue", Arial, sans-serif; }
 .font-option--editorial .font-option-sample { font-family: "Iowan Old Style", Palatino, Georgia, serif; }
 .font-option--mono .font-option-sample { font-family: "SFMono-Regular", Menlo, Monaco, monospace; font-size: 0.72rem; }
+.font-option--space-age .font-option-sample { font-family: Futura, "Century Gothic", "Avenir Next", sans-serif; letter-spacing: 0.09em; }
+.font-option--groove .font-option-sample { font-family: "Cooper Black", "Rockwell Extra Bold", Rockwell, Georgia, serif; }
+.font-option--rounded .font-option-sample { font-family: "Arial Rounded MT Bold", "Avenir Next Rounded", "Trebuchet MS", sans-serif; }
 .appearance-preview { display: flex; min-width: 0; flex-direction: column; padding: 0.9rem; border: 1px solid var(--line); background: var(--ink-raised); box-shadow: inset 0 3px 0 var(--lime); }
 .preview-kicker { color: var(--lime); font-size: 0.56rem; text-transform: uppercase; }
 .appearance-preview h4 { margin: 0.8rem 0 0.35rem; font-family: var(--display); font-size: 1.3rem; text-transform: uppercase; }
@@ -270,6 +276,7 @@
 .root-list li > span { display: grid; min-width: 0; }
 .root-list small { overflow: hidden; color: var(--bone-muted); font-family: var(--ui); font-size: 0.62rem; letter-spacing: 0; text-overflow: ellipsis; white-space: nowrap; }
 .root-list em { font-size: 0.62rem; font-style: normal; text-transform: uppercase; }
+.source-root-actions:empty { width: 0; }
 .root-form { display: grid; grid-template-columns: 0.65fr 1.35fr auto; gap: 0.55rem; align-items: end; margin-top: 1rem; }
 .root-form label { display: grid; gap: 0.3rem; font-size: 0.62rem; text-transform: uppercase; }
 .root-form input { min-width: 0; min-height: 40px; border: 1px solid var(--line); border-radius: 0; background: var(--ink); color: var(--bone); font-family: var(--ui); font-size: 0.7rem; }

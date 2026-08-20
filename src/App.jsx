@@ -70,6 +70,9 @@ const EMPTY_TRACKS = [];
 const arrowKeyBelongsToFocusedControl = (target) => target instanceof Element
   && Boolean(target.closest("input, textarea, select, [contenteditable='true'], [role='textbox'], [role='slider'], [aria-haspopup='menu'], [role='menuitemradio']"));
 
+const spaceKeyBelongsToFocusedControl = (target) => target instanceof Element
+  && Boolean(target.closest("input, textarea, select, button, [contenteditable='true'], [role='textbox'], [role='slider'], [role='button'], [aria-haspopup='menu'], [role='menuitemradio']"));
+
 function WorkspaceFallback() {
   return <main className="workspace-loading" role="status" aria-live="polite"><span className="loading-wave" /><strong>Opening workspace…</strong></main>;
 }
@@ -128,7 +131,7 @@ function AddTracksForm({ album, scanning, onlineApp = false, onChoose, onReviewP
   return (
     <div className="modal-form add-tracks-form">
       <p>Add tracks to <strong>{album.title}</strong>. Audio stays where it is; Project Sequencer saves only the path and your project decisions.</p>
-      {onlineApp && <p className="online-privacy-note"><strong>Device audio stays private:</strong> choose files or a folder for this browser session. Audio plays directly from your device and is never uploaded.</p>}
+      {onlineApp && <p className="online-privacy-note"><strong>Device audio stays private:</strong> choose files or a folder once. Supported browsers remember access for future reloads; audio plays directly from your device and is never uploaded.</p>}
       <div className="native-path-grid">
         <button type="button" className="native-path-field" disabled={scanning} onClick={() => onChoose("files")}>
           <MusicIcon />
@@ -338,11 +341,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // Space is an application-level transport command by product design. Capture
-    // it before focused controls can toggle themselves or insert whitespace.
+    // Space controls transport only from the workspace itself. Focused form
+    // controls and modal fields retain native typing and activation behavior.
     const toggleTransportWithSpace = (event) => {
-      if ((event.code !== "Space" && event.key !== " ") || event.repeat || event.isComposing) return;
-      if (event.altKey || event.ctrlKey || event.metaKey) return;
+      if ((event.code !== "Space" && event.key !== " ") || event.repeat || event.isComposing || event.defaultPrevented) return;
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      if (spaceKeyBelongsToFocusedControl(event.target) || document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       event.preventDefault();
       event.stopImmediatePropagation();
       transportPlaybackButtonRef.current?.focus({ preventScroll: true });
@@ -787,8 +791,8 @@ export default function App() {
           {activeView === "decisions" && <AlbumDecisionsWorkspace album={activeAlbum} templates={project.state.albumTemplates || []} libraryMap={project.libraryMap} renderingAvailable={!api.onlineApp} onAlbumChange={onAlbumChange} onSaveTemplate={saveTemplate} onCreateFromTemplate={createFromTemplate} onPreviewTransition={previewTransitionVariant} onPreviewComparison={previewComparisonCandidate} previewingDecision={previewingDecision} />}
           {activeView === "mastering" && <MasteringWorkspace album={activeAlbum} libraryMap={project.libraryMap} presets={masteringPresets} renderingAvailable={!api.onlineApp} revealPrivateFilenames={revealPrivateFilenames} protectedSourceKeys={protectedSourceKeys} activeComparison={transport.current?.masteringComparison} onAlbumChange={onAlbumChange} onPreview={previewMasteringEdit} onReferenceCompare={transport.previewMasteringComparison} previewingTrackId={previewingTrackId} onOpenExport={openAudioExport} onTrackFocus={setMasteringTrackId} onPreviewChapter={(index) => transport.previewChapter(sequenceAlbum, index)} onPlayFrom={playMasteringTrack} onTogglePlayback={transport.togglePlayback} onSeekTrack={seekMasteringTrack} currentTrackId={currentTransportTrack?.id} currentTime={transport.currentTime} onSavePreset={saveMasteringPreset} onLoadPreset={loadMasteringPreset} onDeletePreset={deleteMasteringPreset} meteringRef={transport.meteringRef} meteringAvailable={transport.liveMasteringAvailable} playing={transport.playing} liveProcessing={Boolean(transport.current?.track && !transport.current.referenceTrack && !transport.current.renderedPreview)} monitorLabel={masterMonitorLabel} monitorMode={transport.monitorMode} onMonitorModeChange={transport.setMonitorMode} />}
           {activeView === "assets" && <AssetWorkspace album={activeAlbum} revealPrivateFilenames={revealPrivateFilenames} picking={project.pickingAssets} sourcePickingAvailable={!api.onlineApp} onAlbumChange={onAlbumChange} onPickAssets={project.chooseProjectAssets} onTrackFocus={setAssetTrackId} />}
-          {activeView === "library" && <AudioLibraryWorkspace state={project.state} activeAlbum={activeAlbum} library={project.library} roots={project.roots} formats={project.formats} scan={project.scan} watching={project.watching} onlineApp={api.onlineApp} revealPrivateFilenames={revealPrivateFilenames} scanning={project.scanning} draggedAudioKey={draggedAudioKey} onRescan={project.rescan} onPreviewFile={transport.previewFile} onProjectChange={project.updateState} onAlbumChangeById={onAlbumChangeById} onAudioDragStart={setDraggedAudioKey} onAudioDragEnd={() => setDraggedAudioKey("")} onImportFiles={() => chooseLibrarySources("files")} onImportFolder={() => chooseLibrarySources("folder")} />}
-          {activeView === "settings" && <SettingsWorkspace state={project.state} roots={project.roots} scan={project.scan} watching={project.watching} scanning={project.scanning} onlineApp={api.onlineApp} projectArtistName={configuredArtistName} currentProject={currentProject} projects={project.projects} projectBusy={project.projectOperation} revealPrivateFilenames={revealPrivateFilenames} appearance={appearance} resolvedMode={resolvedMode} onProjectIdentityChange={saveProjectIdentity} onAppearanceChange={updateAppearance} onTogglePrivate={(checked) => project.updateState((draft) => { draft.settings ||= {}; draft.settings.revealPrivateFilenames = checked; })} onAddRoot={project.addRoot} onRemoveRoot={project.removeRoot} onChooseSources={project.chooseSources} onRescan={project.rescan} onImportState={importState} onOpenProjects={() => setModal("projects")} onNewProject={() => setModal("new-project")} onExportBundle={exportPortableBundle} />}
+          {activeView === "library" && <AudioLibraryWorkspace state={project.state} activeAlbum={activeAlbum} library={project.library} roots={project.roots} formats={project.formats} scan={project.scan} watching={project.watching} onlineApp={api.onlineApp} revealPrivateFilenames={revealPrivateFilenames} scanning={project.scanning} draggedAudioKey={draggedAudioKey} onRescan={project.rescan} onReconnectSource={project.reconnectSource} onPreviewFile={transport.previewFile} onProjectChange={project.updateState} onAlbumChangeById={onAlbumChangeById} onAudioDragStart={setDraggedAudioKey} onAudioDragEnd={() => setDraggedAudioKey("")} onImportFiles={() => chooseLibrarySources("files")} onImportFolder={() => chooseLibrarySources("folder")} />}
+          {activeView === "settings" && <SettingsWorkspace state={project.state} roots={project.roots} scan={project.scan} watching={project.watching} scanning={project.scanning} onlineApp={api.onlineApp} projectArtistName={configuredArtistName} currentProject={currentProject} projects={project.projects} projectBusy={project.projectOperation} revealPrivateFilenames={revealPrivateFilenames} appearance={appearance} resolvedMode={resolvedMode} onProjectIdentityChange={saveProjectIdentity} onAppearanceChange={updateAppearance} onTogglePrivate={(checked) => project.updateState((draft) => { draft.settings ||= {}; draft.settings.revealPrivateFilenames = checked; })} onAddRoot={project.addRoot} onRemoveRoot={project.removeRoot} onChooseSources={project.chooseSources} onReconnectSource={project.reconnectSource} onRescan={project.rescan} onImportState={importState} onOpenProjects={() => setModal("projects")} onNewProject={() => setModal("new-project")} onExportBundle={exportPortableBundle} />}
         </Suspense>
       </div>
       <TransportBar playbackButtonRef={transportPlaybackButtonRef} audioRefs={transport.audioRefs} audioHandlers={transport.audioHandlers} activeDeck={transport.activeDeck} current={transport.current} status={transport.status} activeAlbum={sequenceAlbum} visual={transportVisual} playing={transport.playing} currentTime={transport.currentTime} mediaDuration={transport.mediaDuration} liveMasteringLabel={liveMasteringLabel} afterTrackMode={transport.afterTrackMode} resetArmed={resetArmed} onTogglePlayback={transport.togglePlayback} onSeek={transport.seek} onPlaySequence={() => transport.playSequence(sequenceAlbum)} onAfterTrackModeChange={transport.setAfterTrackMode} onResetOrder={resetOrder} onExport={exportSequence} />

@@ -1,5 +1,6 @@
 import { normalizeMasterBus } from "./mastering.js";
 import { createDefaultAdvancedMastering, normalizeAdvancedMastering } from "./advanced-mastering.js";
+import { createBrowserAudioSourceStore } from "./browser-audio-source-store.js";
 
 const STORAGE_KEY = "project-sequencer-online-v1";
 const LEGACY_STORAGE_KEY = "project-sequencer-hosted-tester-v3";
@@ -95,7 +96,7 @@ export const createOnlineAppState = () => ({
   settings: {
     project: { artistName: "The Dreadnauts", setupComplete: true },
     revealPrivateFilenames: false,
-    appearance: { mode: "dark", colorTheme: "signal", fontTheme: "condensed", textScale: 1 },
+    appearance: { mode: "dark", colorTheme: "signal", fontTheme: "modern", textScale: 1 },
   },
   albums: [{
     id: "cosmic-reggae-sessions",
@@ -235,7 +236,7 @@ const writeWorkspace = (storage, workspace) => {
   resolveStorage(storage).setItem(STORAGE_KEY, JSON.stringify(workspace));
 };
 
-const onlineCapabilityError = () => Promise.reject(new Error("This action is not available in the browser. Project Sequencer can use only browser-session access to files you explicitly choose; it cannot use system paths or FFmpeg."));
+const onlineCapabilityError = () => Promise.reject(new Error("This action is not available in the browser. Project Sequencer can use only browser-approved access to files you explicitly choose; it cannot use system paths or FFmpeg."));
 
 const safeRelativePath = (value, fallback) => {
   const parts = String(value || fallback || "audio").replaceAll("\\", "/").split("/").filter((part) => part && part !== "." && part !== "..");
@@ -287,11 +288,21 @@ const pickBrowserAudioSources = async (kind) => {
         multiple: true,
         types: [{ description: "Audio files", accept: { "audio/*": [...AUDIO_EXTENSIONS].map((extension) => `.${extension}`) } }],
       });
-      return { cancelled: handles.length === 0, label: "Selected audio files", entries: await Promise.all(handles.map(async (handle) => ({ file: await handle.getFile(), relativePath: handle.name }))) };
+      return {
+        cancelled: handles.length === 0,
+        label: "Selected audio files",
+        entries: await Promise.all(handles.map(async (handle) => ({ file: await handle.getFile(), relativePath: handle.name }))),
+        rememberedSource: { selectionKind: "files", handles },
+      };
     }
     if (kind === "folder" && typeof globalThis.showDirectoryPicker === "function") {
       const handle = await globalThis.showDirectoryPicker({ mode: "read" });
-      return { cancelled: false, label: handle.name || "Selected audio folder", entries: await walkDirectory(handle) };
+      return {
+        cancelled: false,
+        label: handle.name || "Selected audio folder",
+        entries: await walkDirectory(handle),
+        rememberedSource: { selectionKind: "folder", handles: [handle] },
+      };
     }
     return pickWithFileInput(kind);
   } catch (error) {
@@ -359,7 +370,42 @@ const waveformFromBrowserFile = async (file, libraryFile, requestedPoints = 900)
   }
 };
 
-export const createOnlineAppApi = ({ storage, sourcePicker = pickBrowserAudioSources, mediaUrlFactory = createBrowserMediaUrl, metadataReader = readBrowserAudioMetadata } = {}) => {
+const rememberedPermission = async (handle, requestAccess) => {
+  if (!handle) return "denied";
+  if (typeof handle.queryPermission !== "function") return "granted";
+  const current = await handle.queryPermission({ mode: "read" });
+  if (current === "granted" || !requestAccess || typeof handle.requestPermission !== "function") return current;
+  return handle.requestPermission({ mode: "read" });
+};
+
+const readRememberedSource = async (source, requestAccess = false) => {
+  const handles = Array.isArray(source?.handles) ? source.handles : [];
+  if (!handles.length) return { connectionState: "offline", entries: [] };
+  for (const handle of handles) {
+    if (await rememberedPermission(handle, requestAccess) !== "granted") return { connectionState: "permission-required", entries: [] };
+  }
+  try {
+    if (source.selectionKind === "folder") return { connectionState: "connected", entries: await walkDirectory(handles[0]) };
+    const entries = await Promise.all(handles.map(async (handle) => ({ file: await handle.getFile(), relativePath: handle.name })));
+    return { connectionState: "connected", entries };
+  } catch {
+    return { connectionState: "offline", entries: [] };
+  }
+};
+
+const persistentRootPath = (connectionState) => connectionState === "connected"
+  ? "Remembered on this device · reconnects after reload"
+  : connectionState === "permission-required"
+    ? "Remembered on this device · browser access required"
+    : "Remembered on this device · source currently unavailable";
+
+export const createOnlineAppApi = ({
+  storage,
+  sourcePicker = pickBrowserAudioSources,
+  sourceStore = createBrowserAudioSourceStore(),
+  mediaUrlFactory = createBrowserMediaUrl,
+  metadataReader = readBrowserAudioMetadata,
+} = {}) => {
   const browserLibrary = [];
   const browserRoots = [];
   const browserFiles = new Map();
@@ -367,6 +413,8 @@ export const createOnlineAppApi = ({ storage, sourcePicker = pickBrowserAudioSou
   const waveformCache = new Map();
   const browserSessionId = globalThis.crypto?.randomUUID?.().slice(0, 12) || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   let rootSequence = 0;
+  let restoredRememberedSources = false;
+  let initialRestorePromise;
 
   const allLibrary = () => [...onlineAppLibrary, ...browserLibrary];
   const allRoots = () => [...onlineAppRoots, ...browserRoots];
@@ -379,26 +427,37 @@ export const createOnlineAppApi = ({ storage, sourcePicker = pickBrowserAudioSou
     ...extra,
   });
 
-  const chooseSources = async (kind) => {
-    if (!["files", "folder"].includes(kind)) throw new Error("Choose either audio files or an audio folder.");
-    const selection = await sourcePicker(kind);
-    if (selection?.cancelled) return libraryPayload({ cancelled: true, pickedKeys: [] });
-    const entries = (selection?.entries || []).filter(({ file }) => AUDIO_EXTENSIONS.has(fileExtension(file?.name)));
-    if (!entries.length) throw new Error("No supported audio files were found in that selection.");
+  const clearRuntimeSource = (rootId) => {
+    const rootIndex = browserRoots.findIndex((root) => root.id === rootId);
+    if (rootIndex >= 0) browserRoots.splice(rootIndex, 1);
+    for (let index = browserLibrary.length - 1; index >= 0; index -= 1) {
+      const file = browserLibrary[index];
+      if (file.rootId !== rootId) continue;
+      const existingUrl = browserMediaUrls.get(file.key);
+      if (existingUrl?.startsWith("blob:")) URL.revokeObjectURL(existingUrl);
+      browserFiles.delete(file.key);
+      browserMediaUrls.delete(file.key);
+      browserLibrary.splice(index, 1);
+    }
+    waveformCache.clear();
+  };
 
-    rootSequence += 1;
-    const rootId = `browser-session-${browserSessionId}-${rootSequence}`;
+  const addRuntimeSource = async ({ rootId, label, sourceKind, rootKind, rootPath, entries, connectionState = "connected" }) => {
+    clearRuntimeSource(rootId);
     browserRoots.push({
       id: rootId,
-      label: String(selection.label || (kind === "folder" ? "Selected audio folder" : "Selected audio files")).slice(0, 120),
-      path: "Selected from this device · current browser session only",
-      kind: "browser-session",
-      connected: true,
-      connectionState: "connected",
+      label,
+      path: rootPath,
+      kind: rootKind,
+      sourceKind,
+      connected: connectionState === "connected",
+      connectionState,
     });
+    if (connectionState !== "connected") return [];
 
+    const supportedEntries = entries.filter(({ file }) => AUDIO_EXTENSIONS.has(fileExtension(file?.name)));
     const reservedPaths = new Set();
-    const preparedEntries = entries.map(({ file, relativePath }) => {
+    const preparedEntries = supportedEntries.map(({ file, relativePath }) => {
       const initialPath = safeRelativePath(relativePath, file.name);
       const dotIndex = initialPath.lastIndexOf(".");
       const stem = dotIndex > 0 ? initialPath.slice(0, dotIndex) : initialPath;
@@ -452,6 +511,67 @@ export const createOnlineAppApi = ({ storage, sourcePicker = pickBrowserAudioSou
       browserMediaUrls.set(libraryFile.key, mediaUrl);
       pickedKeys.push(libraryFile.key);
     }
+    return pickedKeys;
+  };
+
+  const restoreSource = async (source, requestAccess = false) => {
+    const remembered = await readRememberedSource(source, requestAccess);
+    return addRuntimeSource({
+      rootId: source.id,
+      label: String(source.label || "Remembered audio source").slice(0, 120),
+      sourceKind: source.selectionKind,
+      rootKind: "browser-persistent",
+      rootPath: persistentRootPath(remembered.connectionState),
+      entries: remembered.entries,
+      connectionState: remembered.connectionState,
+    });
+  };
+
+  const restoreSources = async ({ requestAccess = false, sourceId = "" } = {}) => {
+    let sources;
+    try {
+      sources = sourceId ? [await sourceStore.get(sourceId)].filter(Boolean) : await sourceStore.list();
+    } catch {
+      sources = [];
+    }
+    for (const source of sources) await restoreSource(source, requestAccess);
+    if (!sourceId) restoredRememberedSources = true;
+    return libraryPayload();
+  };
+
+  const restoreInitialSources = () => {
+    if (restoredRememberedSources) return Promise.resolve(libraryPayload());
+    initialRestorePromise ||= restoreSources();
+    return initialRestorePromise;
+  };
+
+  const chooseSources = async (kind) => {
+    if (!["files", "folder"].includes(kind)) throw new Error("Choose either audio files or an audio folder.");
+    const selection = await sourcePicker(kind);
+    if (selection?.cancelled) return libraryPayload({ cancelled: true, pickedKeys: [] });
+    const entries = (selection?.entries || []).filter(({ file }) => AUDIO_EXTENSIONS.has(fileExtension(file?.name)));
+    if (!entries.length) throw new Error("No supported audio files were found in that selection.");
+
+    rootSequence += 1;
+    const label = String(selection.label || (kind === "folder" ? "Selected audio folder" : "Selected audio files")).slice(0, 120);
+    let rootId = `browser-session-${browserSessionId}-${rootSequence}`;
+    let rootKind = "browser-session";
+    let rootPath = "Selected from this device · this browser cannot remember this picker";
+    if (selection.rememberedSource && sourceStore.supported) {
+      const rememberedId = globalThis.crypto?.randomUUID?.() || `${browserSessionId}-${rootSequence}`;
+      const rememberedSource = { id: `browser-source-${rememberedId}`, label, ...selection.rememberedSource };
+      try {
+        await sourceStore.put(rememberedSource);
+        rootId = rememberedSource.id;
+        rootKind = "browser-persistent";
+        rootPath = persistentRootPath("connected");
+      } catch {
+        // Private browsing, storage quotas, and older engines may reject handle
+        // persistence. Playback remains available for this session without ever
+        // copying or uploading the selected audio.
+      }
+    }
+    const pickedKeys = await addRuntimeSource({ rootId, label, sourceKind: kind, rootKind, rootPath, entries });
     return libraryPayload({ cancelled: false, pickedKeys });
   };
 
@@ -472,25 +592,17 @@ export const createOnlineAppApi = ({ storage, sourcePicker = pickBrowserAudioSou
   };
 
   const removeBrowserSource = async (sourceId) => {
-    const rootIndex = browserRoots.findIndex((root) => root.id === sourceId);
-    if (rootIndex < 0) return onlineCapabilityError();
-    browserRoots.splice(rootIndex, 1);
-    for (let index = browserLibrary.length - 1; index >= 0; index -= 1) {
-      const file = browserLibrary[index];
-      if (file.rootId !== sourceId) continue;
-      const mediaUrl = browserMediaUrls.get(file.key);
-      if (mediaUrl?.startsWith("blob:")) URL.revokeObjectURL(mediaUrl);
-      browserFiles.delete(file.key);
-      browserMediaUrls.delete(file.key);
-      browserLibrary.splice(index, 1);
-    }
-    waveformCache.clear();
+    const root = browserRoots.find((item) => item.id === sourceId);
+    if (!root) return onlineCapabilityError();
+    if (root.kind === "browser-persistent") await sourceStore.remove(sourceId).catch(() => {});
+    clearRuntimeSource(sourceId);
     return libraryPayload();
   };
 
   return {
   onlineApp: true,
   bootstrap: async () => {
+    await restoreInitialSources();
     const workspace = readWorkspace(storage);
     const project = workspace.projects.find((item) => item.id === workspace.activeProjectId);
     return {
@@ -562,11 +674,19 @@ export const createOnlineAppApi = ({ storage, sourcePicker = pickBrowserAudioSou
       return false;
     }
   },
-  rescan: async () => libraryPayload(),
+  rescan: async () => restoreSources(),
   libraryStatus: async () => libraryPayload(),
   portableBundle: onlineCapabilityError,
   registerSource: onlineCapabilityError,
   chooseSources,
+  reconnectSource: async (sourceId) => {
+    const source = await sourceStore.get(sourceId).catch(() => null);
+    if (!source) throw new Error("That remembered audio source is no longer available in this browser.");
+    const payload = await restoreSources({ requestAccess: true, sourceId });
+    const root = payload.roots.find((item) => item.id === sourceId);
+    if (!root?.connected) throw new Error(root?.connectionState === "permission-required" ? "Browser access is still required for that remembered audio source." : "That remembered audio source is currently unavailable.");
+    return payload;
+  },
   chooseProjectAssets: onlineCapabilityError,
   renderAudio: onlineCapabilityError,
   startRenderJob: onlineCapabilityError,

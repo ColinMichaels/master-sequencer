@@ -97,7 +97,7 @@ npm start
 - **Settings:** click a file-path or folder-path control to open the native
   macOS picker; manual path entry remains under an optional fallback. Choose
   dark, light, or system mode; adjust interface text from 90% to 120%; and mix
-  four color themes with four font pairings. Disconnect sources, rescan, keep
+  four color themes with seven font pairings. Disconnect sources, rescan, keep
   protected filenames masked, and export/import the complete Project Sequencer
   JSON record. Export an optional portable bundle containing project JSON and
   source checksums only; it never copies media.
@@ -117,10 +117,10 @@ The seven primary views also use the number row or numeric keypad shortcuts
 header output meter opens Mastering directly without taking over its VU/Hz
 controls. Long sequence and library lists render and scroll within their own
 workspace instead of pushing essential transport controls out of reach.
-Space is reserved globally for the shared transport: it toggles playback from
-any focused control, prevents that control from also consuming the keystroke,
-and returns keyboard focus to the main play/pause button. Paste or use another
-non-Space editing action when a field needs a literal space.
+Space toggles the shared transport while focus is in the workspace itself.
+Focused fields, selects, sliders, switches, buttons, and open dialogs keep their
+native Space behavior so titles, searches, and other text remain directly
+editable without interrupting playback.
 Up Arrow and Down Arrow select the previous or next playable track in the main
 sequence and synchronize that selection with the shared player. Playback keeps
 running when it was already active; a paused player stays paused. Focused text
@@ -305,7 +305,10 @@ catalog. It exercises real FFmpeg output and HTTP byte-range playback without
 reading or changing configured source audio.
 
 The Sites release build uses the browser-safe local persistence adapter and
-splits secondary workspaces into deferred chunks. `npm run build:sites`
+splits secondary workspaces into deferred chunks. Supported browsers retain
+File System Access handles in IndexedDB and silently reconnect device audio on
+reload; fallback file-input selections remain session-only. Handles never
+contain uploaded audio bytes or stored absolute paths. `npm run build:sites`
 prepares the validated Cloudflare Worker/client package without publishing it;
 the configured Sites deployment remains a separate explicit release step.
 

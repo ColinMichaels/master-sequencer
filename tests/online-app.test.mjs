@@ -10,6 +10,17 @@ const memoryStorage = () => {
   };
 };
 
+const memorySourceStore = () => {
+  const values = new Map();
+  return {
+    supported: true,
+    list: async () => [...values.values()],
+    get: async (id) => values.get(id) || null,
+    put: async (source) => { values.set(source.id, source); return true; },
+    remove: async (id) => { values.delete(id); return true; },
+  };
+};
+
 test("online app starts with the released Dreadnauts Album 1 and persists project changes in browser storage", async () => {
   const storage = memoryStorage();
   const first = createOnlineAppApi({ storage });
@@ -61,7 +72,7 @@ test("online app supports separate browser-local projects and rejects local serv
   assert.equal(created.state.albums[0].title, "New Album");
   assert.equal(created.projects.length, 2);
   await assert.rejects(api.registerSource({ path: "/device/audio" }), /not available in the browser/);
-  await assert.rejects(api.startRenderJob({}), /browser-session access/);
+  await assert.rejects(api.startRenderJob({}), /browser-approved access/);
 });
 
 test("online app removes only a saved project record and switches away from an active removal", async () => {
@@ -93,7 +104,7 @@ test("online waveform and analysis remain compact and contain no source paths", 
   assert.equal(JSON.stringify({ waveform, analysis }).includes("absolutePath"), false);
 });
 
-test("online app indexes selected device files and folders only for the current API session", async () => {
+test("online app keeps fallback file-input selections in the current API session", async () => {
   const selections = {
     files: {
       cancelled: false,
@@ -128,11 +139,87 @@ test("online app indexes selected device files and folders only for the current 
   assert.equal(pickedFolder.library.length, 11);
   assert.equal(pickedFolder.roots.at(-1).label, "Album Drafts");
   assert.equal(pickedFolder.library.at(-1).relativePath, "Disc 1/Deep Cut.flac");
-  assert.match(pickedFolder.roots.at(-1).path, /current browser session only/);
+  assert.match(pickedFolder.roots.at(-1).path, /cannot remember this picker/);
   assert.equal(JSON.stringify(pickedFolder).includes("/Users/"), false);
 
   const freshSession = createOnlineAppApi({ storage: memoryStorage() });
   assert.equal((await freshSession.bootstrap()).library.length, 9);
+});
+
+test("online app remembers supported browser file handles and reconnects them automatically after reload", async () => {
+  const sourceStore = memorySourceStore();
+  const file = { name: "Remembered Mix.wav", size: 384_000, lastModified: 1_786_329_600_010 };
+  const handle = {
+    name: file.name,
+    queryPermission: async () => "granted",
+    requestPermission: async () => "granted",
+    getFile: async () => file,
+  };
+  const first = createOnlineAppApi({
+    storage: memoryStorage(),
+    sourceStore,
+    sourcePicker: async () => ({
+      cancelled: false,
+      label: "Remembered masters",
+      entries: [{ file, relativePath: file.name }],
+      rememberedSource: { selectionKind: "files", handles: [handle] },
+    }),
+    mediaUrlFactory: (entry) => `blob:remembered/${entry.name}`,
+    metadataReader: async () => ({ duration: 24, probeError: "" }),
+  });
+
+  const selected = await first.chooseSources("files");
+  const rememberedKey = selected.pickedKeys[0];
+  assert.match(rememberedKey, /^browser-source-/);
+  assert.equal(selected.roots.at(-1).kind, "browser-persistent");
+  assert.match(selected.roots.at(-1).path, /reconnects after reload/);
+
+  const reloaded = createOnlineAppApi({
+    storage: memoryStorage(),
+    sourceStore,
+    mediaUrlFactory: (entry) => `blob:reloaded/${entry.name}`,
+    metadataReader: async () => ({ duration: 24, probeError: "" }),
+  });
+  const [boot, concurrentBoot] = await Promise.all([reloaded.bootstrap(), reloaded.bootstrap()]);
+  assert.equal(boot.library.length, onlineAppLibrary.length + 1);
+  assert.equal(concurrentBoot.library.length, onlineAppLibrary.length + 1);
+  assert.equal(boot.library.at(-1).key, rememberedKey);
+  assert.equal(boot.roots.at(-1).connectionState, "connected");
+  assert.equal(reloaded.mediaUrl(rememberedKey), "blob:reloaded/Remembered Mix.wav");
+  assert.equal(JSON.stringify(boot).includes("/Users/"), false);
+});
+
+test("online app keeps a remembered source visible and reconnects it without making the user find it again", async () => {
+  const sourceStore = memorySourceStore();
+  const file = { name: "Permission Mix.wav", size: 256_000, lastModified: 1_786_329_600_011 };
+  let permission = "prompt";
+  const handle = {
+    name: file.name,
+    queryPermission: async () => permission,
+    requestPermission: async () => { permission = "granted"; return permission; },
+    getFile: async () => file,
+  };
+  await sourceStore.put({ id: "browser-source-permission", label: "Album masters", selectionKind: "files", handles: [handle] });
+  const api = createOnlineAppApi({
+    storage: memoryStorage(),
+    sourceStore,
+    mediaUrlFactory: (entry) => `blob:permission/${entry.name}`,
+    metadataReader: async () => ({ duration: 16, probeError: "" }),
+  });
+
+  const boot = await api.bootstrap();
+  assert.equal(boot.library.length, onlineAppLibrary.length);
+  assert.equal(boot.roots.at(-1).id, "browser-source-permission");
+  assert.equal(boot.roots.at(-1).connectionState, "permission-required");
+  assert.match(boot.roots.at(-1).path, /browser access required/);
+
+  const reconnected = await api.reconnectSource("browser-source-permission");
+  assert.equal(reconnected.roots.at(-1).connected, true);
+  assert.equal(reconnected.library.at(-1).key, "browser-source-permission::Permission Mix.wav");
+  assert.equal(api.mediaUrl(reconnected.library.at(-1).key), "blob:permission/Permission Mix.wav");
+
+  await api.removeSource("browser-source-permission");
+  assert.equal((await sourceStore.list()).length, 0);
 });
 
 test("online app handles picker cancellation and selections without supported audio", async () => {

@@ -176,7 +176,7 @@ const validateMasteringPresets = (library) => {
 const appearanceOptions = {
   mode: new Set(["dark", "light", "system"]),
   colorTheme: new Set(["signal", "ocean", "ember", "violet"]),
-  fontTheme: new Set(["condensed", "modern", "editorial", "mono"]),
+  fontTheme: new Set(["condensed", "modern", "editorial", "mono", "space-age", "groove", "rounded"]),
   textScale: new Set([0.9, 1, 1.1, 1.2]),
 };
 

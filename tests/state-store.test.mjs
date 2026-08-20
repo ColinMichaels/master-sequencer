@@ -410,7 +410,7 @@ test("state validation accepts component and full MASTER presets and rejects uns
 
 test("state validation accepts appearance preferences and rejects unsupported choices", () => {
   const valid = structuredClone(seed);
-  valid.settings.appearance = { mode: "system", colorTheme: "ocean", fontTheme: "editorial", textScale: 1.2 };
+  valid.settings.appearance = { mode: "system", colorTheme: "ocean", fontTheme: "groove", textScale: 1.2 };
   assert.equal(validateState(valid), valid);
 
   const invalid = structuredClone(seed);

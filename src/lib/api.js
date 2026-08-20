@@ -63,6 +63,7 @@ const localApi = {
   portableBundle: () => jsonFetch("/api/project-bundle"),
   registerSource: (source) => jsonFetch("/api/sources/register", { method: "POST", body: JSON.stringify(source) }),
   chooseSources: (kind) => jsonFetch("/api/sources/pick", { method: "POST", body: JSON.stringify({ kind }) }),
+  reconnectSource: () => jsonFetch("/api/rescan", { method: "POST" }),
   chooseProjectAssets: (kind) => jsonFetch("/api/project-assets/pick", { method: "POST", body: JSON.stringify({ kind }) }),
   renderAudio,
   startRenderJob,
