@@ -41,6 +41,27 @@ risk reduction and user value rather than feature count.
 - Modern is the default font pairing, with Space Age, Groove, and Rounded added
   as portable appearance choices alongside the existing options.
 
+### 2026-08-20 automated accessibility gate
+
+- A repository-owned Axe/Playwright suite now scans all seven primary
+  workspaces at desktop and 390 px phone widths, including the maximum 120%
+  interface text setting, plus eight key popover and modal workflows. It blocks
+  serious or critical WCAG 2 A/AA findings, phone-width overflow, and modal
+  focus that remains behind a dialog.
+- The first audit exposed an invalid Sequence table hierarchy. Its header,
+  rowgroup, rows, column headers, and cells now form one valid semantic table
+  while preserving the existing nested controls and desktop/mobile layout.
+- The expanded dialog audit exposed an Add Tracks focus handoff gap. Opening the
+  workflow now moves keyboard focus directly to its first audio-source action.
+- Preference-mode coverage exposed invalid table hierarchies in Album Decisions
+  and Audio Library plus low-contrast native-host boundary copy. Those surfaces
+  now expose complete row/header/cell semantics and readable boundary text.
+- Reduced-motion coverage now verifies that scrolling becomes immediate and
+  nonessential CSS animations, delays, and transitions collapse to effectively
+  zero duration throughout the expanded Premium rack.
+- Automated scans complement rather than replace manual keyboard, screen-reader,
+  browser-zoom, visual, and cognitive-accessibility review.
+
 ### 2026-08-14 mobile navigation follow-up
 
 - The seven primary workspace tabs now remain pinned at the top edge on phone
@@ -147,7 +168,7 @@ risk reduction and user value rather than feature count.
 | Waveforms | Strong | Bounded FFmpeg output, compact response, memory-only cache |
 | Render safety | Strong | Queued jobs, progress, cancellation, timeout, partial cleanup, restart discovery, cue sheets, and manifests |
 | Privacy | Strong | Opaque protected aliases and default masking; operator can explicitly reveal |
-| Accessibility | Good | Semantic controls, keyboard markers, focus-managed dialogs; automated audits remain |
+| Accessibility | Good | Semantic tables and controls, keyboard markers, focus-managed dialogs, 120% text/reduced-motion coverage, and a serious/critical WCAG 2 A/AA gate; manual assistive-technology review remains |
 | Responsive UI | Strong | Automated primary-workspace overflow checks at 390 px plus Browser/IAB inspection |
 | Automated coverage | Strong | Domain/server/FFmpeg tests, production build, and repository-owned rendered workflows |
 | Maintainability | Strong | API routing, schema/migrations, project commands, search, delivery rules, and style layers are separated |

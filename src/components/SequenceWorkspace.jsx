@@ -94,9 +94,9 @@ export function SequenceWorkspace({ album, libraryMap, revealPrivateFilenames, t
           {tracks.length ? (
             <div className="sequence-table" role="table" aria-label={`${album.title} track order`}>
             <div className="sequence-table-head" role="row">
-              <span>Move</span><span>#</span><span>Track title</span><span>Source</span><span>Duration / status</span><span>Play</span><span>Transition</span><span>Remove</span>
+              <span role="columnheader">Move</span><span role="columnheader">#</span><span role="columnheader">Track title</span><span role="columnheader">Source</span><span role="columnheader">Duration / status</span><span role="columnheader">Play</span><span role="columnheader">Transition</span><span role="columnheader">Remove</span>
             </div>
-            <ol>
+            <ol role="rowgroup">
               {tracks.map((track, index) => {
                 const originalIndex = (album.baselineTrackOrder || []).indexOf(track.id);
                 const candidate = resolveCandidate(track);
@@ -141,14 +141,14 @@ export function SequenceWorkspace({ album, libraryMap, revealPrivateFilenames, t
                     tabIndex={missing ? undefined : 0}
                     aria-label={missing ? undefined : rowPlaybackLabel}
                   >
-                    <div className="track-move" data-row-playback-ignore>
+                    <div className="track-move" role="cell" data-row-playback-ignore>
                       <DragIcon />
                       <button type="button" onClick={() => moveTrack(track.id, -1)} disabled={index === 0} aria-label={`Move ${track.title} up`}><ChevronIcon direction="up" /></button>
                       <button type="button" onClick={() => moveTrack(track.id, 1)} disabled={index === tracks.length - 1} aria-label={`Move ${track.title} down`}><ChevronIcon direction="down" /></button>
                     </div>
-                    <span className="track-index">{index + 1}</span>
-                    <div className="track-title"><strong>{track.title}</strong><small>{originalIndex >= 0 ? `Original slot ${originalIndex + 1}` : "Added track"}{track.privacy === "protected" ? " · protected" : ""}</small></div>
-                    <div className="track-source">
+                    <span className="track-index" role="cell">{index + 1}</span>
+                    <div className="track-title" role="cell"><strong>{track.title}</strong><small>{originalIndex >= 0 ? `Original slot ${originalIndex + 1}` : "Added track"}{track.privacy === "protected" ? " · protected" : ""}</small></div>
+                    <div className="track-source" role="cell">
                       <select aria-label={`Audition source for ${track.title}`} value={track.auditionCandidateId || ""} disabled={!track.candidates.length} onChange={(event) => onAuditionSourceChange(track.id, event.target.value)}>
                         {!track.candidates.length && <option value="">— No source —</option>}
                         {track.candidates.map((item) => {
@@ -157,10 +157,10 @@ export function SequenceWorkspace({ album, libraryMap, revealPrivateFilenames, t
                         })}
                       </select>
                     </div>
-                    <div className="track-status"><strong>{file ? formatDuration(file.duration) : "No audio"}</strong><small>{missing ? "Missing source" : legacy ? "Legacy source" : track.decisionStatus === "released" ? "Released source" : track.masterCandidateId === candidate?.id ? "Master-sheet choice" : "Temporary audition"}</small></div>
-                    <button type="button" className={`icon-button sequence-play-button ${trackPlaying ? "is-playing" : ""}`} disabled={!file} onClick={() => current ? onTogglePlayback() : onPlayFrom(index)} aria-label={trackPlaying ? `Pause ${track.title}` : current ? `Resume ${track.title}` : `Play sequence from ${track.title}`} aria-pressed={trackPlaying}>{trackPlaying ? <PauseIcon /> : <PlayIcon />}</button>
-                    <button type="button" className={`icon-button sequence-transition-button ${preparingTransition ? "is-busy" : ""}`} disabled={!renderingAvailable || !file || !nextFile || Boolean(transitioningTrackId)} onClick={() => onTransition(index)} aria-busy={preparingTransition} aria-label={renderingAvailable ? (preparingTransition ? `Preparing ${track.title} into ${nextTrack?.title || "the next track"}` : `Preview ${track.title} through ${nextTrack?.title || "the next track"}`) : "Rendered transition previews are unavailable in the browser"} title={renderingAvailable ? "Preview the edited ending and continue through the next track" : "Rendered transition previews are unavailable in the browser"}><TransitionIcon /></button>
-                    <button type="button" className={`icon-button sequence-remove-button ${removeArmed ? "is-armed" : ""}`} onClick={() => requestRemove(track)} aria-label={removeArmed ? `Confirm remove ${track.title} from sequence` : `Remove ${track.title} from sequence`} title={removeArmed ? "Press again to remove from sequence; the track record will be preserved" : "Remove from sequence"}><TrashIcon /></button>
+                    <div className="track-status" role="cell"><strong>{file ? formatDuration(file.duration) : "No audio"}</strong><small>{missing ? "Missing source" : legacy ? "Legacy source" : track.decisionStatus === "released" ? "Released source" : track.masterCandidateId === candidate?.id ? "Master-sheet choice" : "Temporary audition"}</small></div>
+                    <div className="sequence-action-cell sequence-action-cell--play" role="cell"><button type="button" className={`icon-button sequence-play-button ${trackPlaying ? "is-playing" : ""}`} disabled={!file} onClick={() => current ? onTogglePlayback() : onPlayFrom(index)} aria-label={trackPlaying ? `Pause ${track.title}` : current ? `Resume ${track.title}` : `Play sequence from ${track.title}`} aria-pressed={trackPlaying}>{trackPlaying ? <PauseIcon /> : <PlayIcon />}</button></div>
+                    <div className="sequence-action-cell sequence-action-cell--transition" role="cell"><button type="button" className={`icon-button sequence-transition-button ${preparingTransition ? "is-busy" : ""}`} disabled={!renderingAvailable || !file || !nextFile || Boolean(transitioningTrackId)} onClick={() => onTransition(index)} aria-busy={preparingTransition} aria-label={renderingAvailable ? (preparingTransition ? `Preparing ${track.title} into ${nextTrack?.title || "the next track"}` : `Preview ${track.title} through ${nextTrack?.title || "the next track"}`) : "Rendered transition previews are unavailable in the browser"} title={renderingAvailable ? "Preview the edited ending and continue through the next track" : "Rendered transition previews are unavailable in the browser"}><TransitionIcon /></button></div>
+                    <div className="sequence-action-cell sequence-action-cell--remove" role="cell"><button type="button" className={`icon-button sequence-remove-button ${removeArmed ? "is-armed" : ""}`} onClick={() => requestRemove(track)} aria-label={removeArmed ? `Confirm remove ${track.title} from sequence` : `Remove ${track.title} from sequence`} title={removeArmed ? "Press again to remove from sequence; the track record will be preserved" : "Remove from sequence"}><TrashIcon /></button></div>
                   </li>
                 );
               })}

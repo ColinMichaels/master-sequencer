@@ -138,20 +138,20 @@ export function AudioLibraryWorkspace({ state, activeAlbum, library, roots, form
         </div>
         <div className="saved-filter-bar"><label>Saved filter<select value={savedFilterId} onChange={(event) => applySavedFilter(event.target.value)}><option value="">Choose saved filter</option>{savedFilters.map((filter) => <option key={filter.id} value={filter.id}>{filter.name}</option>)}</select></label><form onSubmit={saveCurrentFilter}><input aria-label="Saved filter name" required value={filterName} onChange={(event) => setFilterName(event.target.value)} placeholder="Filter name" /><button type="submit" className="text-button">Save Current</button></form><button type="button" className="text-button text-button--danger" disabled={!savedFilterId} onClick={deleteSavedFilter}>Delete</button></div>
         <div className="audio-table" role="table" aria-label="Audio files">
-          <div className="audio-table-head" role="row"><span>File</span><span>Path</span><span>Format</span><span>Duration</span><span>Used by</span><span>Preview</span><span>Action</span></div>
-          <div className="audio-table-body">
+          <div className="audio-table-head" role="row"><span role="columnheader">File</span><span role="columnheader">Path</span><span role="columnheader">Format</span><span role="columnheader">Duration</span><span role="columnheader">Used by</span><span role="columnheader">Preview</span><span role="columnheader">Action</span></div>
+          <div className="audio-table-body" role="rowgroup">
             {filtered.map((file) => {
               const usages = usageMap.get(file.key) || [];
               const privateFile = protectedKeys.has(file.key) && !revealPrivateFilenames;
               return (
                 <div className={`audio-row ${selectedKey === file.key ? "is-selected" : ""} ${draggedAudioKey === file.key ? "is-dragging" : ""}`} key={file.key} draggable onClick={() => setSelectedKey(file.key)} onDragStart={(event) => { event.dataTransfer.effectAllowed = "copy"; event.dataTransfer.setData("text/plain", file.key); setSelectedKey(file.key); onAudioDragStart?.(file.key); }} onDragEnd={() => onAudioDragEnd?.()} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedKey(file.key); } }} aria-describedby="audio-library-drag-help" role="row" tabIndex="0">
-                  <span className="audio-name"><WaveIcon /> <strong>{privateFile ? <><LockIcon /> [Private source file]</> : file.name}</strong></span>
-                  <span title={file.relativePath}>{rootMap.get(file.rootId)?.label || file.rootId}/{privateFile ? "[protected]" : file.relativePath.replace(`/${file.name}`, "")}</span>
-                  <span>{file.extension.toUpperCase()}</span>
-                  <span>{formatDuration(file.duration)}</span>
-                  <span className={usages.length ? "" : "is-unassigned"}>{usages.length ? usages.map((usage) => usage.trackTitle).join(", ") : "Unassigned"}</span>
-                  <span><button type="button" className="icon-button" aria-label={`Preview ${displayName(file)}`} onClick={(event) => { event.stopPropagation(); onPreviewFile(file, displayName(file)); }}><PlayIcon /></button></span>
-                  <span className="audio-action">Drag / assign</span>
+                  <span className="audio-name" role="cell"><WaveIcon /> <strong>{privateFile ? <><LockIcon /> [Private source file]</> : file.name}</strong></span>
+                  <span role="cell" title={file.relativePath}>{rootMap.get(file.rootId)?.label || file.rootId}/{privateFile ? "[protected]" : file.relativePath.replace(`/${file.name}`, "")}</span>
+                  <span role="cell">{file.extension.toUpperCase()}</span>
+                  <span role="cell">{formatDuration(file.duration)}</span>
+                  <span role="cell" className={usages.length ? "" : "is-unassigned"}>{usages.length ? usages.map((usage) => usage.trackTitle).join(", ") : "Unassigned"}</span>
+                  <span role="cell"><button type="button" className="icon-button" aria-label={`Preview ${displayName(file)}`} onClick={(event) => { event.stopPropagation(); onPreviewFile(file, displayName(file)); }}><PlayIcon /></button></span>
+                  <span className="audio-action" role="cell">Drag / assign</span>
                 </div>
               );
             })}

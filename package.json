@@ -11,6 +11,7 @@
     "start": "node server/index.mjs",
     "test": "node --test",
     "test:browser": "playwright test",
+    "test:accessibility": "playwright test e2e/accessibility.spec.js",
     "test:browser:online": "playwright test --config=playwright.online.config.js",
     "test:browser:headed": "playwright test --headed",
     "check": "npm test && npm run build",
@@ -26,6 +27,7 @@
     "vite": "8.2.1"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
     "@playwright/test": "1.62.1"
   }
 }

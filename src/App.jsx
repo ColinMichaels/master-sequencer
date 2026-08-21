@@ -133,7 +133,7 @@ function AddTracksForm({ album, scanning, onlineApp = false, onChoose, onReviewP
       <p>Add tracks to <strong>{album.title}</strong>. Audio stays where it is; Project Sequencer saves only the path and your project decisions.</p>
       {onlineApp && <p className="online-privacy-note"><strong>Device audio stays private:</strong> choose files or a folder once. Supported browsers remember access for future reloads; audio plays directly from your device and is never uploaded.</p>}
       <div className="native-path-grid">
-        <button type="button" className="native-path-field" disabled={scanning} onClick={() => onChoose("files")}>
+        <button type="button" className="native-path-field" autoFocus data-modal-autofocus disabled={scanning} onClick={() => onChoose("files")}>
           <MusicIcon />
           <span><strong>{onlineApp ? "Audio files" : "Audio file path"}</strong><small>{scanning ? "Waiting for the system picker…" : "Click to choose one or more audio files"}</small></span>
           <em>Browse</em>
