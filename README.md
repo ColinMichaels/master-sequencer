@@ -325,6 +325,20 @@ The full release gate also runs the isolated rendered-browser suite:
 npm run check:full
 ```
 
+Run the focused automated accessibility gate with:
+
+```bash
+npm run test:accessibility
+```
+
+It scans all seven primary workspaces at desktop and 390 px phone widths,
+including the maximum 120% interface text setting, then checks the app's key
+popovers and modal workflows. The gate blocks serious or critical WCAG 2 A/AA
+Axe findings, verifies modal focus and phone-width containment, and confirms
+that reduced-motion preferences remove nonessential animation and transition
+time. Manual keyboard, screen-reader, browser zoom, and visual checks remain
+part of release review.
+
 The browser suite generates tiny temporary audio fixtures outside the project
 catalog. It exercises real FFmpeg output and HTTP byte-range playback without
 reading or changing configured source audio.

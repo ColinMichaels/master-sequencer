@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useLayoutEffect, useRef } from "react";
 
 const FOCUSABLE_SELECTOR = [
   "a[href]",
@@ -16,14 +16,13 @@ export function Modal({ title, children, onClose, className = "", dismissible = 
 
   useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
 
-  useEffect(() => {
-    const focusDialog = window.requestAnimationFrame(() => {
-      const dialog = dialogRef.current;
-      if (dialog?.contains(document.activeElement)) return;
-      const preferred = dialog?.querySelector("[data-modal-autofocus], input:not([disabled]):not([type='hidden']), select:not([disabled]), textarea:not([disabled])")
-        || dialog?.querySelector(FOCUSABLE_SELECTOR);
-      (preferred || dialog)?.focus();
-    });
+  useLayoutEffect(() => {
+    const dialog = dialogRef.current;
+    if (dialog && !dialog.contains(document.activeElement)) {
+      const preferred = dialog.querySelector("[data-modal-autofocus], input:not([disabled]):not([type='hidden']), select:not([disabled]), textarea:not([disabled])")
+        || dialog.querySelector(FOCUSABLE_SELECTOR);
+      (preferred || dialog).focus();
+    }
     const onKey = (event) => {
       if (event.key === "Escape" && dismissible) {
         event.preventDefault();
@@ -50,7 +49,6 @@ export function Modal({ title, children, onClose, className = "", dismissible = 
     };
     window.addEventListener("keydown", onKey);
     return () => {
-      window.cancelAnimationFrame(focusDialog);
       window.removeEventListener("keydown", onKey);
       const previouslyFocused = previouslyFocusedRef.current;
       if (previouslyFocused instanceof HTMLElement && document.contains(previouslyFocused)) previouslyFocused.focus();
