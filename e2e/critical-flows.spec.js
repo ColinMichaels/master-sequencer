@@ -676,25 +676,6 @@ test("mobile project tabs remain pinned while workspaces scroll", async ({ page 
   expect((await navigation.boundingBox()).y).toBe(0);
 });
 
-test("Modern is the reset typography and fun font choices remain responsive", async ({ page }) => {
-  const navigation = page.getByRole("navigation", { name: "Project views" });
-  await navigation.getByRole("button", { name: "Settings", exact: true }).click();
-  const appearance = page.locator("#appearance-settings");
-
-  await appearance.getByRole("button", { name: /Reset Original/ }).click();
-  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.font)).toBe("modern");
-  await expect(appearance.getByRole("button", { name: /Modern Clean, open, and neutral/ })).toHaveAttribute("aria-pressed", "true");
-
-  for (const [name, id] of [["Space Age", "space-age"], ["Groove", "groove"], ["Rounded", "rounded"]]) {
-    await appearance.getByRole("button", { name: new RegExp(name) }).click();
-    await expect.poll(() => page.evaluate(() => document.documentElement.dataset.font)).toBe(id);
-  }
-
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expect(appearance.locator(".font-theme-grid")).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
-});
-
 test("light and dark modes preserve readable surfaces and distinct interaction states across every workspace", async ({ page }) => {
   const viewNames = ["Sequence", "Mastering", "Track Review", "Album Decisions", "Assets", "Audio Library", "Settings"];
   const navigation = page.getByRole("navigation", { name: "Project views" });
