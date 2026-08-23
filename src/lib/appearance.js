@@ -3,6 +3,9 @@ export const DEFAULT_APPEARANCE = Object.freeze({
   colorTheme: "signal",
   fontTheme: "modern",
   textScale: 1,
+  studioMaterial: "walnut",
+  studioLight: "amber",
+  studioAtmosphere: "balanced",
 });
 
 export const APPEARANCE_MODES = Object.freeze([
@@ -13,6 +16,9 @@ export const APPEARANCE_MODES = Object.freeze([
 
 export const COLOR_THEMES = Object.freeze([
   { id: "signal", label: "Signal", description: "Original lime, gold, and orange" },
+  { id: "studio", label: "Analog Studio", description: "Smoked walnut, brass, and warm signal light" },
+  { id: "dusty-studio", label: "Dusty Studio", description: "Near-black room with faded amber light" },
+  { id: "grunge", label: "Grunge", description: "Blackened concrete, chalk dust, and worn edges" },
   { id: "ocean", label: "Ocean", description: "Cyan, blue, and coral" },
   { id: "ember", label: "Ember", description: "Amber, cream, and red" },
   { id: "violet", label: "Violet", description: "Purple, gold, and rose" },
@@ -30,16 +36,46 @@ export const FONT_THEMES = Object.freeze([
 
 export const TEXT_SCALES = Object.freeze([0.9, 1, 1.1, 1.2]);
 
+export const STUDIO_MATERIALS = Object.freeze([
+  { id: "walnut", label: "Walnut", description: "Deep brown console" },
+  { id: "mahogany", label: "Mahogany", description: "Richer red wood" },
+  { id: "black-oak", label: "Black Oak", description: "Charcoal studio rack" },
+]);
+
+export const STUDIO_LIGHTS = Object.freeze([
+  { id: "amber", label: "Amber", description: "Classic meter glow" },
+  { id: "valve", label: "Valve", description: "Burnished tube orange" },
+  { id: "vu-green", label: "VU Green", description: "Vintage console signal" },
+]);
+
+export const STUDIO_ATMOSPHERES = Object.freeze([
+  { id: "clear", label: "Clear", description: "Minimal room haze" },
+  { id: "balanced", label: "Balanced", description: "Soft light in the air" },
+  { id: "smoky", label: "Smoky", description: "Deeper shafts and shadow" },
+]);
+
+export const DEFAULT_STUDIO_APPEARANCE = Object.freeze({
+  studioMaterial: DEFAULT_APPEARANCE.studioMaterial,
+  studioLight: DEFAULT_APPEARANCE.studioLight,
+  studioAtmosphere: DEFAULT_APPEARANCE.studioAtmosphere,
+});
+
 const valueSet = (options) => new Set(options.map((option) => option.id));
 const MODE_IDS = valueSet(APPEARANCE_MODES);
 const COLOR_IDS = valueSet(COLOR_THEMES);
 const FONT_IDS = valueSet(FONT_THEMES);
+const STUDIO_MATERIAL_IDS = valueSet(STUDIO_MATERIALS);
+const STUDIO_LIGHT_IDS = valueSet(STUDIO_LIGHTS);
+const STUDIO_ATMOSPHERE_IDS = valueSet(STUDIO_ATMOSPHERES);
 
 export const normalizeAppearance = (appearance = {}) => ({
   mode: MODE_IDS.has(appearance?.mode) ? appearance.mode : DEFAULT_APPEARANCE.mode,
   colorTheme: COLOR_IDS.has(appearance?.colorTheme) ? appearance.colorTheme : DEFAULT_APPEARANCE.colorTheme,
   fontTheme: FONT_IDS.has(appearance?.fontTheme) ? appearance.fontTheme : DEFAULT_APPEARANCE.fontTheme,
   textScale: TEXT_SCALES.includes(appearance?.textScale) ? appearance.textScale : DEFAULT_APPEARANCE.textScale,
+  studioMaterial: STUDIO_MATERIAL_IDS.has(appearance?.studioMaterial) ? appearance.studioMaterial : DEFAULT_APPEARANCE.studioMaterial,
+  studioLight: STUDIO_LIGHT_IDS.has(appearance?.studioLight) ? appearance.studioLight : DEFAULT_APPEARANCE.studioLight,
+  studioAtmosphere: STUDIO_ATMOSPHERE_IDS.has(appearance?.studioAtmosphere) ? appearance.studioAtmosphere : DEFAULT_APPEARANCE.studioAtmosphere,
 });
 
 export const mergeAppearance = (current, patch) => normalizeAppearance({

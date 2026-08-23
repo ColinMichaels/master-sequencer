@@ -25,9 +25,12 @@ export function useAppearance(settings) {
     root.dataset.mode = resolvedMode;
     root.dataset.theme = appearance.colorTheme;
     root.dataset.font = appearance.fontTheme;
+    root.dataset.studioMaterial = appearance.studioMaterial;
+    root.dataset.studioLight = appearance.studioLight;
+    root.dataset.studioAtmosphere = appearance.studioAtmosphere;
     root.style.setProperty("--text-scale", String(appearance.textScale));
     root.style.colorScheme = resolvedMode;
-  }, [appearance.colorTheme, appearance.fontTheme, appearance.textScale, resolvedMode]);
+  }, [appearance.colorTheme, appearance.fontTheme, appearance.studioAtmosphere, appearance.studioLight, appearance.studioMaterial, appearance.textScale, resolvedMode]);
 
   return { appearance, resolvedMode };
 }

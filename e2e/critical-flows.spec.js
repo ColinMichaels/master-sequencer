@@ -636,6 +636,113 @@ test("quick display settings stay behind one far-right gear menu", async ({ page
   await expect(page.getByRole("heading", { name: "Screen Appearance" })).toBeVisible();
 });
 
+test("Analog Studio keeps its warm wood while Dusty Studio saves the faded room", async ({ page }) => {
+  const navigation = page.getByRole("navigation", { name: "Project views" });
+  await navigation.getByRole("button", { name: "Settings", exact: true }).click();
+  const appearance = page.locator("#appearance-settings");
+  const analogTheme = appearance.getByRole("button", { name: /Analog Studio Smoked walnut, brass, and warm signal light/ });
+  const dustyTheme = appearance.getByRole("button", { name: /Dusty Studio Near-black room with faded amber light/ });
+
+  await analogTheme.click();
+  await expect(analogTheme).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.theme)).toBe("studio");
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--lime").trim())).toBe("#d9a253");
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--studio-walnut").trim())).toBe("#29170c");
+
+  await dustyTheme.click();
+  await expect(dustyTheme).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.theme)).toBe("dusty-studio");
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--lime").trim())).toBe("#b29260");
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--ink").trim())).toBe("#070706");
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.body).backgroundImage)).toContain("linear-gradient");
+
+  const customizer = appearance.getByRole("group", { name: "Studio character" });
+  await expect(customizer).toBeVisible();
+  await customizer.getByRole("button", { name: /Mahogany Richer red wood/ }).click();
+  await customizer.getByRole("button", { name: /VU Green Vintage console signal/ }).click();
+  await customizer.getByRole("button", { name: /Smoky Deeper shafts and shadow/ }).click();
+  await expect.poll(() => page.evaluate(() => ({
+    material: document.documentElement.dataset.studioMaterial,
+    light: document.documentElement.dataset.studioLight,
+    atmosphere: document.documentElement.dataset.studioAtmosphere,
+  }))).toEqual({ material: "mahogany", light: "vu-green", atmosphere: "smoky" });
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--studio-walnut").trim())).toBe("#26120e");
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--lime").trim())).toBe("#789667");
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--studio-haze").trim())).toBe("0.16");
+
+  const oceanTheme = appearance.getByRole("button", { name: /Ocean Cyan, blue, and coral/ });
+  await oceanTheme.click();
+  await expect(customizer).toBeHidden();
+  await dustyTheme.click();
+  await expect(customizer.getByRole("button", { name: /Mahogany Richer red wood/ })).toHaveAttribute("aria-pressed", "true");
+
+  const darkContrast = await appearance.locator(".appearance-preview").evaluate((preview) => {
+    const heading = preview.querySelector("h4");
+    const headingStyle = getComputedStyle(heading);
+    const previewStyle = getComputedStyle(preview);
+    return { foreground: headingStyle.color, background: previewStyle.backgroundColor };
+  });
+  expect(contrastRatio(darkContrast.foreground, darkContrast.background)).toBeGreaterThanOrEqual(4.5);
+
+  await appearance.getByRole("button", { name: /Light Bright daylight view/ }).click();
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.mode)).toBe("light");
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.theme)).toBe("dusty-studio");
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--lime").trim())).toBe("#3f6824");
+  const lightContrast = await appearance.locator(".appearance-preview").evaluate((preview) => {
+    const heading = preview.querySelector("h4");
+    return { foreground: getComputedStyle(heading).color, background: getComputedStyle(preview).backgroundColor };
+  });
+  expect(contrastRatio(lightContrast.foreground, lightContrast.background)).toBeGreaterThanOrEqual(4.5);
+
+  await appearance.getByRole("button", { name: /Dark Low-light studio view/ }).click();
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.mode)).toBe("dark");
+  await page.waitForTimeout(300);
+  await page.reload();
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.theme)).toBe("dusty-studio");
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.studioMaterial)).toBe("mahogany");
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.studioLight)).toBe("vu-green");
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.studioAtmosphere)).toBe("smoky");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await navigation.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(appearance.locator(".color-theme-grid")).toBeVisible();
+  await expect(appearance.locator(".studio-customizer-grid")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
+});
+
+test("Grunge is a saved monochrome texture theme with readable worn surfaces", async ({ page }) => {
+  const navigation = page.getByRole("navigation", { name: "Project views" });
+  await navigation.getByRole("button", { name: "Settings", exact: true }).click();
+  const appearance = page.locator("#appearance-settings");
+  const grungeTheme = appearance.getByRole("button", { name: /Grunge Blackened concrete, chalk dust, and worn edges/ });
+
+  await grungeTheme.click();
+  await expect(grungeTheme).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.theme)).toBe("grunge");
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--ink").trim())).toBe("#070808");
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--lime").trim())).toBe("#c8c7bf");
+  await expect(appearance.locator(".studio-customizer")).toBeHidden();
+  await expect.poll(() => page.locator(".content-shell").evaluate((shell) => getComputedStyle(shell, "::before").content)).toBe('""');
+
+  const darkContrast = await appearance.locator(".appearance-preview").evaluate((preview) => ({
+    foreground: getComputedStyle(preview.querySelector("h4")).color,
+    background: getComputedStyle(preview).backgroundColor,
+  }));
+  expect(contrastRatio(darkContrast.foreground, darkContrast.background)).toBeGreaterThanOrEqual(4.5);
+
+  await page.reload();
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.theme)).toBe("grunge");
+  await navigation.getByRole("button", { name: "Settings", exact: true }).click();
+  await appearance.getByRole("button", { name: /Light Bright daylight view/ }).click();
+  await expect.poll(() => page.evaluate(() => document.documentElement.dataset.mode)).toBe("light");
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--ink").trim())).toBe("#d8d7d1");
+  await appearance.getByRole("button", { name: /Dark Low-light studio view/ }).click();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(appearance.locator(".color-theme-grid")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
+});
+
 test("Modern is the reset typography and fun font choices remain responsive", async ({ page }) => {
   const navigation = page.getByRole("navigation", { name: "Project views" });
   await navigation.getByRole("button", { name: "Settings", exact: true }).click();

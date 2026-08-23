@@ -175,9 +175,12 @@ const validateMasteringPresets = (library) => {
 
 const appearanceOptions = {
   mode: new Set(["dark", "light", "system"]),
-  colorTheme: new Set(["signal", "ocean", "ember", "violet"]),
+  colorTheme: new Set(["signal", "studio", "dusty-studio", "grunge", "ocean", "ember", "violet"]),
   fontTheme: new Set(["condensed", "modern", "editorial", "mono", "space-age", "groove", "rounded"]),
   textScale: new Set([0.9, 1, 1.1, 1.2]),
+  studioMaterial: new Set(["walnut", "mahogany", "black-oak"]),
+  studioLight: new Set(["amber", "valve", "vu-green"]),
+  studioAtmosphere: new Set(["clear", "balanced", "smoky"]),
 };
 
 const validateSettings = (settings) => {

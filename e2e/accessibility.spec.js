@@ -125,6 +125,31 @@ for (const view of primaryViews) {
   });
 }
 
+test("Analog Studio customization remains accessible at phone width and 120% text", async ({ page }) => {
+  await page.setViewportSize(phoneViewport);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const appearance = page.locator("#appearance-settings");
+  await appearance.getByRole("button", { name: /Analog Studio Smoked walnut, brass, and warm signal light/ }).click();
+  const customizer = appearance.getByRole("group", { name: "Studio character" });
+  await expect(customizer).toBeVisible();
+  await customizer.getByRole("button", { name: /Black Oak Charcoal studio rack/ }).click();
+  await customizer.getByRole("button", { name: /Valve Burnished tube orange/ }).click();
+  await customizer.getByRole("button", { name: /Clear Minimal room haze/ }).click();
+  await useMaximumTextScale(page);
+  await expectNoHorizontalPageOverflow(page, "Analog Studio customizer at 120% text");
+  await expectNoHighImpactViolations(page, "Analog Studio customizer at 120% text");
+});
+
+test("Grunge remains accessible at phone width and 120% text", async ({ page }) => {
+  await page.setViewportSize(phoneViewport);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const appearance = page.locator("#appearance-settings");
+  await appearance.getByRole("button", { name: /Grunge Blackened concrete, chalk dust, and worn edges/ }).click();
+  await useMaximumTextScale(page);
+  await expectNoHorizontalPageOverflow(page, "Grunge at 120% text");
+  await expectNoHighImpactViolations(page, "Grunge at 120% text");
+});
+
 test("reduced-motion preference removes nonessential animation and transition time", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.getByRole("button", { name: "Mastering", exact: true }).click();

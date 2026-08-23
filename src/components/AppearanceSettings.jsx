@@ -5,10 +5,31 @@ import {
   APPEARANCE_MODES,
   COLOR_THEMES,
   DEFAULT_APPEARANCE,
+  DEFAULT_STUDIO_APPEARANCE,
   FONT_THEMES,
+  STUDIO_ATMOSPHERES,
+  STUDIO_LIGHTS,
+  STUDIO_MATERIALS,
   TEXT_SCALES,
   textScaleLabel,
 } from "../lib/appearance.js";
+
+function StudioChoiceGroup({ label, options, value, field, onChange }) {
+  return (
+    <div className="studio-choice-group" role="group" aria-label={label}>
+      <span>{label}</span>
+      <div className="studio-choice-options">
+        {options.map((option) => (
+          <button key={option.id} type="button" className={value === option.id ? "is-selected" : ""} aria-pressed={value === option.id} onClick={() => onChange({ [field]: option.id })}>
+            <i className={`studio-choice-swatch studio-choice-swatch--${option.id}`} aria-hidden="true" />
+            <span><strong>{option.label}</strong><small>{option.description}</small></span>
+            {value === option.id ? <CheckIcon /> : null}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export function AppearanceSettings({ appearance, resolvedMode, onChange }) {
   return (
@@ -57,6 +78,21 @@ export function AppearanceSettings({ appearance, resolvedMode, onChange }) {
               ))}
             </div>
           </fieldset>
+
+          {["studio", "dusty-studio"].includes(appearance.colorTheme) ? (
+            <fieldset className="appearance-group appearance-group--wide studio-customizer">
+              <legend>Studio character</legend>
+              <div className="studio-customizer-heading">
+                <div><strong>Shape the control room</strong><small>Material, signal light, and atmosphere are saved with this project.</small></div>
+                <button type="button" className="text-button" onClick={() => onChange(DEFAULT_STUDIO_APPEARANCE)}><RefreshIcon /> Reset Studio</button>
+              </div>
+              <div className="studio-customizer-grid">
+                <StudioChoiceGroup label="Console material" options={STUDIO_MATERIALS} value={appearance.studioMaterial} field="studioMaterial" onChange={onChange} />
+                <StudioChoiceGroup label="Signal light" options={STUDIO_LIGHTS} value={appearance.studioLight} field="studioLight" onChange={onChange} />
+                <StudioChoiceGroup label="Room atmosphere" options={STUDIO_ATMOSPHERES} value={appearance.studioAtmosphere} field="studioAtmosphere" onChange={onChange} />
+              </div>
+            </fieldset>
+          ) : null}
 
           <fieldset className="appearance-group appearance-group--wide">
             <legend>Font pairing</legend>

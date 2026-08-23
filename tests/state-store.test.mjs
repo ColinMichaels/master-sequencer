@@ -410,12 +410,22 @@ test("state validation accepts component and full MASTER presets and rejects uns
 
 test("state validation accepts appearance preferences and rejects unsupported choices", () => {
   const valid = structuredClone(seed);
-  valid.settings.appearance = { mode: "system", colorTheme: "ocean", fontTheme: "groove", textScale: 1.2 };
+  valid.settings.appearance = { mode: "system", colorTheme: "dusty-studio", fontTheme: "groove", textScale: 1.2, studioMaterial: "mahogany", studioLight: "vu-green", studioAtmosphere: "smoky" };
   assert.equal(validateState(valid), valid);
+
+  const grunge = structuredClone(seed);
+  grunge.settings.appearance = { mode: "dark", colorTheme: "grunge", fontTheme: "condensed", textScale: 1 };
+  assert.equal(validateState(grunge), grunge);
 
   const invalid = structuredClone(seed);
   invalid.settings.appearance = { mode: "ultraviolet" };
   assert.throws(() => validateState(invalid), /Unsupported appearance mode/);
+
+  for (const [field, value] of [["studioMaterial", "plastic"], ["studioLight", "neon"], ["studioAtmosphere", "fog-bank"]]) {
+    const unsafeStudio = structuredClone(seed);
+    unsafeStudio.settings.appearance = { [field]: value };
+    assert.throws(() => validateState(unsafeStudio), new RegExp(`Unsupported appearance ${field}`));
+  }
 });
 
 test("state validation requires a portable project artist and setup status", () => {

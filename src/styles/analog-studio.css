@@ -1,0 +1,483 @@
+/*
+ * Analog Studio is intentionally a theme, not a second layout. It gives the
+ * existing workspace chrome the depth of a shaded control room while keeping
+ * tables, text, meters, and source decisions crisp and unchanged.
+ */
+
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) {
+  --ink: #070706;
+  --ink-rgb: 7 7 6;
+  --ink-raised: #0e0d0a;
+  --ink-soft: #15120d;
+  --bone: #c9bea8;
+  --bone-rgb: 201 190 168;
+  --bone-muted: #8f8778;
+  --line: #4c4031;
+  --line-soft: #28231c;
+  --lime: #b29260;
+  --lime-rgb: 178 146 96;
+  --yellow: #c3a36c;
+  --yellow-rgb: 195 163 108;
+  --orange: #98583a;
+  --orange-rgb: 152 88 58;
+  --red: #a94d3a;
+  --focus: #d8bb83;
+  --error-bg: #160c08;
+  --selected-muted: #544832;
+  --surface-control: #0a0907;
+  --surface-subtle: #100e0b;
+  --surface-hover: color-mix(in srgb, var(--lime) 9%, var(--ink-raised));
+  --surface-pressed: color-mix(in srgb, var(--lime) 18%, var(--ink-raised));
+  --surface-selected: color-mix(in srgb, var(--lime) 14%, var(--ink-raised));
+  --surface-warning: color-mix(in srgb, var(--yellow) 12%, var(--ink-raised));
+  --surface-danger: color-mix(in srgb, var(--orange) 12%, var(--ink-raised));
+  --overlay-scrim: rgb(3 3 2 / 84%);
+  --shadow-elevated: 0 25px 72px rgb(0 0 0 / 78%), 0 1px 0 rgb(216 187 131 / 4%);
+  --instrument-bg: #050504;
+  --instrument-surface: #0c0b09;
+  --instrument-text: #c9bea8;
+  --instrument-muted: #837c70;
+  --studio-walnut: #1a1009;
+  --studio-walnut-rgb: 26 16 9;
+  --studio-brass: #756142;
+  --studio-haze: 0.105;
+}
+
+/* Keep the first, warmer wood treatment as its own selectable theme. */
+html[data-mode="dark"][data-theme="studio"] {
+  --ink: #0d0b08;
+  --ink-rgb: 13 11 8;
+  --ink-raised: #17120d;
+  --ink-soft: #21180f;
+  --bone: #eadabd;
+  --bone-rgb: 234 218 189;
+  --bone-muted: #b6a78f;
+  --line: #70583b;
+  --line-soft: #3d2f20;
+  --lime: #d9a253;
+  --lime-rgb: 217 162 83;
+  --yellow: #efc878;
+  --yellow-rgb: 239 200 120;
+  --orange: #cb6738;
+  --orange-rgb: 203 103 56;
+  --red: #d65038;
+  --focus: #ffd68d;
+  --error-bg: #1e0f09;
+  --selected-muted: #715b3c;
+  --surface-control: #100d09;
+  --surface-subtle: #17120d;
+  --overlay-scrim: rgb(5 3 2 / 78%);
+  --shadow-elevated: 0 25px 72px rgb(0 0 0 / 68%), 0 1px 0 rgb(255 214 141 / 8%);
+  --instrument-bg: #080604;
+  --instrument-surface: #120e09;
+  --instrument-text: #eadabd;
+  --instrument-muted: #a69780;
+  --studio-walnut: #29170c;
+  --studio-walnut-rgb: 41 23 12;
+  --studio-brass: #ad7d3f;
+  --studio-haze: 0.085;
+}
+
+html[data-mode="light"]:is([data-theme="studio"], [data-theme="dusty-studio"]) {
+  --ink: #eee3cf;
+  --ink-rgb: 238 227 207;
+  --ink-raised: #fff8ea;
+  --ink-soft: #dfcfb4;
+  --bone: #24180f;
+  --bone-rgb: 36 24 15;
+  --bone-muted: #655648;
+  --line: #866b4c;
+  --line-soft: #c6b190;
+  --lime: #78470d;
+  --lime-rgb: 120 71 13;
+  --yellow: #75530d;
+  --yellow-rgb: 117 83 13;
+  --orange: #9a3f20;
+  --orange-rgb: 154 63 32;
+  --red: #963528;
+  --focus: #6b430c;
+  --error-bg: #fff0e5;
+  --selected-muted: #bca581;
+  --surface-control: #fff8ea;
+  --surface-subtle: #e7d9c2;
+  --surface-hover: color-mix(in srgb, var(--lime) 9%, var(--ink-raised));
+  --surface-pressed: color-mix(in srgb, var(--lime) 17%, var(--ink-raised));
+  --surface-selected: color-mix(in srgb, var(--lime) 13%, var(--ink-raised));
+  --surface-warning: color-mix(in srgb, var(--yellow) 11%, var(--ink-raised));
+  --surface-danger: color-mix(in srgb, var(--orange) 11%, var(--ink-raised));
+  --overlay-scrim: rgb(32 20 12 / 58%);
+  --shadow-elevated: 0 20px 56px rgb(52 31 15 / 26%), 0 2px 0 rgb(255 255 255 / 45%);
+  --studio-walnut: #754722;
+  --studio-walnut-rgb: 117 71 34;
+  --studio-brass: #76501f;
+  --studio-haze: 0.055;
+}
+
+html:is([data-theme="studio"], [data-theme="dusty-studio"])[data-studio-material="mahogany"] {
+  --studio-walnut: #26120e;
+  --studio-walnut-rgb: 38 18 14;
+  --studio-brass: #78533a;
+}
+
+html:is([data-theme="studio"], [data-theme="dusty-studio"])[data-studio-material="black-oak"] {
+  --studio-walnut: #0f0f0e;
+  --studio-walnut-rgb: 15 15 14;
+  --studio-brass: #685e4b;
+}
+
+html[data-mode="light"]:is([data-theme="studio"], [data-theme="dusty-studio"])[data-studio-material="mahogany"] {
+  --studio-walnut: #7e382b;
+  --studio-walnut-rgb: 126 56 43;
+  --studio-brass: #744328;
+}
+
+html[data-mode="light"]:is([data-theme="studio"], [data-theme="dusty-studio"])[data-studio-material="black-oak"] {
+  --studio-walnut: #5c574e;
+  --studio-walnut-rgb: 92 87 78;
+  --studio-brass: #62523c;
+}
+
+html:is([data-theme="studio"], [data-theme="dusty-studio"])[data-studio-light="valve"] {
+  --lime: #b87245;
+  --lime-rgb: 184 114 69;
+  --yellow: #c28f5c;
+  --yellow-rgb: 194 143 92;
+  --focus: #d8a878;
+}
+
+html:is([data-theme="studio"], [data-theme="dusty-studio"])[data-studio-light="vu-green"] {
+  --lime: #789667;
+  --lime-rgb: 120 150 103;
+  --yellow: #aa985d;
+  --yellow-rgb: 170 152 93;
+  --focus: #b7cda4;
+}
+
+html[data-mode="dark"][data-theme="studio"][data-studio-light="valve"] {
+  --lime: #d18c62;
+  --lime-rgb: 209 140 98;
+  --yellow: #e0ad76;
+  --yellow-rgb: 224 173 118;
+  --focus: #efbc89;
+}
+
+html[data-mode="light"]:is([data-theme="studio"], [data-theme="dusty-studio"])[data-studio-light="valve"] {
+  --lime: #88400f;
+  --lime-rgb: 136 64 15;
+  --yellow: #78500b;
+  --yellow-rgb: 120 80 11;
+  --focus: #71390d;
+}
+
+html[data-mode="light"]:is([data-theme="studio"], [data-theme="dusty-studio"])[data-studio-light="vu-green"] {
+  --lime: #3f6824;
+  --lime-rgb: 63 104 36;
+  --yellow: #66580d;
+  --yellow-rgb: 102 88 13;
+  --focus: #34571d;
+}
+
+html:is([data-theme="studio"], [data-theme="dusty-studio"])[data-studio-atmosphere="clear"] { --studio-haze: 0.02; }
+html:is([data-theme="studio"], [data-theme="dusty-studio"])[data-studio-atmosphere="smoky"] { --studio-haze: 0.16; }
+html[data-mode="light"]:is([data-theme="studio"], [data-theme="dusty-studio"])[data-studio-atmosphere="clear"] { --studio-haze: 0.018; }
+html[data-mode="light"]:is([data-theme="studio"], [data-theme="dusty-studio"])[data-studio-atmosphere="smoky"] { --studio-haze: 0.085; }
+
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) body {
+  background:
+    radial-gradient(ellipse at 82% -8%, rgb(var(--yellow-rgb) / calc(var(--studio-haze) * 130%)), transparent 23rem),
+    linear-gradient(154deg, transparent 0 22%, rgb(var(--yellow-rgb) / calc(var(--studio-haze) * 72%)) 30%, rgb(var(--yellow-rgb) / calc(var(--studio-haze) * 24%)) 41%, transparent 55%),
+    repeating-linear-gradient(0deg, transparent 0 4px, rgb(var(--bone-rgb) / calc(var(--studio-haze) * 7%)) 5px),
+    var(--ink);
+}
+
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .app-shell {
+  background:
+    radial-gradient(ellipse at 80% 0%, rgb(var(--yellow-rgb) / calc(var(--studio-haze) * 42%)), transparent 31rem),
+    var(--ink);
+}
+
+html[data-mode="dark"]:is([data-theme="studio"], [data-theme="dusty-studio"]) .content-shell::before {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  background:
+    linear-gradient(154deg, transparent 0 23%, rgb(var(--yellow-rgb) / calc(var(--studio-haze) * 82%)) 29%, rgb(var(--yellow-rgb) / calc(var(--studio-haze) * 34%)) 37%, transparent 52%),
+    radial-gradient(ellipse at 83% 2%, rgb(var(--yellow-rgb) / calc(var(--studio-haze) * 120%)), transparent 24rem),
+    repeating-radial-gradient(circle at 75% 18%, rgb(var(--bone-rgb) / calc(var(--studio-haze) * 4%)) 0 1px, transparent 1px 8px);
+  content: "";
+  pointer-events: none;
+}
+
+html[data-mode="dark"]:is([data-theme="studio"], [data-theme="dusty-studio"]) .content-shell > * {
+  position: relative;
+  z-index: 1;
+}
+
+html[data-mode="dark"]:is([data-theme="studio"], [data-theme="dusty-studio"]) .content-shell::after {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  background:
+    linear-gradient(154deg, transparent 0 19%, rgb(var(--yellow-rgb) / calc(var(--studio-haze) * 68%)) 27%, rgb(var(--yellow-rgb) / calc(var(--studio-haze) * 20%)) 35%, transparent 48%),
+    linear-gradient(154deg, transparent 0 30%, rgb(var(--yellow-rgb) / calc(var(--studio-haze) * 26%)) 37%, transparent 54%),
+    repeating-radial-gradient(circle at 76% 17%, rgb(var(--bone-rgb) / calc(var(--studio-haze) * 7%)) 0 0.7px, transparent 0.8px 10px);
+  content: "";
+  filter: blur(0.35px);
+  mix-blend-mode: screen;
+  opacity: 0.72;
+  pointer-events: none;
+}
+
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .app-header,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .transport-bar {
+  border-color: color-mix(in srgb, var(--studio-brass) 38%, var(--line));
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 2.4%), transparent 22%, rgb(0 0 0 / 38%)),
+    repeating-linear-gradient(96deg, rgb(var(--studio-walnut-rgb) / 38%) 0 7px, rgb(var(--studio-walnut-rgb) / 16%) 7px 15px),
+    color-mix(in srgb, var(--ink-raised) 86%, var(--studio-walnut));
+  box-shadow: inset 0 1px 0 rgb(216 187 131 / 5%), inset 0 -2px 0 rgb(0 0 0 / 84%), 0 13px 38px rgb(0 0 0 / 52%);
+}
+
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .app-header {
+  padding-inline: 0.28rem;
+  border: 1px solid color-mix(in srgb, var(--studio-brass) 30%, var(--line));
+}
+
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .album-rail {
+  border-right-color: color-mix(in srgb, var(--studio-brass) 34%, var(--line));
+  background:
+    linear-gradient(100deg, rgb(var(--yellow-rgb) / 1.8%), transparent 32%),
+    repeating-linear-gradient(92deg, rgb(var(--studio-walnut-rgb) / 34%) 0 5px, transparent 5px 13px),
+    color-mix(in srgb, var(--ink-raised) 89%, var(--studio-walnut));
+  box-shadow: inset -16px 0 34px rgb(0 0 0 / 56%), inset -1px 0 0 rgb(216 187 131 / 5%);
+}
+
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .content-shell {
+  background:
+    radial-gradient(ellipse at 82% -6%, rgb(var(--yellow-rgb) / calc(var(--studio-haze) * 64%)), transparent 27rem),
+    linear-gradient(154deg, transparent 0 24%, rgb(var(--yellow-rgb) / calc(var(--studio-haze) * 24%)) 37%, transparent 54%),
+    var(--ink);
+}
+
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .sequence-main,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .settings-workspace,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .assets-workspace,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .mastering-workspace,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .decisions-workspace,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .library-main,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .library-inspector,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .review-track-rail,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .review-main {
+  background-image: linear-gradient(154deg, transparent 0 29%, rgb(var(--yellow-rgb) / calc(var(--studio-haze) * 20%)) 38%, transparent 56%);
+}
+
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .workspace-heading {
+  margin-bottom: 0.55rem;
+  padding: 0.48rem 0.58rem;
+  border: 1px solid color-mix(in srgb, var(--studio-brass) 28%, var(--line));
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 1.6%), transparent 44%),
+    color-mix(in srgb, var(--surface-subtle) 94%, var(--studio-walnut));
+  box-shadow: inset 0 1px 0 rgb(216 187 131 / 3%), 0 9px 24px rgb(0 0 0 / 38%);
+}
+
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .sequence-table,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .settings-section,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .asset-pane,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .decision-module,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .mastering-track-list,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .mastering-editor,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .mastering-program,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .audio-table,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .appearance-preview {
+  border-color: color-mix(in srgb, var(--studio-brass) 36%, var(--line));
+  box-shadow: inset 0 1px 0 rgb(216 187 131 / 3%), inset 0 0 0 3px rgb(0 0 0 / 26%), 0 14px 36px rgb(0 0 0 / 52%);
+}
+
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .sequence-table {
+  outline: 3px solid rgb(var(--studio-walnut-rgb) / 40%);
+  outline-offset: 0;
+}
+
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .sequence-table-head,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .audio-table-head,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .workspace-heading select,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .screen-settings-menu > header,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .header-stats-popover > header {
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 1.5%), transparent 38%),
+    color-mix(in srgb, var(--surface-control) 93%, var(--studio-walnut));
+}
+
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .sequence-table-head,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .audio-table-head {
+  min-height: 39px;
+  box-shadow: inset 0 -1px 0 rgb(0 0 0 / 72%), 0 4px 12px rgb(0 0 0 / 30%);
+}
+
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .sequence-track,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .audio-row,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .candidate-review-list > li,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .album-item-row {
+  background-image: linear-gradient(112deg, transparent 0 22%, rgb(var(--yellow-rgb) / calc(var(--studio-haze) * 12%)) 42%, transparent 70%);
+  box-shadow: inset 0 1px 0 rgb(216 187 131 / 1%), inset 0 -1px 0 rgb(0 0 0 / 46%);
+}
+
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .primary-nav,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .header-history,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .header-summary,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .screen-settings-trigger,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .header-master-meter,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .text-button,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .primary-button,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .icon-button,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .transport-button,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .transport-playback-toggle,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .panel-toggle,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .color-theme-grid button,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .font-theme-grid button,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .studio-choice-options button,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .mode-switch button {
+  box-shadow: inset 0 1px 0 rgb(216 187 131 / 3%), inset 0 -2px 6px rgb(0 0 0 / 48%);
+}
+
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .text-button,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .primary-button,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .icon-button,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .transport-button,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .transport-playback-toggle,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .panel-toggle,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .track-move > button {
+  background-color: color-mix(in srgb, var(--surface-control) 94%, var(--studio-walnut));
+}
+
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .track-source select,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .track-status select,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) input,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) textarea {
+  box-shadow: inset 0 2px 8px rgb(0 0 0 / 38%), 0 1px 0 rgb(255 229 178 / 3%);
+}
+
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .primary-nav button[aria-current="page"],
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .album-item-row.is-active,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .mastering-track-list button.is-active,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .review-track-rail button.is-active {
+  box-shadow: inset 3px 0 0 var(--lime), 0 0 18px rgb(var(--lime-rgb) / 6%);
+}
+
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .transport-waveform,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .header-master-meter,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .master-output-meter,
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .master-analyzer {
+  background-color: var(--instrument-bg);
+  box-shadow: inset 0 0 20px rgb(0 0 0 / 74%), 0 1px 0 rgb(255 229 178 / 5%);
+}
+
+html:is([data-theme="studio"], [data-theme="dusty-studio"]) .transport-bar {
+  border-top-width: 3px;
+}
+
+html[data-mode="dark"][data-theme="studio"] .content-shell::before,
+html[data-mode="dark"][data-theme="studio"] .content-shell::after {
+  content: none;
+}
+
+html[data-mode="dark"][data-theme="studio"] .content-shell {
+  background:
+    radial-gradient(ellipse at 78% 0%, rgb(var(--yellow-rgb) / calc(var(--studio-haze) * 82%)), transparent 31rem),
+    linear-gradient(135deg, transparent 0 31%, rgb(var(--yellow-rgb) / calc(var(--studio-haze) * 22%)) 46%, transparent 66%),
+    var(--ink);
+}
+
+html[data-mode="dark"][data-theme="studio"] .app-header,
+html[data-mode="dark"][data-theme="studio"] .transport-bar {
+  border-color: color-mix(in srgb, var(--studio-brass) 60%, var(--line));
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 3.5%), transparent 25%, rgb(0 0 0 / 32%)),
+    repeating-linear-gradient(96deg, rgb(var(--studio-walnut-rgb) / 58%) 0 7px, rgb(var(--studio-walnut-rgb) / 25%) 7px 15px),
+    color-mix(in srgb, var(--ink-raised) 76%, var(--studio-walnut));
+  box-shadow: inset 0 1px 0 rgb(255 214 141 / 9%), inset 0 -2px 0 rgb(0 0 0 / 74%), 0 13px 38px rgb(0 0 0 / 45%);
+}
+
+html[data-mode="dark"][data-theme="studio"] .album-rail {
+  border-right-color: color-mix(in srgb, var(--studio-brass) 55%, var(--line));
+  background:
+    linear-gradient(100deg, rgb(var(--yellow-rgb) / 2.4%), transparent 38%),
+    repeating-linear-gradient(92deg, rgb(var(--studio-walnut-rgb) / 51%) 0 5px, transparent 5px 13px),
+    color-mix(in srgb, var(--ink-raised) 78%, var(--studio-walnut));
+  box-shadow: inset -16px 0 34px rgb(0 0 0 / 46%), inset -1px 0 0 rgb(255 214 141 / 8%);
+}
+
+.theme-swatch--studio {
+  border: 1px solid #70583b;
+  background:
+    repeating-linear-gradient(96deg, rgb(74 41 18 / 80%) 0 4px, rgb(35 20 11 / 88%) 4px 8px),
+    #0d0b08;
+  box-shadow: inset 0 1px 0 rgb(255 225 166 / 15%);
+}
+
+.theme-swatch--studio i:nth-child(1) { background: #d9a253; }
+.theme-swatch--studio i:nth-child(2) { background: #eadabd; }
+.theme-swatch--studio i:nth-child(3) { background: #cb6738; }
+
+.theme-swatch--dusty-studio {
+  border: 1px solid #4c4031;
+  background:
+    linear-gradient(154deg, transparent 0 31%, rgb(195 163 108 / 14%) 43%, transparent 61%),
+    repeating-linear-gradient(96deg, rgb(38 24 13 / 64%) 0 4px, rgb(9 8 6 / 92%) 4px 8px),
+    #070706;
+  box-shadow: inset 0 1px 0 rgb(216 187 131 / 7%);
+}
+
+.theme-swatch--dusty-studio i:nth-child(1) { background: #b29260; }
+.theme-swatch--dusty-studio i:nth-child(2) { background: #8f8778; }
+.theme-swatch--dusty-studio i:nth-child(3) { background: #98583a; }
+
+/* Theme choices should read as one adaptable control family. */
+.color-theme-grid {
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html:is([data-theme="studio"], [data-theme="dusty-studio"]) .primary-nav button[aria-current="page"],
+  html:is([data-theme="studio"], [data-theme="dusty-studio"]) .transport-playback-toggle.is-playing,
+  html:is([data-theme="studio"], [data-theme="dusty-studio"]) .sequence-play-button.is-playing {
+    transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+  }
+}
+
+@media (max-width: 520px) {
+  .color-theme-grid { grid-template-columns: 1fr; }
+
+  html:is([data-theme="studio"], [data-theme="dusty-studio"]) .app-header,
+  html:is([data-theme="studio"], [data-theme="dusty-studio"]) .transport-bar {
+    background:
+      linear-gradient(180deg, rgb(255 255 255 / 3%), transparent 28%, rgb(0 0 0 / 20%)),
+      color-mix(in srgb, var(--ink-raised) 92%, var(--studio-walnut));
+  }
+
+  html:is([data-theme="studio"], [data-theme="dusty-studio"]) .content-shell {
+    background: radial-gradient(ellipse at 78% 0%, rgb(var(--yellow-rgb) / calc(var(--studio-haze) * 44%)), transparent 20rem), var(--ink);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  html:is([data-theme="studio"], [data-theme="dusty-studio"]) .content-shell::before,
+  html:is([data-theme="studio"], [data-theme="dusty-studio"]) .content-shell::after {
+    content: none;
+  }
+
+  html:is([data-theme="studio"], [data-theme="dusty-studio"]) body,
+  html:is([data-theme="studio"], [data-theme="dusty-studio"]) .content-shell,
+  html:is([data-theme="studio"], [data-theme="dusty-studio"]) .sequence-main,
+  html:is([data-theme="studio"], [data-theme="dusty-studio"]) .settings-workspace,
+  html:is([data-theme="studio"], [data-theme="dusty-studio"]) .assets-workspace,
+  html:is([data-theme="studio"], [data-theme="dusty-studio"]) .mastering-workspace,
+  html:is([data-theme="studio"], [data-theme="dusty-studio"]) .decisions-workspace,
+  html:is([data-theme="studio"], [data-theme="dusty-studio"]) .library-main,
+  html:is([data-theme="studio"], [data-theme="dusty-studio"]) .library-inspector,
+  html:is([data-theme="studio"], [data-theme="dusty-studio"]) .review-track-rail,
+  html:is([data-theme="studio"], [data-theme="dusty-studio"]) .review-main {
+    background-image: none;
+  }
+}
