@@ -438,6 +438,32 @@ html[data-mode="dark"][data-theme="studio"] .album-rail {
   grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
 }
 
+/* The customizer travels with the theme instead of depending on workspace CSS. */
+.studio-customizer { background: linear-gradient(120deg, rgb(var(--lime-rgb) / 5%), transparent 55%); }
+.studio-customizer-heading { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.65rem; }
+.studio-customizer-heading > div { display: grid; gap: 0.16rem; }
+.studio-customizer-heading strong { color: var(--bone); font-size: 0.68rem; text-transform: uppercase; }
+.studio-customizer-heading small { color: var(--bone-muted); font-family: var(--ui); font-size: 0.56rem; letter-spacing: 0; line-height: 1.35; }
+.studio-customizer-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.55rem; }
+.studio-choice-group { min-width: 0; }
+.studio-choice-group > span { display: block; margin-bottom: 0.3rem; color: var(--bone-muted); font-size: 0.54rem; font-weight: 800; text-transform: uppercase; }
+.studio-choice-options { display: grid; gap: 0.3rem; }
+.studio-choice-options button { display: grid; grid-template-columns: 32px minmax(0, 1fr) 18px; gap: 0.42rem; align-items: center; min-height: 48px; padding: 0.38rem 0.45rem; border: 1px solid var(--line-soft); background: var(--ink); color: var(--bone); text-align: left; cursor: pointer; }
+.studio-choice-options button:hover, .studio-choice-options button.is-selected { border-color: var(--lime); background: rgb(var(--lime-rgb) / 7%); box-shadow: inset 0 -2px 0 var(--lime); }
+.studio-choice-options button > span { display: grid; min-width: 0; }
+.studio-choice-options strong { font-size: 0.6rem; text-transform: uppercase; }
+.studio-choice-options small { color: var(--bone-muted); font-family: var(--ui); font-size: 0.51rem; letter-spacing: 0; line-height: 1.25; }
+.studio-choice-swatch { display: block; width: 30px; height: 26px; border: 1px solid rgb(var(--bone-rgb) / 14%); box-shadow: inset 0 1px 0 rgb(255 255 255 / 9%); }
+.studio-choice-swatch--walnut { background: repeating-linear-gradient(96deg, #5b331b 0 4px, #29170c 4px 8px); }
+.studio-choice-swatch--mahogany { background: repeating-linear-gradient(96deg, #773326 0 4px, #38150f 4px 8px); }
+.studio-choice-swatch--black-oak { background: repeating-linear-gradient(96deg, #34322e 0 4px, #151412 4px 8px); }
+.studio-choice-swatch--amber { background: radial-gradient(circle, #ffd68d 0 18%, #d9a253 20% 38%, #302012 72%); }
+.studio-choice-swatch--valve { background: radial-gradient(circle, #ffd09d 0 18%, #e18445 20% 38%, #35180b 72%); }
+.studio-choice-swatch--vu-green { background: radial-gradient(circle, #d9f2bd 0 18%, #91b96f 20% 38%, #182512 72%); }
+.studio-choice-swatch--clear { background: linear-gradient(135deg, #27221b, #17120d 58%); }
+.studio-choice-swatch--balanced { background: linear-gradient(135deg, #b98c4d 0, #392719 35%, #17120d 72%); }
+.studio-choice-swatch--smoky { background: linear-gradient(135deg, #e0b973 0, #4d321d 42%, #0d0b08 76%); }
+
 @media (prefers-reduced-motion: no-preference) {
   html:is([data-theme="studio"], [data-theme="dusty-studio"]) .primary-nav button[aria-current="page"],
   html:is([data-theme="studio"], [data-theme="dusty-studio"]) .transport-playback-toggle.is-playing,
@@ -459,6 +485,15 @@ html[data-mode="dark"][data-theme="studio"] .album-rail {
   html:is([data-theme="studio"], [data-theme="dusty-studio"]) .content-shell {
     background: radial-gradient(ellipse at 78% 0%, rgb(var(--yellow-rgb) / calc(var(--studio-haze) * 44%)), transparent 20rem), var(--ink);
   }
+}
+
+@media (max-width: 820px) {
+  .studio-customizer-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 430px) {
+  .studio-customizer-heading { display: grid; }
+  .studio-customizer-heading > .text-button { width: 100%; }
 }
 
 @media (prefers-reduced-transparency: reduce) {
