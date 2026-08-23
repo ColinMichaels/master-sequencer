@@ -39,6 +39,11 @@ const dialogSurfaces = [
     open: async (page) => page.getByRole("button", { name: "Add Tracks", exact: true }).click(),
   },
   {
+    name: "Manage Candidates — Alpha Tone",
+    modal: true,
+    open: async (page) => page.getByRole("button", { name: "Manage candidates for Alpha Tone" }).click(),
+  },
+  {
     name: "Saved Projects",
     modal: true,
     open: async (page) => page.getByRole("button", { name: /Open saved projects for/ }).click(),

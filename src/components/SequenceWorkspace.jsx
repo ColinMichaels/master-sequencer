@@ -2,7 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { sourceKey } from "../lib/api.js";
 import { formatDuration } from "../lib/format.js";
 import { isTrackSequenced } from "../lib/sequence-tracks.js";
+import { CandidateSourceManager } from "./CandidateSourceManager.jsx";
 import { ChevronIcon, DragIcon, ExportIcon, PauseIcon, PlayIcon, PlusIcon, RefreshIcon, TransitionIcon, TrashIcon } from "./Icons.jsx";
+import { Modal } from "./Modal.jsx";
 
 const sourceLabel = (track, candidate, file, revealPrivateFilenames) => {
   if (track.privacy === "protected" && !revealPrivateFilenames) return candidate.label;
@@ -12,12 +14,14 @@ const sourceLabel = (track, candidate, file, revealPrivateFilenames) => {
 const isIndependentRowControl = (target) => target instanceof Element
   && Boolean(target.closest("button, select, input, textarea, a, [data-row-playback-ignore]"));
 
-export function SequenceWorkspace({ album, libraryMap, revealPrivateFilenames, transitioningTrackId, currentTrackId, playing, renderingAvailable = true, onAlbumChange, onAuditionSourceChange, onAddTracks, onPlayFrom, onTogglePlayback, onTransition, onExport, onRemoveFromSequence, onRestoreToSequence }) {
+export function SequenceWorkspace({ album, library, libraryMap, protectedSourceKeys, revealPrivateFilenames, scanning = false, transitioningTrackId, currentTrackId, playing, renderingAvailable = true, onAlbumChange, onAuditionSourceChange, onChooseCandidateFiles, onAddCandidate, onMoveCandidate, onAddTracks, onPlayFrom, onTogglePlayback, onTransition, onExport, onRemoveFromSequence, onRestoreToSequence }) {
   const [draggedTrackId, setDraggedTrackId] = useState("");
   const [removeArmedTrackId, setRemoveArmedTrackId] = useState("");
+  const [candidateManagerTrackId, setCandidateManagerTrackId] = useState("");
   const trackRowsRef = useRef(new Map());
   const tracks = useMemo(() => album.tracks.filter(isTrackSequenced), [album.tracks]);
   const unsequencedTracks = useMemo(() => album.tracks.filter((track) => !isTrackSequenced(track)), [album.tracks]);
+  const candidateManagerTrack = album.tracks.find((track) => track.id === candidateManagerTrackId);
   const resolveCandidate = (track) => track.candidates.find((candidate) => candidate.id === track.auditionCandidateId);
   const resolveFile = (track) => {
     const candidate = resolveCandidate(track);
@@ -75,7 +79,7 @@ export function SequenceWorkspace({ album, libraryMap, revealPrivateFilenames, t
     setRemoveArmedTrackId("");
   };
 
-  return (
+  return <>
     <main className="sequence-workspace">
       <section className="sequence-main" aria-labelledby="sequence-title">
         <div className="workspace-heading">
@@ -156,6 +160,7 @@ export function SequenceWorkspace({ album, libraryMap, revealPrivateFilenames, t
                           return <option key={item.id} value={item.id}>{sourceLabel(track, item, itemFile, revealPrivateFilenames)}</option>;
                         })}
                       </select>
+                      <button type="button" className="icon-button candidate-source-button" aria-label={`Manage candidates for ${track.title}`} title="Search audio or move a candidate from another track" onClick={() => setCandidateManagerTrackId(track.id)}><PlusIcon /></button>
                     </div>
                     <div className="track-status" role="cell"><strong>{file ? formatDuration(file.duration) : "No audio"}</strong><small>{missing ? "Missing source" : legacy ? "Legacy source" : track.decisionStatus === "released" ? "Released source" : track.masterCandidateId === candidate?.id ? "Master-sheet choice" : "Temporary audition"}</small></div>
                     <div className="sequence-action-cell sequence-action-cell--play" role="cell"><button type="button" className={`icon-button sequence-play-button ${trackPlaying ? "is-playing" : ""}`} disabled={!file} onClick={() => current ? onTogglePlayback() : onPlayFrom(index)} aria-label={trackPlaying ? `Pause ${track.title}` : current ? `Resume ${track.title}` : `Play sequence from ${track.title}`} aria-pressed={trackPlaying}>{trackPlaying ? <PauseIcon /> : <PlayIcon />}</button></div>
@@ -180,5 +185,6 @@ export function SequenceWorkspace({ album, libraryMap, revealPrivateFilenames, t
       </section>
 
     </main>
-  );
+    {candidateManagerTrack && <Modal title={`Manage Candidates — ${candidateManagerTrack.title}`} className="modal--wide" onClose={() => setCandidateManagerTrackId("")}><CandidateSourceManager album={album} track={candidateManagerTrack} library={library} libraryMap={libraryMap} protectedSourceKeys={protectedSourceKeys} revealPrivateFilenames={revealPrivateFilenames} scanning={scanning} onChooseFiles={onChooseCandidateFiles} onAddFile={onAddCandidate} onMoveCandidate={onMoveCandidate} onClose={() => setCandidateManagerTrackId("")} /></Modal>}
+  </>;
 }

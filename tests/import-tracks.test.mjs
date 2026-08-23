@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assignFileToAlbum, buildImportedTracks } from "../src/lib/import-tracks.js";
+import { assignFileToAlbum, buildImportedTracks, moveCandidateToTrack } from "../src/lib/import-tracks.js";
 
 const file = (key, name, relativePath = name) => ({ key, name, relativePath, rootId: "library", extension: "wav" });
 
@@ -52,4 +52,52 @@ test("album drops create a sequenced track when no normalized title matches", ()
   assert.equal(album.orderApproved, false);
   assert.equal(album.status, "working");
   assert.equal(album.tracks[0].candidates.length, 1);
+});
+
+test("moving a candidate preserves its metadata and both track records while repairing source decisions", () => {
+  const moved = { id: "alternate", label: "Alternate Mix", sourceRef: { rootId: "library", relativePath: "alternate.wav" }, flags: ["Needs review"], notes: "Keep this note" };
+  const fallback = { id: "primary", label: "Primary Mix", sourceRef: { rootId: "library", relativePath: "primary.wav" }, flags: [], notes: "" };
+  const album = {
+    status: "working",
+    tracks: [
+      { id: "source", title: "Separate Import", decisionStatus: "approved", auditionCandidateId: "alternate", masterCandidateId: "alternate", humanApproved: true, candidates: [moved, fallback] },
+      { id: "target", title: "Album Track", decisionStatus: "missing", auditionCandidateId: "", masterCandidateId: "", humanApproved: false, candidates: [] },
+    ],
+  };
+
+  const result = moveCandidateToTrack(album, { sourceTrackId: "source", candidateId: "alternate", targetTrackId: "target", makeActive: true });
+
+  assert.equal(result.action, "candidate-moved");
+  assert.equal(album.tracks.length, 2);
+  assert.deepEqual(album.tracks[0].candidates.map((candidate) => candidate.id), ["primary"]);
+  assert.equal(album.tracks[0].auditionCandidateId, "primary");
+  assert.equal(album.tracks[0].masterCandidateId, "");
+  assert.equal(album.tracks[0].humanApproved, false);
+  assert.equal(album.tracks[0].decisionStatus, "undecided");
+  assert.deepEqual(album.tracks[1].candidates[0], moved);
+  assert.equal(album.tracks[1].auditionCandidateId, "alternate");
+  assert.equal(album.tracks[1].decisionStatus, "undecided");
+});
+
+test("moving the final candidate leaves a safe missing placeholder and rejects target duplicates", () => {
+  const album = {
+    status: "working",
+    tracks: [
+      { id: "source", title: "Separate Import", privacy: "protected", decisionStatus: "undecided", auditionCandidateId: "source-a", masterCandidateId: "", humanApproved: false, candidates: [{ id: "source-a", label: "Import", sourceRef: { rootId: "library", relativePath: "same.wav" }, flags: [], notes: "" }] },
+      { id: "target", title: "Album Track", decisionStatus: "undecided", auditionCandidateId: "target-a", masterCandidateId: "", humanApproved: false, candidates: [{ id: "target-a", label: "Existing", sourceRef: { rootId: "library", relativePath: "other.wav" }, flags: [], notes: "" }] },
+    ],
+  };
+
+  assert.equal(moveCandidateToTrack(album, { sourceTrackId: "source", candidateId: "source-a", targetTrackId: "target", makeActive: false }).action, "candidate-moved");
+  assert.equal(album.tracks[0].decisionStatus, "missing");
+  assert.equal(album.tracks[0].auditionCandidateId, "");
+  assert.equal(album.tracks[0].candidates.length, 0);
+  assert.equal(album.tracks[1].auditionCandidateId, "target-a");
+  assert.equal(album.tracks[1].privacy, "protected");
+
+  album.tracks[0].candidates.push({ id: "duplicate", label: "Duplicate", sourceRef: { rootId: "library", relativePath: "same.wav" }, flags: [], notes: "" });
+  album.tracks[0].auditionCandidateId = "duplicate";
+  const before = structuredClone(album);
+  assert.equal(moveCandidateToTrack(album, { sourceTrackId: "source", candidateId: "duplicate", targetTrackId: "target", makeActive: true }).action, "duplicate");
+  assert.deepEqual(album, before);
 });

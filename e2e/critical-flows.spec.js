@@ -1314,6 +1314,46 @@ test("the sequence row follows the main player track and playback state", async 
   await expect(alphaRow).toHaveClass(/is-playing/);
 });
 
+test("sequence candidate manager searches indexed audio and safely moves candidates between tracks", async ({ page, request }) => {
+  const alphaSource = page.getByLabel("Audition source for Alpha Tone");
+  await page.getByRole("button", { name: "Manage candidates for Alpha Tone" }).click();
+  const alphaDialog = page.getByRole("dialog", { name: "Manage Candidates — Alpha Tone" });
+  await expect(alphaDialog).toBeVisible();
+  await alphaDialog.getByPlaceholder("Search filename, path, or format").fill("Loose Sketch");
+  await alphaDialog.getByRole("radio", { name: /Loose Sketch\.mp3/i }).check();
+  await alphaDialog.getByRole("button", { name: "Add Candidate" }).click();
+
+  await expect(alphaDialog).toBeHidden();
+  await expect(alphaSource).toHaveValue("alpha-candidate-3");
+  await expect(alphaSource.locator("option:checked")).toHaveText("Candidate 3 · Loose Sketch.mp3");
+  await expect(alphaSource.locator("option")).toHaveCount(3);
+
+  await page.getByRole("button", { name: "Manage candidates for [SIGNAL SOURCE WITHHELD]" }).click();
+  const protectedDialog = page.getByRole("dialog", { name: "Manage Candidates — [SIGNAL SOURCE WITHHELD]" });
+  await protectedDialog.getByRole("button", { name: "Move from Another Track" }).click();
+  const moveSelects = protectedDialog.locator(".candidate-move-fields select");
+  await expect(moveSelects.nth(0)).toHaveValue("alpha");
+  await expect(moveSelects.nth(1)).toHaveValue("alpha-candidate-3");
+  await expect(protectedDialog.getByText(/other track record stays in place/i)).toBeVisible();
+  await protectedDialog.getByRole("button", { name: "Move Candidate Here" }).click();
+
+  const protectedSource = page.getByLabel("Audition source for [SIGNAL SOURCE WITHHELD]");
+  await expect(alphaSource).toHaveValue("alpha-a");
+  await expect(alphaSource.locator("option")).toHaveCount(2);
+  await expect(protectedSource).toHaveValue("alpha-candidate-3");
+  await expect(protectedSource.locator("option:checked")).toHaveText("Candidate 3");
+  await expect(protectedSource.locator("option")).toHaveCount(2);
+  await expect(page.locator("[data-project-save-status]")).toHaveText("Saved locally.");
+
+  const bootstrap = await (await request.get("/api/bootstrap")).json();
+  const alpha = bootstrap.state.albums[0].tracks.find((track) => track.id === "alpha");
+  const protectedTrack = bootstrap.state.albums[0].tracks.find((track) => track.id === "protected");
+  expect(alpha.candidates.map((candidate) => candidate.id)).toEqual(["alpha-a", "alpha-b"]);
+  expect(alpha.auditionCandidateId).toBe("alpha-a");
+  expect(protectedTrack.candidates.map((candidate) => candidate.id)).toEqual(["private-a", "alpha-candidate-3"]);
+  expect(protectedTrack.auditionCandidateId).toBe("alpha-candidate-3");
+});
+
 test("main playback auditions saved trims, fades, gaps, and crossfades", async ({ page, request }) => {
   const timingState = structuredClone(e2eProjectState);
   const album = timingState.albums[0];

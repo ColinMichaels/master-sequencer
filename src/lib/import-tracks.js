@@ -19,6 +19,11 @@ const nextCandidateId = (track) => {
   return id;
 };
 
+const nextAvailableCandidateId = (track, preferredId = "") => {
+  if (preferredId && !track.candidates.some((candidate) => candidate.id === preferredId)) return preferredId;
+  return nextCandidateId(track);
+};
+
 export const addFileCandidate = (track, file) => {
   const existing = track.candidates.find((candidate) => sourceKey(candidate.sourceRef) === file.key);
   if (existing) return { action: "duplicate", trackId: track.id, trackTitle: track.title, candidateId: existing.id };
@@ -36,6 +41,60 @@ export const addFileCandidate = (track, file) => {
   if (!track.auditionCandidateId) track.auditionCandidateId = candidateId;
   if (track.decisionStatus === "missing") track.decisionStatus = "undecided";
   return { action: "candidate", trackId: track.id, trackTitle: track.title, candidateId };
+};
+
+export const moveCandidateToTrack = (album, { sourceTrackId, candidateId, targetTrackId, makeActive = true }) => {
+  if (!album || sourceTrackId === targetTrackId) return { action: "invalid" };
+  const sourceTrack = album.tracks.find((track) => track.id === sourceTrackId);
+  const targetTrack = album.tracks.find((track) => track.id === targetTrackId);
+  const sourceCandidateIndex = sourceTrack?.candidates.findIndex((candidate) => candidate.id === candidateId) ?? -1;
+  if (!sourceTrack || !targetTrack || sourceCandidateIndex < 0) return { action: "invalid" };
+
+  const sourceCandidate = sourceTrack.candidates[sourceCandidateIndex];
+  const existing = targetTrack.candidates.find((candidate) => sourceKey(candidate.sourceRef) === sourceKey(sourceCandidate.sourceRef));
+  if (existing) {
+    return {
+      action: "duplicate",
+      sourceTrackId,
+      targetTrackId,
+      candidateId: existing.id,
+      targetTrackTitle: targetTrack.title,
+    };
+  }
+
+  const [movedCandidate] = sourceTrack.candidates.splice(sourceCandidateIndex, 1);
+  const movedCandidateId = nextAvailableCandidateId(targetTrack, movedCandidate.id);
+  movedCandidate.id = movedCandidateId;
+  targetTrack.candidates.push(movedCandidate);
+
+  // Candidate moves are metadata-only. Keep the source track record, but repair
+  // any audition, master, and approval pointers that referenced the moved item.
+  if (sourceTrack.auditionCandidateId === candidateId) sourceTrack.auditionCandidateId = sourceTrack.candidates[0]?.id || "";
+  if (sourceTrack.masterCandidateId === candidateId) {
+    sourceTrack.masterCandidateId = "";
+    sourceTrack.humanApproved = false;
+    if (["approved", "released"].includes(sourceTrack.decisionStatus)) sourceTrack.decisionStatus = "undecided";
+  }
+  if (!sourceTrack.candidates.length) {
+    sourceTrack.auditionCandidateId = "";
+    sourceTrack.masterCandidateId = "";
+    sourceTrack.humanApproved = false;
+    sourceTrack.decisionStatus = "missing";
+  }
+
+  if (sourceTrack.privacy === "protected" || movedCandidate.sourceRef.privateSourceId) targetTrack.privacy = "protected";
+  if (makeActive || !targetTrack.auditionCandidateId) targetTrack.auditionCandidateId = movedCandidateId;
+  if (targetTrack.decisionStatus === "missing") targetTrack.decisionStatus = "undecided";
+  if (album.status === "empty") album.status = "working";
+
+  return {
+    action: "candidate-moved",
+    sourceTrackId,
+    sourceTrackTitle: sourceTrack.title,
+    targetTrackId,
+    targetTrackTitle: targetTrack.title,
+    candidateId: movedCandidateId,
+  };
 };
 
 export const buildImportedTracks = (existingTracks, files) => {
