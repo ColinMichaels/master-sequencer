@@ -1,7 +1,7 @@
 import { renameAlbumRecord } from "./albums.js";
 import { mergeAppearance } from "./appearance.js";
 import { slugify } from "./format.js";
-import { buildImportedTracks } from "./import-tracks.js";
+import { addFileCandidate, buildImportedTracks } from "./import-tracks.js";
 import { normalizeMasterBus } from "./mastering.js";
 import { createDefaultAdvancedMastering } from "./advanced-mastering.js";
 import { setTrackSequenced } from "./sequence-tracks.js";
@@ -79,12 +79,19 @@ export const addBlankTrack = (album, title) => {
 };
 
 export const appendImportedTracks = (album, result) => {
-  if (!result.tracks.length) return result;
-  album.tracks.push(...result.tracks);
-  album.baselineTrackOrder = [...(album.baselineTrackOrder || []), ...result.tracks.map((track) => track.id)];
-  album.orderApproved = false;
-  if (album.status === "empty") album.status = "working";
-  return result;
+  const candidateResults = (result.candidateAssignments || []).flatMap(({ trackId, file }) => {
+    const track = album.tracks.find((item) => item.id === trackId);
+    if (!track) return [];
+    const candidate = addFileCandidate(track, file);
+    return candidate.action === "candidate" ? [candidate] : [];
+  });
+  if (result.tracks.length) {
+    album.tracks.push(...result.tracks);
+    album.baselineTrackOrder = [...(album.baselineTrackOrder || []), ...result.tracks.map((track) => track.id)];
+    album.orderApproved = false;
+  }
+  if ((result.tracks.length || candidateResults.length) && album.status === "empty") album.status = "working";
+  return { ...result, candidateResults };
 };
 
 export const addTracksFromFiles = (album, files) => appendImportedTracks(album, buildImportedTracks(album.tracks, files));

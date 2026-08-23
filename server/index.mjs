@@ -17,6 +17,8 @@ import { createPortableProjectBundle } from "./portable-project-bundle.mjs";
 import { createRenderJobService } from "./render-job-service.mjs";
 import { createStateStore } from "./state-store.mjs";
 import { createTechnicalAnalysisService } from "./technical-analysis.mjs";
+import { scanVisualMediaLibrary } from "./visual-media-library.mjs";
+import { createVisualMetadataStore } from "./visual-metadata-store.mjs";
 import { createWaveformService } from "./waveform.mjs";
 
 const development = process.argv.includes("--dev");
@@ -33,11 +35,19 @@ let config = await loadConfig();
 let library = { files: [], roots: [] };
 let libraryByKey = new Map();
 let scanPromise = null;
+let visualLibrary = { files: [], roots: [], scan: null };
+let visualLibraryByKey = new Map();
+let visualLibraryById = new Map();
+let visualScanPromise = null;
 let audioWatchService = null;
 const previousConnectivity = new Map();
 const outputRoot = configuredPath("PROJECT_SEQUENCER_EXPORTS_PATH", path.join(projectRoot, "exports"));
 const waveformService = createWaveformService();
 const technicalAnalysisService = createTechnicalAnalysisService();
+const visualMetadataStore = createVisualMetadataStore({
+  metadataPath: configuredPath("PROJECT_SEQUENCER_VISUAL_METADATA_PATH", path.join(dataRoot, "visual-library-metadata.json")),
+});
+await visualMetadataStore.initialize();
 const nativeAudioService = createNativeAudioService({
   executablePath: process.env.PROJECT_SEQUENCER_NATIVE_AUDIO_PROBE_PATH
     ? path.resolve(process.env.PROJECT_SEQUENCER_NATIVE_AUDIO_PROBE_PATH)
@@ -92,6 +102,35 @@ const createBrowserSafeLibrary = (scanned, aliases = []) => {
   return { ...scanned, files };
 };
 
+const publicVisualFile = (file) => ({
+  key: file.key,
+  id: file.id,
+  rootId: file.rootId,
+  relativePath: file.relativePath,
+  originalPath: file.absolutePath,
+  name: file.name,
+  extension: file.extension,
+  mediaType: file.mediaType,
+  size: file.size,
+  firstIndexedAt: file.firstIndexedAt,
+  createdAt: file.birthtimeMs ? new Date(file.birthtimeMs).toISOString() : "",
+  modifiedAt: new Date(file.mtimeMs).toISOString(),
+  width: file.width,
+  height: file.height,
+  duration: file.duration,
+  codec: file.codec,
+  container: file.container,
+  bitrate: file.bitrate,
+  frameRate: file.frameRate,
+  pixelFormat: file.pixelFormat,
+  audioCodec: file.audioCodec,
+  audioChannels: file.audioChannels,
+  audioSampleRate: file.audioSampleRate,
+  aspect: file.aspect,
+  probeError: file.probeError,
+  metadata: { ...file.inferredMetadata, ...visualMetadataStore.get(file.id) },
+});
+
 const refreshLibrary = async () => {
   if (scanPromise) return scanPromise;
   scanPromise = (async () => {
@@ -119,7 +158,27 @@ const refreshLibrary = async () => {
   return scanPromise;
 };
 
-await refreshLibrary();
+const refreshVisualLibrary = async () => {
+  if (visualScanPromise) return visualScanPromise;
+  visualScanPromise = (async () => {
+    config = await loadConfig();
+    visualLibrary = await scanVisualMediaLibrary({
+      roots: config.visualRoots,
+      ignoreDirectories: config.ignoreDirectories,
+      cachePath: configuredPath("PROJECT_SEQUENCER_VISUAL_CACHE_PATH", path.join(dataRoot, "visual-index-cache.json")),
+      metadataConcurrency: config.metadataConcurrency,
+      includeHiddenDirectories: config.includeHiddenDirectories,
+    });
+    visualLibraryByKey = new Map(visualLibrary.files.map((file) => [file.key, file]));
+    visualLibraryById = new Map(visualLibrary.files.map((file) => [file.id, file]));
+    return visualLibrary;
+  })().finally(() => {
+    visualScanPromise = null;
+  });
+  return visualScanPromise;
+};
+
+await Promise.all([refreshLibrary(), refreshVisualLibrary()]);
 
 audioWatchService = createAudioWatchService({ onChange: refreshLibrary });
 audioWatchService.configure(library.roots, Boolean(config.watchAudioRoots));
@@ -162,8 +221,12 @@ const handleApi = createApiRouter({
   technicalAnalysisService,
   getLibrary: () => library,
   getLibraryFile: (key) => libraryByKey.get(key),
+  getVisualLibrary: () => visualLibrary,
+  getVisualLibraryFile: (key) => visualLibraryByKey.get(key),
+  getVisualLibraryFileById: (id) => visualLibraryById.get(id),
   getConfig: () => config,
   isScanning: () => Boolean(scanPromise),
+  isVisualScanning: () => Boolean(visualScanPromise),
   nativeAudioConfigured: nativeAudioService.configured,
   getNativeAudioStatus: () => nativeAudioService.status(),
   getNativeAudioLabStatus: () => nativeAudioLabService.status(),
@@ -171,7 +234,15 @@ const handleApi = createApiRouter({
   stopNativeAudioLab: () => nativeAudioLabService.stop(),
   getWatchStatus: () => audioWatchService.status(),
   refreshLibrary,
+  refreshVisualLibrary,
   publicFile,
+  publicVisualFile,
+  updateVisualMetadata: async (id, metadata) => {
+    const file = visualLibraryById.get(id);
+    if (!file) return null;
+    await visualMetadataStore.update(id, metadata);
+    return publicVisualFile(file);
+  },
   responsePayloadForPaths,
   removeAudioSource,
   chooseAudioPaths,
@@ -181,6 +252,12 @@ const handleApi = createApiRouter({
     const result = renderJobs.result(renderId);
     if (!result?.audioPath) return null;
     await revealInFinder({ filePath: result.audioPath });
+    return { revealed: true };
+  },
+  revealVisualMedia: async (key) => {
+    const file = visualLibraryByKey.get(key);
+    if (!file) return null;
+    await revealInFinder({ filePath: file.absolutePath });
     return { revealed: true };
   },
   createPortableBundle: async () => createPortableProjectBundle({ state: await stateStore.read(), getLibraryFile: (key) => libraryByKey.get(key) }),
@@ -247,6 +324,7 @@ const server = createServer(async (request, response) => {
 server.listen(config.port, config.host, () => {
   console.log(`Project Sequencer ready at http://${config.host}:${config.port}`);
   console.log(`${library.files.length} audio files indexed across ${library.roots.length} configured path${library.roots.length === 1 ? "" : "s"}.`);
+  console.log(`${visualLibrary.files.length} visual-media files indexed across ${visualLibrary.roots.length} configured root${visualLibrary.roots.length === 1 ? "" : "s"}.`);
 });
 
 let shuttingDown = false;

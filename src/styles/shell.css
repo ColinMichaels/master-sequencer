@@ -97,6 +97,7 @@
 .screen-settings-option { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 0.55rem; align-items: center; width: 100%; min-height: 58px; padding: 0.6rem 0.65rem; border: 0; border-top: 1px solid var(--line-soft); background: transparent; color: var(--bone-muted); text-align: left; cursor: pointer; }
 .screen-settings-option:hover { background: rgb(var(--lime-rgb) / 6%); color: var(--lime); }
 .screen-settings-option em { color: var(--lime); font-size: 0.8rem; font-style: normal; }
+.screen-settings-option > kbd { display: grid; width: 28px; height: 28px; border: 1px solid currentColor; color: var(--lime); font-family: var(--display); font-size: 0.72rem; font-weight: 900; place-items: center; }
 .header-stats-popover { position: absolute; z-index: 90; top: calc(100% + 0.55rem); right: 0; width: min(390px, calc(100vw - 1.8rem)); border: 1px solid var(--lime); background: var(--ink-raised); box-shadow: 0 18px 50px rgb(0 0 0 / 52%); }
 .header-stats-popover > header { display: flex; min-height: 48px; align-items: center; justify-content: space-between; padding: 0.55rem 0.65rem; border-bottom: 1px solid var(--line); }
 .header-stats-popover > header div { display: grid; gap: 0.12rem; }

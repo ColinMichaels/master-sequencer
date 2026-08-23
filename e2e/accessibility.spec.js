@@ -29,6 +29,22 @@ const dialogSurfaces = [
     },
   },
   {
+    name: "Keyboard Shortcuts",
+    modal: true,
+    open: async (page) => {
+      await page.getByRole("button", { name: "Open settings menu" }).click();
+      await page.getByRole("dialog", { name: "Quick Settings" }).getByRole("button", { name: "Keyboard shortcuts" }).click();
+    },
+  },
+  {
+    name: "Command Search",
+    modal: true,
+    open: async (page) => {
+      await page.getByRole("button", { name: "Open settings menu" }).click();
+      await page.getByRole("dialog", { name: "Quick Settings" }).getByRole("button", { name: "Command search" }).click();
+    },
+  },
+  {
     name: "Add Album",
     modal: true,
     open: async (page) => page.getByRole("button", { name: "Add Album", exact: true }).click(),
@@ -153,6 +169,72 @@ test("Grunge remains accessible at phone width and 120% text", async ({ page }) 
   await useMaximumTextScale(page);
   await expectNoHorizontalPageOverflow(page, "Grunge at 120% text");
   await expectNoHighImpactViolations(page, "Grunge at 120% text");
+});
+
+test("Saved filters disclosure remains accessible at phone width and 120% text", async ({ page }) => {
+  await page.setViewportSize(phoneViewport);
+  await page.getByRole("button", { name: "Audio Library", exact: true }).click();
+  const disclosure = page.getByRole("button", { name: /^Saved filters/ });
+  await disclosure.click();
+  await expect(disclosure).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator("#saved-filter-panel")).toBeVisible();
+  await expectNoHorizontalPageOverflow(page, "Saved filters mobile disclosure");
+  await expectNoHighImpactViolations(page, "Saved filters mobile disclosure");
+  await useMaximumTextScale(page);
+  await expectNoHorizontalPageOverflow(page, "Saved filters mobile disclosure at 120% text");
+  await expectNoHighImpactViolations(page, "Saved filters mobile disclosure at 120% text");
+});
+
+test("Album Decision expert disclosures remain accessible at phone width and 120% text", async ({ page }) => {
+  await page.setViewportSize(phoneViewport);
+  await page.getByRole("button", { name: "Album Decisions", exact: true }).click();
+  await expect(page.locator(".readiness-inspector")).toBeVisible();
+  for (const name of [/^Sequence Versions/, /^Transition Tools/, /^Matched Candidate Previews/, /^Album Templates/]) {
+    const disclosure = page.getByRole("button", { name });
+    await disclosure.click();
+    await expect(disclosure).toHaveAttribute("aria-expanded", "true");
+  }
+  await expectNoHorizontalPageOverflow(page, "Album Decision mobile expert disclosures");
+  await expectNoHighImpactViolations(page, "Album Decision mobile expert disclosures");
+  await useMaximumTextScale(page);
+  await expectNoHorizontalPageOverflow(page, "Album Decision mobile expert disclosures at 120% text");
+  await expectNoHighImpactViolations(page, "Album Decision mobile expert disclosures at 120% text");
+});
+
+test("Mastering optional disclosures and ending controls remain accessible at phone width and 120% text", async ({ page }) => {
+  await page.setViewportSize(phoneViewport);
+  await page.getByRole("button", { name: "Mastering", exact: true }).click();
+  for (const name of [/^Optional Technical Analysis/, /^Render History/]) {
+    const disclosure = page.getByRole("button", { name });
+    await disclosure.click();
+    await expect(disclosure).toHaveAttribute("aria-expanded", "true");
+  }
+  await page.locator(".ending-mode-grid label").filter({ hasText: "Crossfade" }).click();
+  await expect(page.getByRole("spinbutton", { name: "Crossfade length" })).toBeVisible();
+  await expect(page.getByRole("spinbutton", { name: "Silence after" })).toHaveCount(0);
+  await expectNoHorizontalPageOverflow(page, "Mastering mobile disclosures and ending controls");
+  await expectNoHighImpactViolations(page, "Mastering mobile disclosures and ending controls");
+  await useMaximumTextScale(page);
+  await expectNoHorizontalPageOverflow(page, "Mastering mobile disclosures and ending controls at 120% text");
+  await expectNoHighImpactViolations(page, "Mastering mobile disclosures and ending controls at 120% text");
+});
+
+test("contextual action menus remain accessible at phone width and 120% text", async ({ page }) => {
+  await page.setViewportSize(phoneViewport);
+  await page.getByRole("button", { name: "Audio Library", exact: true }).click();
+  await page.locator(".audio-row").filter({ hasText: "Alpha Tone.wav" }).click();
+  await page.getByRole("button", { name: "Actions for Alpha Tone.wav" }).click();
+  await expect(page.getByRole("menu", { name: "Actions for Alpha Tone.wav" })).toBeVisible();
+  await expectNoHorizontalPageOverflow(page, "Audio Library contextual actions");
+  await expectNoHighImpactViolations(page, "Audio Library contextual actions");
+  await page.keyboard.press("Escape");
+  await useMaximumTextScale(page);
+
+  await page.getByRole("button", { name: "Mastering", exact: true }).click();
+  await page.getByRole("button", { name: "Actions for Alpha Tone" }).click();
+  await expect(page.getByRole("menu", { name: "Actions for Alpha Tone" })).toBeVisible();
+  await expectNoHorizontalPageOverflow(page, "Mastering contextual actions at 120% text");
+  await expectNoHighImpactViolations(page, "Mastering contextual actions at 120% text");
 });
 
 test("reduced-motion preference removes nonessential animation and transition time", async ({ page }) => {

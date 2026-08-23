@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
-import { DocumentIcon, GearIcon, MoonIcon, PaletteIcon, SunIcon } from "./Icons.jsx";
+import { DocumentIcon, GearIcon, MoonIcon, PaletteIcon, SearchIcon, SunIcon } from "./Icons.jsx";
 import { adjustTextScale, TEXT_SCALES, textScaleLabel } from "../lib/appearance.js";
 
-export function ScreenControls({ appearance, resolvedMode, onChange, onOpenSettings, onOpenHelp }) {
+export function ScreenControls({ appearance, resolvedMode, onChange, onOpenSettings, onOpenCommands, onOpenHelp, onOpenShortcuts }) {
   const [open, setOpen] = useState(false);
   const shellRef = useRef(null);
   const triggerRef = useRef(null);
@@ -34,9 +34,10 @@ export function ScreenControls({ appearance, resolvedMode, onChange, onOpenSetti
     onOpenSettings();
   };
 
-  const openHelp = () => {
+  const openModalFromMenu = (openModal) => {
     setOpen(false);
-    onOpenHelp?.();
+    triggerRef.current?.focus();
+    openModal?.();
   };
 
   return (
@@ -56,10 +57,20 @@ export function ScreenControls({ appearance, resolvedMode, onChange, onOpenSetti
           {lightTarget ? <SunIcon /> : <MoonIcon />}
           <span><strong>{lightTarget ? "Light" : "Dark"} mode</strong><small>Currently showing {resolvedMode} mode</small></span>
         </button>
-        <button type="button" className="screen-settings-option" onClick={openHelp}>
+        <button type="button" className="screen-settings-option" onClick={() => openModalFromMenu(onOpenCommands)} aria-keyshortcuts="Meta+K Control+K">
+          <SearchIcon />
+          <span><strong>Command search</strong><small>Find the same visible workspace and repeat-use actions</small></span>
+          <em>⌘K</em>
+        </button>
+        <button type="button" className="screen-settings-option" onClick={() => openModalFromMenu(onOpenHelp)}>
           <DocumentIcon />
           <span><strong>Help &amp; app instructions</strong><small>Open the complete album workflow guide</small></span>
           <em>?</em>
+        </button>
+        <button type="button" className="screen-settings-option" onClick={() => openModalFromMenu(onOpenShortcuts)} aria-keyshortcuts="Shift+/">
+          <kbd aria-hidden="true">?</kbd>
+          <span><strong>Keyboard shortcuts</strong><small>Reveal faster workspace and audition controls</small></span>
+          <em>→</em>
         </button>
         <button type="button" className="screen-settings-option" onClick={openFullSettings}>
           <PaletteIcon />

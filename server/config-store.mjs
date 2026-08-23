@@ -52,6 +52,7 @@ export const loadConfig = async () => {
   const local = await readJson(localConfigPath);
   const configuredRoots = Array.isArray(local.audioRoots) ? local.audioRoots : base.audioRoots || [];
   const configuredFiles = Array.isArray(local.audioFiles) ? local.audioFiles : base.audioFiles || [];
+  const configuredVisualRoots = Array.isArray(local.visualRoots) ? local.visualRoots : base.visualRoots || [];
   const envRoots = (process.env.PROJECT_SEQUENCER_AUDIO_PATHS || "")
     .split(path.delimiter)
     .map((entry) => entry.trim())
@@ -74,7 +75,22 @@ export const loadConfig = async () => {
       seenFiles.add(file.path);
       return true;
     });
-  const merged = { ...base, ...local, audioRoots, audioFiles };
+  const envVisualRoots = (process.env.PROJECT_SEQUENCER_VISUAL_PATHS || "")
+    .split(path.delimiter)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry, index) => ({ id: `environment-visual-${index + 1}`, label: path.basename(entry), path: entry, mediaTypes: ["video", "image"] }));
+  const seenVisualRoots = new Set();
+  const visualRoots = [...configuredVisualRoots, ...envVisualRoots]
+    .filter((root) => root && typeof root.id === "string" && root.id && typeof root.path === "string" && root.path)
+    .map((root) => ({ ...root, path: expandPath(root.path) }))
+    .filter((root) => {
+      const key = `${root.id}:${root.path}`;
+      if (seenVisualRoots.has(key)) return false;
+      seenVisualRoots.add(key);
+      return true;
+    });
+  const merged = { ...base, ...local, audioRoots, audioFiles, visualRoots };
   const requestedPort = Number(process.env.PROJECT_SEQUENCER_PORT);
   const port = Number.isInteger(requestedPort) && requestedPort >= 1 && requestedPort <= 65_535
     ? requestedPort

@@ -12,6 +12,9 @@ const validateAssetReference = (reference, label) => {
   if (!reference || typeof reference !== "object" || typeof reference.rootId !== "string" || !reference.rootId || typeof reference.relativePath !== "string" || !reference.relativePath) {
     throw new Error(`${label} must reference a configured root and relative path.`);
   }
+  for (const field of ["absolutePath", "originalPath", "filePath"]) {
+    if (Object.hasOwn(reference, field)) throw new Error(`${label} must not contain machine-local path fields.`);
+  }
   const normalizedPath = reference.relativePath.replaceAll("\\", "/");
   if (normalizedPath.startsWith("/") || normalizedPath.split("/").includes("..")) throw new Error(`${label} must use a safe relative path.`);
 };

@@ -4,7 +4,7 @@ import path from "node:path";
 import { RenderCancelledError, renderAudio } from "./audio-renderer.mjs";
 
 const terminalStatuses = new Set(["completed", "failed", "cancelled"]);
-const SUPPORTED_RENDER_MANIFEST_VERSIONS = new Set([1, 2, 3]);
+const SUPPORTED_RENDER_MANIFEST_VERSIONS = new Set([1, 2, 3, 4, 5]);
 
 const isWithin = (parentPath, candidatePath) => {
   const relative = path.relative(parentPath, candidatePath);
@@ -36,15 +36,31 @@ export const discoverRenderResults = async (outputRoot) => {
   const results = [];
   const files = await walkFiles(outputRoot);
   // Only remove the exact temporary audio suffix emitted by audio-renderer.
-  await Promise.all(files.filter((filePath) => /\.part\.(?:wav|mp3)$/i.test(path.basename(filePath))).map((filePath) => rm(filePath, { force: true })));
+  await Promise.all(files.filter((filePath) => /\.part\.(?:wav|aiff|flac|mp3|m4a)$/i.test(path.basename(filePath))).map((filePath) => rm(filePath, { force: true })));
   for (const manifestPath of files.filter((filePath) => filePath.endsWith("-render-manifest.json"))) {
     try {
       const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
       if (!SUPPORTED_RENDER_MANIFEST_VERSIONS.has(manifest.schemaVersion) || typeof manifest.audioFile !== "string" || path.basename(manifest.audioFile) !== manifest.audioFile) continue;
       const outputDirectory = path.dirname(manifestPath);
-      const audioPath = path.resolve(outputDirectory, manifest.audioFile);
-      if (!isWithin(outputRoot, audioPath)) continue;
-      const fileStat = await stat(audioPath);
+      const documentedAudioFiles = Array.isArray(manifest.audioFiles) && manifest.audioFiles.length
+        ? manifest.audioFiles
+        : [{ fileName: manifest.audioFile, trackId: manifest.tracks?.[0]?.id || "", trackNumber: 1, title: manifest.tracks?.[0]?.title || path.basename(manifest.audioFile, path.extname(manifest.audioFile)) }];
+      if (documentedAudioFiles.some((file) => typeof file?.fileName !== "string" || path.basename(file.fileName) !== file.fileName)) continue;
+      const audioFiles = await Promise.all(documentedAudioFiles.map(async (file, index) => {
+        const audioPath = path.resolve(outputDirectory, file.fileName);
+        if (!isWithin(outputRoot, audioPath)) throw new Error("Rendered audio escaped the output root.");
+        const fileStat = await stat(audioPath);
+        return {
+          trackId: typeof file.trackId === "string" ? file.trackId : "",
+          trackNumber: Number.isInteger(file.trackNumber) ? file.trackNumber : index + 1,
+          title: typeof file.title === "string" ? file.title : path.basename(file.fileName, path.extname(file.fileName)),
+          audioName: file.fileName,
+          audioPath,
+          size: fileStat.size,
+        };
+      }));
+      const audioPath = audioFiles[0].audioPath;
+      const firstFileStat = await stat(audioPath);
       const directoryFiles = await readdir(outputDirectory);
       const cueName = directoryFiles.find((name) => name.endsWith("-cue-sheet.txt"));
       const fallbackId = createHash("sha256").update(path.relative(outputRoot, manifestPath)).digest("hex").slice(0, 24);
@@ -52,14 +68,17 @@ export const discoverRenderResults = async (outputRoot) => {
         id: typeof manifest.renderId === "string" && manifest.renderId ? manifest.renderId : fallbackId,
         scope: manifest.scope,
         format: manifest.format,
+        audioSettings: manifest.audioSettings || null,
         audioPath,
         cuePath: cueName ? path.join(outputDirectory, cueName) : "",
         manifestPath,
         outputDirectory,
-        audioName: manifest.audioFile,
-        size: fileStat.size,
+        audioName: typeof manifest.displayName === "string" && manifest.displayName ? manifest.displayName : manifest.audioFile,
+        audioFiles: Array.isArray(manifest.audioFiles) ? audioFiles : [],
+        size: audioFiles.reduce((total, file) => total + file.size, 0),
         warnings: Array.isArray(manifest.warnings) ? manifest.warnings : [],
-        createdAt: typeof manifest.createdAt === "string" && manifest.createdAt ? manifest.createdAt : fileStat.mtime.toISOString(),
+        masteringPrintPlan: manifest.masteringPrintPlan || null,
+        createdAt: typeof manifest.createdAt === "string" && manifest.createdAt ? manifest.createdAt : firstFileStat.mtime.toISOString(),
         recovered: true,
       });
     } catch {

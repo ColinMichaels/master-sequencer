@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
-import { DocumentIcon, ImageIcon, LockIcon, MusicIcon, PlusIcon, TrashIcon } from "./Icons.jsx";
+import { DocumentIcon, ImageIcon, LockIcon, MusicIcon, PlusIcon, TrashIcon, VideoIcon } from "./Icons.jsx";
+import { VisualMediaLibrary } from "./VisualMediaLibrary.jsx";
 
 const referenceKey = (reference) => reference ? `${reference.rootId}::${reference.relativePath}` : "";
 const fileName = (reference) => reference?.name || reference?.relativePath?.split(/[\\/]/).at(-1) || "Attached file";
+const isVideoAsset = (reference) => ["mp4", "mov", "m4v", "webm"].includes(reference?.extension?.toLowerCase());
 const lyricKinds = [
   ["sunoPrompt", "Suno prompt lyrics", "Original prompt sheet with sections, directions, and production metadata."],
   ["distrokid", "DistroKid clean lyrics", "Clean sung words only, ready for distributor lyric entry."],
@@ -13,7 +15,11 @@ function VisualAssetCard({ asset, cover, protectedAsset, onUseAsCover, onRemove 
   return (
     <article className={`visual-asset-card ${cover ? "is-cover" : ""}`}>
       <div className="visual-asset-preview">
-        {protectedAsset ? <span className="protected-asset-preview"><LockIcon size={28} /> Protected visual</span> : <img src={api.assetUrl(asset)} alt={fileName(asset)} />}
+        {protectedAsset
+          ? <span className="protected-asset-preview"><LockIcon size={28} /> Protected visual</span>
+          : isVideoAsset(asset)
+            ? <span className="attached-video-preview"><video src={api.assetUrl(asset)} muted playsInline preload="metadata" aria-label={fileName(asset)} /><VideoIcon /></span>
+            : <img src={api.assetUrl(asset)} alt={fileName(asset)} />}
       </div>
       <div className="visual-asset-copy">
         <strong>{protectedAsset ? "Protected visual asset" : fileName(asset)}</strong>
@@ -45,7 +51,8 @@ function LyricAttachment({ kind, label, description, attachment, protectedAsset,
   );
 }
 
-export function AssetWorkspace({ album, revealPrivateFilenames, picking, sourcePickingAvailable = true, onAlbumChange, onPickAssets, onTrackFocus }) {
+export function AssetWorkspace({ album, revealPrivateFilenames, picking, sourcePickingAvailable = true, audioPlaying = false, onAlbumChange, onPickAssets, onTrackFocus, onVideoPlay }) {
+  const [mode, setMode] = useState("project");
   const [selectedTrackId, setSelectedTrackId] = useState(album.tracks[0]?.id || "");
   useEffect(() => {
     if (!album.tracks.some((track) => track.id === selectedTrackId)) setSelectedTrackId(album.tracks[0]?.id || "");
@@ -115,6 +122,12 @@ export function AssetWorkspace({ album, revealPrivateFilenames, picking, sourceP
 
   return (
     <main className="assets-workspace">
+      <nav className="assets-mode-selector" aria-label="Assets workspace mode">
+        <button type="button" aria-current={mode === "project" ? "page" : undefined} onClick={() => setMode("project")}><span>Project Assets</span><small>Artwork, track visuals, and lyrics</small></button>
+        <button type="button" aria-current={mode === "library" ? "page" : undefined} onClick={() => setMode("library")}><span>Video &amp; Graphics Library</span><small>Indexed visual media and project relationships</small></button>
+      </nav>
+
+      {mode === "library" ? <VisualMediaLibrary album={album} selectedTrackId={selectedTrackId} audioPlaying={audioPlaying} onAlbumChange={onAlbumChange} onVideoPlay={onVideoPlay} /> : <>
       <header className="assets-heading">
         <h2 className="sr-only">Assets</h2>
         <dl><div><dt>{albumVisualCount}</dt><dd>Album visuals</dd></div><div><dt>{trackVisualCount}</dt><dd>Track visuals</dd></div><div><dt>{lyricCount}</dt><dd>Lyric files</dd></div></dl>
@@ -124,7 +137,7 @@ export function AssetWorkspace({ album, revealPrivateFilenames, picking, sourceP
         <section className="asset-pane album-assets-pane" aria-labelledby="album-assets-title">
           <header><div><h3 id="album-assets-title">Album Visuals</h3><p>Cover art, back-cover ideas, campaign art, and layout references.</p></div><button type="button" className="primary-button" disabled={!sourcePickingAvailable || picking} title={sourcePickingAvailable ? "Attach existing visual files" : "Asset attachment is unavailable in this browser session"} onClick={() => addVisuals("album")}><ImageIcon /> {picking ? "Waiting…" : sourcePickingAvailable ? "Add Visuals" : "Attach Unavailable"}</button></header>
           <div className="visual-asset-list">
-            {albumAssets.map((asset) => <VisualAssetCard key={referenceKey(asset)} asset={asset} cover={referenceKey(asset) === coverKey} onUseAsCover={() => setCover(asset)} onRemove={() => removeAlbumVisual(asset)} />)}
+            {albumAssets.map((asset) => <VisualAssetCard key={referenceKey(asset)} asset={asset} cover={referenceKey(asset) === coverKey} onUseAsCover={isVideoAsset(asset) ? undefined : () => setCover(asset)} onRemove={() => removeAlbumVisual(asset)} />)}
             {!albumAssets.length ? <div className="asset-empty"><ImageIcon size={28}/><strong>No album visuals attached</strong><span>Add existing artwork without copying it.</span></div> : null}
           </div>
         </section>
@@ -157,6 +170,7 @@ export function AssetWorkspace({ album, revealPrivateFilenames, picking, sourceP
         </section>
       </div>
       <p className="asset-storage-note"><LockIcon /> Project Sequencer stores path references only. It never copies, edits, publishes, or deletes attached artwork or lyric files.</p>
+      </>}
     </main>
   );
 }

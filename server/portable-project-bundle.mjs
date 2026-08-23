@@ -10,11 +10,21 @@ const checksumFile = (filePath) => new Promise((resolve, reject) => {
   stream.on("end", () => resolve(hash.digest("hex")));
 });
 
+const MACHINE_LOCAL_PATH_FIELDS = new Set(["absolutePath", "originalPath", "filePath"]);
+
+const createPortableClone = (value) => {
+  if (Array.isArray(value)) return value.map(createPortableClone);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value)
+    .filter(([key]) => !MACHINE_LOCAL_PATH_FIELDS.has(key))
+    .map(([key, nestedValue]) => [key, createPortableClone(nestedValue)]));
+};
+
 export const createPortableProjectBundle = async ({ state, getLibraryFile }) => {
   const references = new Map();
   for (const album of state.albums) for (const track of album.tracks) for (const candidate of track.candidates) {
     const key = sourceKey(candidate.sourceRef);
-    if (!references.has(key)) references.set(key, candidate.sourceRef);
+    if (!references.has(key)) references.set(key, createPortableClone(candidate.sourceRef));
   }
   const sources = [];
   for (const [key, reference] of references) {
@@ -30,7 +40,7 @@ export const createPortableProjectBundle = async ({ state, getLibraryFile }) => 
     kind: "project-sequencer-portable-json-checksum-bundle",
     createdAt: new Date().toISOString(),
     mediaIncluded: false,
-    project: structuredClone(state),
+    project: createPortableClone(state),
     sources,
   };
 };

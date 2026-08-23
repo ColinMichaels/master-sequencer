@@ -3,9 +3,10 @@ import test from "node:test";
 import { compareRenderManifests, validateDeliveryRequest } from "../src/lib/delivery-profiles.js";
 
 test("delivery profiles validate output without inferring approval or publication", () => {
-  assert.deepEqual(validateDeliveryRequest({ profileId: "archive-wav", format: "wav", scope: "track" }).issues, []);
-  assert.match(validateDeliveryRequest({ profileId: "review-mp3", format: "wav", scope: "album" }).issues[0], /requires MP3/);
-  assert.match(validateDeliveryRequest({ profileId: "distribution-wav", format: "wav", scope: "track" }).issues[0], /album-program/);
+  assert.deepEqual(validateDeliveryRequest({ profileId: "archive-wav", scope: "track" }).issues, []);
+  assert.deepEqual(validateDeliveryRequest({ profileId: "review-mp3", scope: "album" }).issues, []);
+  assert.deepEqual(validateDeliveryRequest({ profileId: "distribution-wav", scope: "tracks" }).issues, []);
+  assert.match(validateDeliveryRequest({ profileId: "distribution-wav", scope: "track" }).issues[0], /numbered separate-track/);
 });
 
 test("render manifest comparison highlights format, profile, order, source, and edit differences", () => {

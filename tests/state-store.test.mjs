@@ -322,6 +322,10 @@ test("state validation rejects unsafe project-asset paths", () => {
   const invalid = structuredClone(seed);
   invalid.albums[0].visualAssets = [{ rootId: "library", relativePath: "../secret.png" }];
   assert.throws(() => validateState(invalid), /safe relative path/i);
+
+  const machineLocal = structuredClone(seed);
+  machineLocal.albums[0].visualAssets = [{ rootId: "visuals", relativePath: "campaign/master.mp4", originalPath: "/private/campaign/master.mp4" }];
+  assert.throws(() => validateState(machineLocal), /must not contain machine-local path fields/i);
 });
 
 test("state validation accepts a removed-from-sequence track and rejects invalid flags", () => {

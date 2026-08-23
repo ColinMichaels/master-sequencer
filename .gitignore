@@ -7,6 +7,11 @@ data/sequencer-state.json.tmp
 data/sequencer-state.last-known-good.json
 data/sequencer-state.last-known-good.json.tmp
 data/audio-index-cache.json
+data/visual-index-cache.json
+data/visual-library-metadata.json
+data/visual-library-metadata.json.tmp
+data/vst3-validation-catalog.json
+data/vst3-validation-catalog.json.tmp
 data/sequencer-projects.json
 data/sequencer-projects.json.tmp
 data/projects/

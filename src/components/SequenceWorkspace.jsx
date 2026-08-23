@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { sourceKey } from "../lib/api.js";
 import { formatDuration } from "../lib/format.js";
-import { isTrackSequenced } from "../lib/sequence-tracks.js";
+import { isTrackSequenced, renameTrackTitle, SEQUENCE_TRACK_STATUS_OPTIONS, sequenceTrackStatus, setSequenceTrackStatus, TRACK_TITLE_MAX_LENGTH } from "../lib/sequence-tracks.js";
+import { ChevronIcon, DragIcon, EditIcon, ExportIcon, PauseIcon, PlayIcon, PlusIcon, RefreshIcon, TransitionIcon, TrashIcon } from "./Icons.jsx";
 import { CandidateSourceManager } from "./CandidateSourceManager.jsx";
-import { ChevronIcon, DragIcon, ExportIcon, PauseIcon, PlayIcon, PlusIcon, RefreshIcon, TransitionIcon, TrashIcon } from "./Icons.jsx";
 import { Modal } from "./Modal.jsx";
 
 const sourceLabel = (track, candidate, file, revealPrivateFilenames) => {
@@ -14,13 +14,41 @@ const sourceLabel = (track, candidate, file, revealPrivateFilenames) => {
 const isIndependentRowControl = (target) => target instanceof Element
   && Boolean(target.closest("button, select, input, textarea, a, [data-row-playback-ignore]"));
 
-export function SequenceWorkspace({ album, library, libraryMap, protectedSourceKeys, revealPrivateFilenames, scanning = false, transitioningTrackId, currentTrackId, playing, renderingAvailable = true, onAlbumChange, onAuditionSourceChange, onChooseCandidateFiles, onAddCandidate, onMoveCandidate, onAddTracks, onPlayFrom, onTogglePlayback, onTransition, onExport, onRemoveFromSequence, onRestoreToSequence }) {
+function RenameTrackForm({ track, onSubmit, onCancel }) {
+  const [title, setTitle] = useState(track.title);
+  const normalizedTitle = title.trim().replace(/\s+/g, " ");
+  return (
+    <form className="modal-form rename-track-form" onSubmit={(event) => { event.preventDefault(); onSubmit(normalizedTitle); }}>
+      <label>Track title<input autoFocus required maxLength={TRACK_TITLE_MAX_LENGTH} value={title} onChange={(event) => setTitle(event.target.value)} onFocus={(event) => event.currentTarget.select()} /></label>
+      <p>Confirming changes only this displayed song title. The permanent track ID, indexed audio references, candidate choices, notes, sequence position, and mastering instructions stay attached.</p>
+      <dl className="rename-album-identity"><div><dt>Permanent track ID</dt><dd>{track.id}</dd></div><div><dt>Audio candidates preserved</dt><dd>{track.candidates.length}</dd></div></dl>
+      <div className="modal-actions"><button type="button" className="text-button" onClick={onCancel}>Cancel</button><button type="submit" className="primary-button" disabled={!normalizedTitle || normalizedTitle === track.title}><EditIcon /> Confirm Rename</button></div>
+    </form>
+  );
+}
+
+function RemoveTrackFromProjectForm({ track, onSubmit, onCancel }) {
+  return (
+    <div className="modal-form delete-track-form">
+      <p><strong>{track.title}</strong> will be permanently removed from this project.</p>
+      <dl className="rename-album-identity"><div><dt>Track record</dt><dd>1</dd></div><div><dt>Candidate references</dt><dd>{track.candidates.length}</dd></div></dl>
+      <p className="deletion-safety-note">Its sequence history, notes, candidate choices, and attached project records will be deleted. Indexed source audio stays exactly where it is and remains available in the Audio Library.</p>
+      <div className="modal-actions"><button type="button" className="text-button" onClick={onCancel}>Cancel</button><button type="button" className="primary-button primary-button--danger" onClick={onSubmit}><TrashIcon /> Remove from Project</button></div>
+    </div>
+  );
+}
+
+export function SequenceWorkspace({ album, library, libraryMap, protectedSourceKeys, revealPrivateFilenames, scanning = false, transitioningTrackId, currentTrackId, playing, renderingAvailable = true, onAlbumChange, onAuditionSourceChange, onChooseCandidateFiles, onAddCandidate, onMoveCandidate, onAddTracks, onPlayFrom, onTogglePlayback, onTransition, onExport, onRemoveFromSequence, onRestoreToSequence, onRemoveFromProject }) {
   const [draggedTrackId, setDraggedTrackId] = useState("");
   const [removeArmedTrackId, setRemoveArmedTrackId] = useState("");
+  const [renamingTrackId, setRenamingTrackId] = useState("");
+  const [removingProjectTrackId, setRemovingProjectTrackId] = useState("");
   const [candidateManagerTrackId, setCandidateManagerTrackId] = useState("");
   const trackRowsRef = useRef(new Map());
   const tracks = useMemo(() => album.tracks.filter(isTrackSequenced), [album.tracks]);
   const unsequencedTracks = useMemo(() => album.tracks.filter((track) => !isTrackSequenced(track)), [album.tracks]);
+  const renamingTrack = album.tracks.find((track) => track.id === renamingTrackId && track.privacy !== "protected");
+  const removingProjectTrack = unsequencedTracks.find((track) => track.id === removingProjectTrackId);
   const candidateManagerTrack = album.tracks.find((track) => track.id === candidateManagerTrackId);
   const resolveCandidate = (track) => track.candidates.find((candidate) => candidate.id === track.auditionCandidateId);
   const resolveFile = (track) => {
@@ -79,7 +107,19 @@ export function SequenceWorkspace({ album, library, libraryMap, protectedSourceK
     setRemoveArmedTrackId("");
   };
 
-  return <>
+  const beginTrackRename = (track) => {
+    if (track.privacy === "protected") return;
+    setRenamingTrackId(track.id);
+  };
+
+  const confirmTrackRename = (title) => {
+    const trackId = renamingTrackId;
+    onAlbumChange((draft) => { renameTrackTitle(draft, trackId, title); });
+    setRenamingTrackId("");
+  };
+
+  return (
+    <>
     <main className="sequence-workspace">
       <section className="sequence-main" aria-labelledby="sequence-title">
         <div className="workspace-heading">
@@ -151,7 +191,10 @@ export function SequenceWorkspace({ album, library, libraryMap, protectedSourceK
                       <button type="button" onClick={() => moveTrack(track.id, 1)} disabled={index === tracks.length - 1} aria-label={`Move ${track.title} down`}><ChevronIcon direction="down" /></button>
                     </div>
                     <span className="track-index" role="cell">{index + 1}</span>
-                    <div className="track-title" role="cell"><strong>{track.title}</strong><small>{originalIndex >= 0 ? `Original slot ${originalIndex + 1}` : "Added track"}{track.privacy === "protected" ? " · protected" : ""}</small></div>
+                    <div className="track-title" role="cell">
+                      {track.privacy === "protected" ? <strong title="Protected track labels cannot be renamed">{track.title}</strong> : <strong className="track-title-rename-trigger" role="button" tabIndex={0} aria-label={`Rename ${track.title}`} aria-keyshortcuts="Enter Space F2" title="Double-click or press Enter to rename" data-row-playback-ignore onClick={(event) => { event.stopPropagation(); if (event.detail === 0) beginTrackRename(track); }} onDoubleClick={(event) => { event.preventDefault(); event.stopPropagation(); beginTrackRename(track); }} onKeyDown={(event) => { if (!["Enter", " ", "F2"].includes(event.key)) return; event.preventDefault(); event.stopPropagation(); beginTrackRename(track); }}>{track.title}</strong>}
+                      <small>{originalIndex >= 0 ? `Original slot ${originalIndex + 1}` : "Added track"}{track.privacy === "protected" ? " · protected" : ""}</small>
+                    </div>
                     <div className="track-source" role="cell">
                       <select aria-label={`Audition source for ${track.title}`} value={track.auditionCandidateId || ""} disabled={!track.candidates.length} onChange={(event) => onAuditionSourceChange(track.id, event.target.value)}>
                         {!track.candidates.length && <option value="">— No source —</option>}
@@ -162,7 +205,19 @@ export function SequenceWorkspace({ album, library, libraryMap, protectedSourceK
                       </select>
                       <button type="button" className="icon-button candidate-source-button" aria-label={`Manage candidates for ${track.title}`} title="Search audio or move a candidate from another track" onClick={() => setCandidateManagerTrackId(track.id)}><PlusIcon /></button>
                     </div>
-                    <div className="track-status" role="cell"><strong>{file ? formatDuration(file.duration) : "No audio"}</strong><small>{missing ? "Missing source" : legacy ? "Legacy source" : track.decisionStatus === "released" ? "Released source" : track.masterCandidateId === candidate?.id ? "Master-sheet choice" : "Temporary audition"}</small></div>
+                    <div className="track-status" role="cell">
+                      <strong>{file ? formatDuration(file.duration) : "No audio"}</strong>
+                      <select
+                        aria-label={`Track status for ${track.title}`}
+                        value={sequenceTrackStatus(track)}
+                        onChange={(event) => onAlbumChange((draft) => {
+                          const draftTrack = draft.tracks.find((item) => item.id === track.id);
+                          setSequenceTrackStatus(draftTrack, event.target.value);
+                        })}
+                      >
+                        {SEQUENCE_TRACK_STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value} disabled={option.value === "master-sheet" && !track.auditionCandidateId}>{option.label}</option>)}
+                      </select>
+                    </div>
                     <div className="sequence-action-cell sequence-action-cell--play" role="cell"><button type="button" className={`icon-button sequence-play-button ${trackPlaying ? "is-playing" : ""}`} disabled={!file} onClick={() => current ? onTogglePlayback() : onPlayFrom(index)} aria-label={trackPlaying ? `Pause ${track.title}` : current ? `Resume ${track.title}` : `Play sequence from ${track.title}`} aria-pressed={trackPlaying}>{trackPlaying ? <PauseIcon /> : <PlayIcon />}</button></div>
                     <div className="sequence-action-cell sequence-action-cell--transition" role="cell"><button type="button" className={`icon-button sequence-transition-button ${preparingTransition ? "is-busy" : ""}`} disabled={!renderingAvailable || !file || !nextFile || Boolean(transitioningTrackId)} onClick={() => onTransition(index)} aria-busy={preparingTransition} aria-label={renderingAvailable ? (preparingTransition ? `Preparing ${track.title} into ${nextTrack?.title || "the next track"}` : `Preview ${track.title} through ${nextTrack?.title || "the next track"}`) : "Rendered transition previews are unavailable in the browser"} title={renderingAvailable ? "Preview the edited ending and continue through the next track" : "Rendered transition previews are unavailable in the browser"}><TransitionIcon /></button></div>
                     <div className="sequence-action-cell sequence-action-cell--remove" role="cell"><button type="button" className={`icon-button sequence-remove-button ${removeArmed ? "is-armed" : ""}`} onClick={() => requestRemove(track)} aria-label={removeArmed ? `Confirm remove ${track.title} from sequence` : `Remove ${track.title} from sequence`} title={removeArmed ? "Press again to remove from sequence; the track record will be preserved" : "Remove from sequence"}><TrashIcon /></button></div>
@@ -177,14 +232,17 @@ export function SequenceWorkspace({ album, library, libraryMap, protectedSourceK
 
           {unsequencedTracks.length > 0 && (
             <section className="unsequenced-tracks" aria-labelledby="unsequenced-title">
-              <header><div><h3 id="unsequenced-title">Unsequenced Tracks</h3><p>These track records and all attached audio, notes, visuals, and lyrics are preserved.</p></div><strong>{unsequencedTracks.length}</strong></header>
-              <ol>{unsequencedTracks.map((track) => <li key={track.id}><div><strong>{track.title}</strong><small>{track.candidates.length} candidate{track.candidates.length === 1 ? "" : "s"} preserved</small></div><button type="button" className="text-button" onClick={() => onRestoreToSequence(track.id, track.title)}><RefreshIcon /> Restore to Sequence</button></li>)}</ol>
+              <header><div><h3 id="unsequenced-title">Unsequenced Tracks</h3><p>Restore a track to the sequence or remove its saved record from this project. Indexed source audio is never deleted.</p></div><strong>{unsequencedTracks.length}</strong></header>
+              <ol>{unsequencedTracks.map((track) => <li key={track.id}><div><strong>{track.title}</strong><small>{track.candidates.length} candidate{track.candidates.length === 1 ? "" : "s"} preserved</small></div><div className="unsequenced-track-actions"><button type="button" className="text-button" onClick={() => onRestoreToSequence(track.id, track.title)}><RefreshIcon /> Restore to Sequence</button><button type="button" className="text-button text-button--danger" onClick={() => setRemovingProjectTrackId(track.id)}><TrashIcon /> Remove from Project</button></div></li>)}</ol>
             </section>
           )}
         </div>
       </section>
 
     </main>
-    {candidateManagerTrack && <Modal title={`Manage Candidates — ${candidateManagerTrack.title}`} className="modal--wide" onClose={() => setCandidateManagerTrackId("")}><CandidateSourceManager album={album} track={candidateManagerTrack} library={library} libraryMap={libraryMap} protectedSourceKeys={protectedSourceKeys} revealPrivateFilenames={revealPrivateFilenames} scanning={scanning} onChooseFiles={onChooseCandidateFiles} onAddFile={onAddCandidate} onMoveCandidate={onMoveCandidate} onClose={() => setCandidateManagerTrackId("")} /></Modal>}
-  </>;
+    {renamingTrack && <Modal title="Rename Track" onClose={() => setRenamingTrackId("")}><RenameTrackForm key={renamingTrack.id} track={renamingTrack} onSubmit={confirmTrackRename} onCancel={() => setRenamingTrackId("")} /></Modal>}
+    {removingProjectTrack && <Modal title="Remove Track from Project" onClose={() => setRemovingProjectTrackId("")}><RemoveTrackFromProjectForm key={removingProjectTrack.id} track={removingProjectTrack} onSubmit={() => { onRemoveFromProject(removingProjectTrack.id, removingProjectTrack.title); setRemovingProjectTrackId(""); }} onCancel={() => setRemovingProjectTrackId("")} /></Modal>}
+    {candidateManagerTrack && <Modal title={`Manage Candidates — ${candidateManagerTrack.title}`} className="modal--wide" onClose={() => setCandidateManagerTrackId("")}><CandidateSourceManager key={candidateManagerTrack.id} album={album} track={candidateManagerTrack} library={library} libraryMap={libraryMap} protectedSourceKeys={protectedSourceKeys} revealPrivateFilenames={revealPrivateFilenames} scanning={scanning} onChooseFiles={onChooseCandidateFiles} onAddFile={onAddCandidate} onMoveCandidate={onMoveCandidate} onClose={() => setCandidateManagerTrackId("")} /></Modal>}
+    </>
+  );
 }

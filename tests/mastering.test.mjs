@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildAdvancedMasteringFilters, buildMasterBusFilters, buildPreviewEntries, buildRenderGraph } from "../server/audio-renderer.mjs";
+import { audioEncodingArguments, buildAdvancedMasteringFilters, buildMasterBusFilters, buildPreviewEntries, buildRenderGraph, createIndividualTrackSegments, numberedTrackFilename } from "../server/audio-renderer.mjs";
 import { calculateProgramTimeline, normalizeMasterBus, normalizeMastering, programDuration } from "../src/lib/mastering.js";
-import { ADVANCED_PROCESSOR_TYPES, createAdvancedProcessor, createDefaultAdvancedMastering, normalizeAdvancedMastering } from "../src/lib/advanced-mastering.js";
+import { ADVANCED_PROCESSOR_TYPES, createAdvancedProcessor, createDefaultAdvancedMastering, createExternalPluginProcessor, normalizeAdvancedMastering } from "../src/lib/advanced-mastering.js";
 
 test("mastering settings clamp trims and ending lengths to the source", () => {
   const settings = normalizeMastering({ trimStart: 8, trimEnd: 6, fadeIn: 99, endMode: "fade", endDuration: 99, gapAfter: 2 }, 10);
@@ -85,6 +85,31 @@ test("program timeline accounts for crossfade overlap and deliberate gaps", () =
   assert.equal(timeline[1].outputStart, 16);
   assert.equal(timeline[2].outputStart, 28);
   assert.equal(programDuration(entries), 36);
+});
+
+test("individual track boundaries split crossfades at midpoint and retain deliberate gaps", () => {
+  const timeline = calculateProgramTimeline([
+    { track: { id: "one" }, sourceDuration: 20, mastering: { endMode: "crossfade", endDuration: 4 } },
+    { track: { id: "two" }, sourceDuration: 10, mastering: { endMode: "natural", gapAfter: 2 } },
+    { track: { id: "three" }, sourceDuration: 8, mastering: {} },
+  ]);
+  const segments = createIndividualTrackSegments(timeline);
+  assert.deepEqual(segments.map(({ programStart, programEnd }) => [programStart, programEnd]), [[0, 18], [18, 28], [28, 36]]);
+  assert.equal(segments[0].endsInsideCrossfade, true);
+  assert.equal(segments[1].startsInsideCrossfade, true);
+  assert.equal(segments[1].fileDuration, 10);
+});
+
+test("numbered track filenames preserve titles while removing filesystem-unsafe characters", () => {
+  assert.equal(numberedTrackFilename({ trackNumber: 3, totalTracks: 12, title: "Return / Signal: Reprise?", format: "wav" }), "03 - Return - Signal - Reprise.wav");
+  assert.equal(numberedTrackFilename({ trackNumber: 1, totalTracks: 120, title: "Alpha", format: "mp3" }), "001 - Alpha.mp3");
+});
+
+test("FFmpeg encoding arguments honor PCM bit depth and lossy bitrate selections", () => {
+  assert.deepEqual(audioEncodingArguments({ format: "wav", sampleRate: 44_100, bitDepth: 16 }), ["-c:a", "pcm_s16le", "-ar", "44100"]);
+  assert.deepEqual(audioEncodingArguments({ format: "aiff", sampleRate: 96_000, bitDepth: 24 }), ["-c:a", "pcm_s24be", "-ar", "96000"]);
+  assert.deepEqual(audioEncodingArguments({ format: "mp3", sampleRate: 44_100, bitrateKbps: 192 }), ["-c:a", "libmp3lame", "-b:a", "192k", "-ar", "44100", "-id3v2_version", "3"]);
+  assert.deepEqual(audioEncodingArguments({ format: "m4a", sampleRate: 48_000, bitrateKbps: 256 }), ["-c:a", "aac", "-b:a", "256k", "-ar", "48000", "-movflags", "+faststart"]);
 });
 
 test("FFmpeg graph builds trims, fades, crossfades, gaps, and one final output", () => {
@@ -183,6 +208,12 @@ test("Premium rack filters follow the movable patch order and support repeated e
   assert.equal(graph.outputLabel, "mastered");
   assert.ok(graph.filterComplex.indexOf("alimiter") < graph.filterComplex.indexOf("lowshelf"));
   assert.ok(graph.filterComplex.indexOf("lowshelf") < graph.filterComplex.indexOf("highshelf"));
+});
+
+test("Premium prints fail closed when an active rack processor is unavailable", () => {
+  const external = createExternalPluginProcessor({ format: "audio-unit", pluginId: "com.example.master", name: "Example Master" }, "external-master");
+  external.bypass = false;
+  assert.throws(() => buildAdvancedMasteringFilters({ nodes: [external] }), /cannot print: Example Master/i);
 });
 
 test("Premium sidechain and stereo-link controls produce real print filters", () => {

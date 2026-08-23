@@ -3,6 +3,8 @@ import { AlbumRail } from "./components/AlbumRail.jsx";
 import { AppHeader } from "./components/AppHeader.jsx";
 import { AudioExportForm } from "./components/AudioExportForm.jsx";
 import { FirstRunGuide } from "./components/FirstRunGuide.jsx";
+import { KeyboardShortcutsGuide } from "./components/KeyboardShortcutsGuide.jsx";
+import { CommandSearch } from "./components/CommandSearch.jsx";
 import { Modal } from "./components/Modal.jsx";
 import { ProjectIdentityForm } from "./components/ProjectIdentityForm.jsx";
 import { NewProjectForm, RemoveProjectForm, SavedProjects } from "./components/ProjectLibrary.jsx";
@@ -13,7 +15,7 @@ import { useProjectData } from "./hooks/useProjectData.js";
 import { useAppearance } from "./hooks/useAppearance.js";
 import { useTransport } from "./hooks/useTransport.js";
 import { formatDuration, slugify } from "./lib/format.js";
-import { addFileCandidate, assignFileToAlbum, buildImportedTracks, moveCandidateToTrack } from "./lib/import-tracks.js";
+import { addFileCandidate, assignFileToAlbum, moveCandidateToTrack } from "./lib/import-tracks.js";
 import { api, sourceKey } from "./lib/api.js";
 import { sequenceTracks } from "./lib/sequence-tracks.js";
 import { hasSeenFirstRunGuide, markFirstRunGuideSeen, shouldShowFirstRunGuide } from "./lib/first-run.js";
@@ -28,8 +30,9 @@ import { createAlbumFromTemplate, saveAlbumTemplate } from "./lib/album-decision
 import {
   addAlbum as addAlbumCommand,
   addBlankTrack,
-  appendImportedTracks,
+  addTracksFromFiles,
   deleteAlbum as deleteAlbumCommand,
+  deleteTrackRecord,
   projectArtistName as projectArtistNameCommand,
   renameAlbum as renameAlbumCommand,
   restoreBaselineOrder,
@@ -68,10 +71,10 @@ const preloadWorkspace = (view) => workspaceLoaders[view]?.().catch(() => {});
 const EMPTY_TRACKS = [];
 
 const arrowKeyBelongsToFocusedControl = (target) => target instanceof Element
-  && Boolean(target.closest("input, textarea, select, [contenteditable='true'], [role='textbox'], [role='slider'], [aria-haspopup='menu'], [role='menuitemradio']"));
+  && Boolean(target.closest("input, textarea, select, video, [data-shortcuts-local='true'], [contenteditable='true'], [role='textbox'], [role='slider'], [aria-haspopup='menu'], [role='menuitemradio']"));
 
 const spaceKeyBelongsToFocusedControl = (target) => target instanceof Element
-  && Boolean(target.closest("input, textarea, select, button, [contenteditable='true'], [role='textbox'], [role='slider'], [role='button'], [aria-haspopup='menu'], [role='menuitemradio']"));
+  && Boolean(target.closest("input, textarea, select, button, video, [data-shortcuts-local='true'], [contenteditable='true'], [role='textbox'], [role='slider'], [role='button'], [aria-haspopup='menu'], [role='menuitemradio']"));
 
 function WorkspaceFallback() {
   return <main className="workspace-loading" role="status" aria-live="polite"><span className="loading-wave" /><strong>Opening workspace…</strong></main>;
@@ -173,7 +176,7 @@ function ImportTracksReview({ album, files, onSubmit, onBack }) {
   });
   return (
     <div className="modal-form import-review-form">
-      <p><strong>{files.length}</strong> audio file{files.length === 1 ? "" : "s"} found. Choose which files become new tracks in <strong>{album.title}</strong>.</p>
+      <p><strong>{files.length}</strong> audio file{files.length === 1 ? "" : "s"} found. Choose which sources to add to <strong>{album.title}</strong>. Matching track titles are grouped as candidate sources under one track.</p>
       <div className="import-file-list">
         {files.map((file) => {
           const duplicate = existingKeys.has(file.key);
@@ -182,7 +185,7 @@ function ImportTracksReview({ album, files, onSubmit, onBack }) {
         {!files.length && <div className="import-empty">No supported audio files were found at that path.</div>}
       </div>
       <p className="path-storage-note">Only source references are saved. The audio is not copied into Project Sequencer.</p>
-      <div className="modal-actions"><button type="button" className="text-button" onClick={onBack}>Back</button><button type="button" className="primary-button" disabled={!selectedKeys.size} onClick={() => onSubmit([...selectedKeys])}><PlusIcon /> Add {selectedKeys.size} Track{selectedKeys.size === 1 ? "" : "s"}</button></div>
+      <div className="modal-actions"><button type="button" className="text-button" onClick={onBack}>Back</button><button type="button" className="primary-button" disabled={!selectedKeys.size} onClick={() => onSubmit([...selectedKeys])}><PlusIcon /> Add {selectedKeys.size} Source{selectedKeys.size === 1 ? "" : "s"}</button></div>
     </div>
   );
 }
@@ -372,6 +375,31 @@ export default function App() {
     window.addEventListener("keydown", navigateMainSequenceWithArrows, { capture: true });
     return () => window.removeEventListener("keydown", navigateMainSequenceWithArrows, { capture: true });
   }, [sequenceAlbum, transport.navigateSequence]);
+
+  useEffect(() => {
+    const openShortcutGuide = (event) => {
+      const shortcutPressed = event.key === "?" || (event.code === "Slash" && event.shiftKey);
+      if (!shortcutPressed || event.repeat || event.isComposing || event.defaultPrevented) return;
+      if (event.altKey || event.ctrlKey || event.metaKey) return;
+      if (spaceKeyBelongsToFocusedControl(event.target) || document.querySelector('[role="dialog"]')) return;
+      event.preventDefault();
+      setModal("shortcuts");
+    };
+    window.addEventListener("keydown", openShortcutGuide);
+    return () => window.removeEventListener("keydown", openShortcutGuide);
+  }, []);
+
+  useEffect(() => {
+    const openCommandSearch = (event) => {
+      const shortcutPressed = event.key.toLocaleLowerCase() === "k" && (event.metaKey || event.ctrlKey);
+      if (!shortcutPressed || event.repeat || event.isComposing || event.defaultPrevented || event.altKey || event.shiftKey) return;
+      if (spaceKeyBelongsToFocusedControl(event.target) || document.querySelector('[role="dialog"]')) return;
+      event.preventDefault();
+      setModal("commands");
+    };
+    window.addEventListener("keydown", openCommandSearch);
+    return () => window.removeEventListener("keydown", openCommandSearch);
+  }, []);
 
   const updateAppearance = (patch) => project.updateState((draft) => {
     updateAppearanceCommand(draft, patch);
@@ -578,15 +606,18 @@ export default function App() {
   const addImportedTracks = (selectedKeys) => {
     const selectedKeySet = new Set(selectedKeys);
     const selectedFiles = pendingImport.filter((file) => selectedKeySet.has(file.key));
-    const result = buildImportedTracks(activeAlbum.tracks, selectedFiles);
-    if (!result.tracks.length) {
-      transport.setStatus("No new tracks were added; those sources are already in this album.");
+    const result = addTracksFromFiles(structuredClone(activeAlbum), selectedFiles);
+    const candidateCount = result.candidateCount;
+    if (!result.tracks.length && !candidateCount) {
+      transport.setStatus("No new sources were added; those sources are already in this album.");
       return;
     }
-    onAlbumChange((draft) => {
-      appendImportedTracks(draft, result);
-    });
-    transport.setStatus(`${result.tracks.length} track${result.tracks.length === 1 ? "" : "s"} added from source paths${result.skipped ? `; ${result.skipped} duplicate skipped` : ""}.`);
+    onAlbumChange((draft) => { addTracksFromFiles(draft, selectedFiles); });
+    const additions = [
+      result.tracks.length ? `${result.tracks.length} new track${result.tracks.length === 1 ? "" : "s"}` : "",
+      candidateCount ? `${candidateCount} candidate source${candidateCount === 1 ? "" : "s"}` : "",
+    ].filter(Boolean).join(" and ");
+    transport.setStatus(`${additions} added from source paths${result.skipped ? `; ${result.skipped} duplicate${result.skipped === 1 ? "" : "s"} skipped` : ""}.`);
     setPendingImport([]);
     setModal("");
   };
@@ -635,6 +666,11 @@ export default function App() {
   const restoreTrackToSequence = (trackId, title) => {
     onAlbumChange((draft) => { setTrackInSequence(draft, trackId, true); });
     transport.setStatus(`${title} restored to the working sequence.`);
+  };
+
+  const removeTrackFromProject = (trackId, title) => {
+    onAlbumChange((draft) => { deleteTrackRecord(draft, trackId); });
+    transport.stop(`${title} removed from this project. Its indexed source audio remains unchanged and available in the library.`);
   };
 
   const previewMasteringEdit = async (trackId, previewPart) => {
@@ -813,23 +849,51 @@ export default function App() {
     }
   };
 
+  const visibleCommands = [
+    ...[
+      ["sequence", "Sequence"],
+      ["mastering", "Mastering"],
+      ["review", "Track Review"],
+      ["decisions", "Album Decisions"],
+      ["assets", "Assets"],
+      ["library", "Audio Library"],
+      ["settings", "Settings"],
+    ].map(([id, label], index) => ({
+      id: `workspace-${id}`,
+      group: "Workspaces",
+      label: `Open ${label}`,
+      description: `Switch to the ${label} workspace`,
+      shortcut: String(index + 1),
+      keywords: ["navigate", "view"],
+      onSelect: () => { preloadWorkspace(id); setActiveView(id); },
+    })),
+    { id: "add-tracks", group: "Sequence", label: "Add Tracks", description: "Open the existing source and placeholder controls", keywords: ["audio", "import"], onSelect: () => setModal("tracks") },
+    { id: "export-sequence", group: "Sequence", label: "Export Working Sequence", description: "Download the current order and decision summary", keywords: ["markdown", "order"], onSelect: exportSequence },
+    { id: "add-album", group: "Albums", label: "Add Album", description: "Create another album in this project", keywords: ["new record"], onSelect: () => setModal("album") },
+    { id: "saved-projects", group: "Projects", label: "Saved Projects", description: "Open the existing local project chooser", keywords: ["open load"], onSelect: () => setModal("projects") },
+    { id: "new-project", group: "Projects", label: "Start a Fresh Project", description: "Open the existing new-project form", keywords: ["create"], onSelect: () => setModal("new-project") },
+    { id: "print-audio", group: "Mastering", label: "Print / Export Audio", description: "Open documented derivative print settings", keywords: ["render master"], disabled: api.onlineApp, onSelect: () => openAudioExport(activeView === "mastering" ? masteringTrackId : "") },
+    { id: "help", group: "Support", label: "Help & App Instructions", description: "Open the complete album workflow guide", shortcut: "?", onSelect: () => setModal("help") },
+    { id: "shortcuts", group: "Support", label: "Keyboard Shortcuts", description: "Review the visible control accelerators", onSelect: () => setModal("shortcuts") },
+  ];
+
   if (project.loading) return <div className="loading-screen"><span className="loading-wave" /> <strong>Indexing Project Sequencer…</strong><small>Audio stays in its original location.</small></div>;
   if (project.recovery?.required) return <RecoveryWorkspace recovery={project.recovery} error={project.error} onRestore={project.restoreRecovery} />;
   if (!project.state || !activeAlbum) return <div className="loading-screen is-error"><strong>Project Sequencer could not open.</strong><small>{project.error || "No album data was found."}</small></div>;
 
   return (
     <div className={`app-shell ${albumsCollapsed ? "albums-collapsed" : ""}`}>
-      <AppHeader activeView={activeView} onViewChange={setActiveView} onViewIntent={preloadWorkspace} album={sequenceAlbum} playableCount={playableCount} approvalCount={approvalCount} appearance={appearance} resolvedMode={resolvedMode} onAppearanceChange={updateAppearance} onOpenAppearance={() => setActiveView("settings")} onOpenHelp={() => setModal("help")} commandHistory={project.commandHistory} meteringRef={transport.meteringRef} meteringAvailable={transport.liveMasteringAvailable} playing={transport.playing} monitorLabel={masterMonitorLabel} monitorRouting={masterMonitorRoute} masterEffectsActive={liveProcessors.length > 0} />
+      <AppHeader activeView={activeView} onViewChange={setActiveView} onViewIntent={preloadWorkspace} album={sequenceAlbum} playableCount={playableCount} approvalCount={approvalCount} appearance={appearance} resolvedMode={resolvedMode} onAppearanceChange={updateAppearance} onOpenAppearance={() => setActiveView("settings")} onOpenCommands={() => setModal("commands")} onOpenHelp={() => setModal("help")} onOpenShortcuts={() => setModal("shortcuts")} commandHistory={project.commandHistory} meteringRef={transport.meteringRef} meteringAvailable={transport.liveMasteringAvailable} playing={transport.playing} monitorLabel={masterMonitorLabel} monitorRouting={masterMonitorRoute} masterEffectsActive={liveProcessors.length > 0} />
       <AlbumRail albums={project.state.albums} activeAlbumId={activeAlbum.id} currentProject={currentProject} collapsed={albumsCollapsed} projectBusy={project.projectOperation} draggedAudioKey={activeView === "library" ? draggedAudioKey : ""} onToggle={() => setAlbumsCollapsed((current) => !current)} onSelectAlbum={selectAlbum} onDropAudio={activeView === "library" ? dropAudioOnAlbum : undefined} onAddAlbum={() => setModal("album")} onRenameAlbum={openRenameAlbum} onDeleteAlbum={openDeleteAlbum} onOpenProjects={() => setModal("projects")} onNewProject={() => setModal("new-project")} />
       <div className="content-shell">
         {project.error && <div className="error-banner" role="alert"><strong>Project warning</strong><span>{project.error}</span><button type="button" onClick={() => project.setError("")}>Dismiss</button></div>}
         <Suspense fallback={<WorkspaceFallback />}>
-          {activeView === "sequence" && <SequenceWorkspace album={activeAlbum} library={project.library} libraryMap={project.libraryMap} protectedSourceKeys={protectedSourceKeys} revealPrivateFilenames={revealPrivateFilenames} scanning={project.scanning} transitioningTrackId={transitioningTrackId} currentTrackId={currentTransportTrack?.id} playing={transport.playing} renderingAvailable={!api.onlineApp} onAlbumChange={onAlbumChange} onAuditionSourceChange={changeAuditionSource} onChooseCandidateFiles={() => chooseLibrarySources("files")} onAddCandidate={addCandidateForTrack} onMoveCandidate={moveCandidateForTrack} onAddTracks={() => setModal("tracks")} onPlayFrom={(index) => transport.playSequence(sequenceAlbum, index)} onTogglePlayback={transport.togglePlayback} onTransition={previewSequenceTransition} onExport={exportSequence} onRemoveFromSequence={removeTrackFromSequence} onRestoreToSequence={restoreTrackToSequence} />}
+          {activeView === "sequence" && <SequenceWorkspace album={activeAlbum} library={project.library} libraryMap={project.libraryMap} protectedSourceKeys={protectedSourceKeys} revealPrivateFilenames={revealPrivateFilenames} scanning={project.scanning} transitioningTrackId={transitioningTrackId} currentTrackId={currentTransportTrack?.id} playing={transport.playing} renderingAvailable={!api.onlineApp} onAlbumChange={onAlbumChange} onAuditionSourceChange={changeAuditionSource} onChooseCandidateFiles={() => chooseLibrarySources("files")} onAddCandidate={addCandidateForTrack} onMoveCandidate={moveCandidateForTrack} onAddTracks={() => setModal("tracks")} onPlayFrom={(index) => transport.playSequence(sequenceAlbum, index)} onTogglePlayback={transport.togglePlayback} onTransition={previewSequenceTransition} onExport={exportSequence} onRemoveFromSequence={removeTrackFromSequence} onRestoreToSequence={restoreTrackToSequence} onRemoveFromProject={removeTrackFromProject} />}
           {activeView === "review" && <TrackReviewWorkspace album={activeAlbum} libraryMap={project.libraryMap} revealPrivateFilenames={revealPrivateFilenames} onAlbumChange={onAlbumChange} onPreviewFile={transport.previewFile} onOpenLibrary={() => setActiveView("library")} onTrackFocus={setReviewTrackId} />}
           {activeView === "decisions" && <AlbumDecisionsWorkspace album={activeAlbum} templates={project.state.albumTemplates || []} libraryMap={project.libraryMap} renderingAvailable={!api.onlineApp} onAlbumChange={onAlbumChange} onSaveTemplate={saveTemplate} onCreateFromTemplate={createFromTemplate} onPreviewTransition={previewTransitionVariant} onPreviewComparison={previewComparisonCandidate} previewingDecision={previewingDecision} />}
           {activeView === "mastering" && <MasteringWorkspace album={activeAlbum} libraryMap={project.libraryMap} presets={masteringPresets} renderingAvailable={!api.onlineApp} revealPrivateFilenames={revealPrivateFilenames} protectedSourceKeys={protectedSourceKeys} activeComparison={transport.current?.masteringComparison} onAlbumChange={onAlbumChange} onPreview={previewMasteringEdit} onReferenceCompare={transport.previewMasteringComparison} previewingTrackId={previewingTrackId} onOpenExport={openAudioExport} onTrackFocus={setMasteringTrackId} onPreviewChapter={(index) => transport.previewChapter(sequenceAlbum, index)} onPlayFrom={playMasteringTrack} onTogglePlayback={transport.togglePlayback} onSeekTrack={seekMasteringTrack} currentTrackId={currentTransportTrack?.id} currentTime={transport.currentTime} onSavePreset={saveMasteringPreset} onLoadPreset={loadMasteringPreset} onDeletePreset={deleteMasteringPreset} meteringRef={transport.meteringRef} meteringAvailable={transport.liveMasteringAvailable} playing={transport.playing} liveProcessing={Boolean(transport.current?.track && !transport.current.referenceTrack && !transport.current.renderedPreview)} monitorLabel={masterMonitorLabel} monitorMode={transport.monitorMode} onMonitorModeChange={transport.setMonitorMode} />}
-          {activeView === "assets" && <AssetWorkspace album={activeAlbum} revealPrivateFilenames={revealPrivateFilenames} picking={project.pickingAssets} sourcePickingAvailable={!api.onlineApp} onAlbumChange={onAlbumChange} onPickAssets={project.chooseProjectAssets} onTrackFocus={setAssetTrackId} />}
-          {activeView === "library" && <AudioLibraryWorkspace state={project.state} activeAlbum={activeAlbum} library={project.library} roots={project.roots} formats={project.formats} scan={project.scan} watching={project.watching} onlineApp={api.onlineApp} revealPrivateFilenames={revealPrivateFilenames} scanning={project.scanning} draggedAudioKey={draggedAudioKey} onRescan={project.rescan} onReconnectSource={project.reconnectSource} onPreviewFile={transport.previewFile} onProjectChange={project.updateState} onAlbumChangeById={onAlbumChangeById} onAudioDragStart={setDraggedAudioKey} onAudioDragEnd={() => setDraggedAudioKey("")} onImportFiles={() => chooseLibrarySources("files")} onImportFolder={() => chooseLibrarySources("folder")} />}
+          {activeView === "assets" && <AssetWorkspace album={activeAlbum} revealPrivateFilenames={revealPrivateFilenames} picking={project.pickingAssets} sourcePickingAvailable={!api.onlineApp} audioPlaying={transport.playing} onAlbumChange={onAlbumChange} onPickAssets={project.chooseProjectAssets} onTrackFocus={setAssetTrackId} onVideoPlay={() => transport.stop("Visual preview playing. Album transport stopped; video audio bypasses MASTER.")} />}
+          {activeView === "library" && <AudioLibraryWorkspace projectId={project.activeProjectId} state={project.state} activeAlbum={activeAlbum} library={project.library} roots={project.roots} formats={project.formats} scan={project.scan} watching={project.watching} onlineApp={api.onlineApp} revealPrivateFilenames={revealPrivateFilenames} scanning={project.scanning} draggedAudioKey={draggedAudioKey} onRescan={project.rescan} onReconnectSource={project.reconnectSource} onPreviewFile={transport.previewFile} onProjectChange={project.updateState} onAlbumChangeById={onAlbumChangeById} onAudioDragStart={setDraggedAudioKey} onAudioDragEnd={() => setDraggedAudioKey("")} onImportFiles={() => chooseLibrarySources("files")} onImportFolder={() => chooseLibrarySources("folder")} />}
           {activeView === "settings" && <SettingsWorkspace state={project.state} roots={project.roots} scan={project.scan} watching={project.watching} nativeAudio={project.nativeAudio} nativeAudioLab={project.nativeAudioLab} scanning={project.scanning} onlineApp={api.onlineApp} projectArtistName={configuredArtistName} currentProject={currentProject} projects={project.projects} projectBusy={project.projectOperation} revealPrivateFilenames={revealPrivateFilenames} appearance={appearance} resolvedMode={resolvedMode} onProjectIdentityChange={saveProjectIdentity} onAppearanceChange={updateAppearance} onTogglePrivate={(checked) => project.updateState((draft) => { draft.settings ||= {}; draft.settings.revealPrivateFilenames = checked; })} onAddRoot={project.addRoot} onRemoveRoot={project.removeRoot} onChooseSources={project.chooseSources} onReconnectSource={project.reconnectSource} onRescan={project.rescan} onImportState={importState} onOpenProjects={() => setModal("projects")} onNewProject={() => setModal("new-project")} onExportBundle={exportPortableBundle} onStartNativeAudioLab={project.startNativeAudioLab} onStopNativeAudioLab={project.stopNativeAudioLab} />}
         </Suspense>
       </div>
@@ -847,6 +911,8 @@ export default function App() {
           onExplore={closeFirstRunGuide}
         />
       )}
+      {modal === "shortcuts" && <KeyboardShortcutsGuide onClose={() => setModal("")} />}
+      {modal === "commands" && <CommandSearch commands={visibleCommands} onClose={() => setModal("")} />}
       {!showFirstRunGuide && !project.state.settings.project.setupComplete && (
         <Modal title="Start a New Project" className="modal--project-setup" dismissible={false} onClose={() => {}}>
           <div className="project-setup-intro"><strong>Make this sequencing workspace yours.</strong><p>Set the artist once for the entire project. You can change it later under Settings → Project.</p></div>

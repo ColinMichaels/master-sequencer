@@ -9,11 +9,18 @@ test("portable bundles contain project JSON and checksums without media bytes or
   const root = await mkdtemp(path.join(tmpdir(), "project-sequencer-bundle-"));
   const sourcePath = path.join(root, "source.wav");
   await writeFile(sourcePath, "source bytes stay outside the bundle");
-  const state = { schemaVersion: 5, albums: [{ id: "album", tracks: [{ id: "track", candidates: [{ id: "a", sourceRef: { rootId: "root", relativePath: "source.wav" } }, { id: "b", sourceRef: { privateSourceId: "private-b" } }] }] }] };
+  const state = { schemaVersion: 5, albums: [{
+    id: "album",
+    visualAssets: [{ rootId: "visual", relativePath: "campaign/master.mp4", visualMediaKey: "visual::campaign/master.mp4", originalPath: "/private/visual/master.mp4" }],
+    tracks: [{ id: "track", candidates: [{ id: "a", sourceRef: { rootId: "root", relativePath: "source.wav" } }, { id: "b", sourceRef: { privateSourceId: "private-b" } }] }],
+  }] };
   const bundle = await createPortableProjectBundle({ state, getLibraryFile: (key) => key === "root::source.wav" ? { absolutePath: sourcePath, size: 36 } : null });
   assert.equal(bundle.mediaIncluded, false);
   assert.match(bundle.sources[0].sha256, /^[a-f0-9]{64}$/);
   assert.equal(bundle.sources[1].status, "offline");
   assert.equal(JSON.stringify(bundle).includes(root), false);
   assert.equal(JSON.stringify(bundle).includes("source bytes stay outside"), false);
+  assert.equal(JSON.stringify(bundle).includes("/private/visual/master.mp4"), false);
+  assert.equal(bundle.project.albums[0].visualAssets[0].relativePath, "campaign/master.mp4");
+  assert.equal(bundle.project.albums[0].visualAssets[0].originalPath, undefined);
 });

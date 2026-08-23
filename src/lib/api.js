@@ -64,6 +64,10 @@ const localApi = {
     : false,
   rescan: () => jsonFetch("/api/rescan", { method: "POST" }),
   libraryStatus: () => jsonFetch("/api/library"),
+  visualLibrary: () => jsonFetch("/api/visual-library"),
+  rescanVisualLibrary: () => jsonFetch("/api/visual-library/rescan", { method: "POST" }),
+  updateVisualMetadata: (id, metadata) => jsonFetch(`/api/visual-library/metadata/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(metadata) }),
+  revealVisualMedia: (key) => jsonFetch("/api/visual-library/reveal", { method: "POST", body: JSON.stringify({ key }) }),
   portableBundle: () => jsonFetch("/api/project-bundle"),
   registerSource: (source) => jsonFetch("/api/sources/register", { method: "POST", body: JSON.stringify(source) }),
   chooseSources: (kind) => jsonFetch("/api/sources/pick", { method: "POST", body: JSON.stringify({ kind }) }),
@@ -83,8 +87,11 @@ const localApi = {
   removeSource: (sourceId) => jsonFetch(`/api/sources/${encodeURIComponent(sourceId)}`, { method: "DELETE" }),
   removeRoot: (rootId) => jsonFetch(`/api/sources/${encodeURIComponent(rootId)}`, { method: "DELETE" }),
   mediaUrl: (key) => `/api/media?key=${encodeURIComponent(key)}`,
+  visualMediaUrl: (key) => `/api/media?visualKey=${encodeURIComponent(key)}`,
   assetUrl: (reference) => reference
-    ? `/api/asset?rootId=${encodeURIComponent(reference.rootId)}&path=${encodeURIComponent(reference.relativePath)}`
+    ? reference.visualMediaKey
+      ? `/api/media?visualKey=${encodeURIComponent(reference.visualMediaKey)}`
+      : `/api/asset?rootId=${encodeURIComponent(reference.rootId)}&path=${encodeURIComponent(reference.relativePath)}`
     : "",
 };
 

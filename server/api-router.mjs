@@ -12,6 +12,7 @@ const resultPayload = (result) => result ? {
   id: result.id,
   scope: result.scope,
   format: result.format,
+  audioSettings: result.audioSettings || null,
   audioName: result.audioName,
   size: result.size,
   createdAt: result.createdAt,
@@ -19,6 +20,15 @@ const resultPayload = (result) => result ? {
   warnings: result.warnings,
   recovered: Boolean(result.recovered),
   derivativeLabel: result.derivativeLabel || "",
+  masteringPrintPlan: result.masteringPrintPlan || null,
+  files: (result.audioFiles || []).map((file, index) => ({
+    trackId: file.trackId,
+    trackNumber: file.trackNumber,
+    title: file.title,
+    audioName: file.audioName,
+    size: file.size,
+    audioUrl: `/api/renders/file?id=${encodeURIComponent(result.id)}&kind=track&index=${index}`,
+  })),
   audioUrl: `/api/renders/file?id=${encodeURIComponent(result.id)}&kind=audio`,
   cueUrl: result.cuePath ? `/api/renders/file?id=${encodeURIComponent(result.id)}&kind=cue` : "",
   manifestUrl: result.manifestPath ? `/api/renders/file?id=${encodeURIComponent(result.id)}&kind=manifest` : "",
@@ -33,8 +43,12 @@ export const createApiRouter = ({
   technicalAnalysisService,
   getLibrary,
   getLibraryFile,
+  getVisualLibrary,
+  getVisualLibraryFile,
+  getVisualLibraryFileById,
   getConfig,
   isScanning,
+  isVisualScanning,
   nativeAudioConfigured,
   getNativeAudioStatus,
   getNativeAudioLabStatus,
@@ -42,18 +56,23 @@ export const createApiRouter = ({
   stopNativeAudioLab,
   getWatchStatus,
   refreshLibrary,
+  refreshVisualLibrary,
   publicFile,
+  publicVisualFile,
+  updateVisualMetadata,
   responsePayloadForPaths,
   removeAudioSource,
   chooseAudioPaths,
   chooseProjectAssetPaths,
   createProjectAssetReferences,
   revealRenderResult,
+  revealVisualMedia,
   createPortableBundle,
 }) => async (request, response, url) => {
   const library = getLibrary();
+  const visualLibrary = getVisualLibrary();
   if (request.method === "GET" && url.pathname === "/api/health") {
-    sendJson(response, 200, { ok: true, audioFiles: library.files.length, scanning: isScanning(), nativeAudioConfigured });
+    sendJson(response, 200, { ok: true, audioFiles: library.files.length, visualMediaFiles: visualLibrary.files.length, scanning: isScanning(), visualScanning: isVisualScanning(), nativeAudioConfigured });
     return true;
   }
   if (request.method === "GET" && url.pathname === "/api/native-audio/status") {
@@ -105,6 +124,47 @@ export const createApiRouter = ({
       watching: getWatchStatus(),
       scanning: isScanning(),
     });
+    return true;
+  }
+  if (request.method === "GET" && url.pathname === "/api/visual-library") {
+    sendJson(response, 200, {
+      capability: "local",
+      items: visualLibrary.files.map(publicVisualFile),
+      roots: visualLibrary.roots.map(({ path: _path, defaults: _defaults, pathRules: _pathRules, ...root }) => root),
+      scan: visualLibrary.scan,
+      scanning: isVisualScanning(),
+    });
+    return true;
+  }
+  if (request.method === "POST" && url.pathname === "/api/visual-library/rescan") {
+    const scanned = await refreshVisualLibrary();
+    sendJson(response, 200, {
+      capability: "local",
+      items: scanned.files.map(publicVisualFile),
+      roots: scanned.roots.map(({ path: _path, defaults: _defaults, pathRules: _pathRules, ...root }) => root),
+      scan: scanned.scan,
+      scanning: isVisualScanning(),
+    });
+    return true;
+  }
+  if (request.method === "PUT" && url.pathname.startsWith("/api/visual-library/metadata/")) {
+    const id = decodeURIComponent(url.pathname.slice("/api/visual-library/metadata/".length));
+    if (!getVisualLibraryFileById(id)) {
+      sendJson(response, 404, { error: "That visual-media item is not indexed." });
+      return true;
+    }
+    const item = await updateVisualMetadata(id, await readJsonBody(request, 32_768));
+    sendJson(response, 200, { item });
+    return true;
+  }
+  if (request.method === "POST" && url.pathname === "/api/visual-library/reveal") {
+    const { key } = await readJsonBody(request, 4_096);
+    const result = await revealVisualMedia(key);
+    if (!result) {
+      sendJson(response, 404, { error: "That visual-media item is not indexed." });
+      return true;
+    }
+    sendJson(response, 200, result);
     return true;
   }
   if (request.method === "GET" && url.pathname === "/api/project-bundle") {
@@ -194,7 +254,16 @@ export const createApiRouter = ({
   if (["GET", "HEAD"].includes(request.method) && url.pathname === "/api/renders/file") {
     const result = renderJobs.result(url.searchParams.get("id"));
     const kind = url.searchParams.get("kind");
-    const renderPath = kind === "audio" ? result?.audioPath : kind === "cue" ? result?.cuePath : kind === "manifest" ? result?.manifestPath : "";
+    const fileIndex = Number.parseInt(url.searchParams.get("index") || "", 10);
+    const renderPath = kind === "audio"
+      ? result?.audioPath
+      : kind === "track" && Number.isInteger(fileIndex) && fileIndex >= 0
+        ? result?.audioFiles?.[fileIndex]?.audioPath
+        : kind === "cue"
+          ? result?.cuePath
+          : kind === "manifest"
+            ? result?.manifestPath
+            : "";
     if (!result || !renderPath) {
       sendJson(response, 404, { error: "That rendered file is not available." });
       return true;
@@ -255,6 +324,16 @@ export const createApiRouter = ({
     return true;
   }
   if (["GET", "HEAD"].includes(request.method) && url.pathname === "/api/media") {
+    const visualKey = url.searchParams.get("visualKey");
+    if (visualKey) {
+      const visualFile = getVisualLibraryFile(visualKey);
+      if (!visualFile) {
+        sendJson(response, 404, { error: "Visual media is not in a configured, indexed library root." });
+        return true;
+      }
+      await streamFile(request, response, visualFile.absolutePath, contentTypeFor(visualFile.absolutePath));
+      return true;
+    }
     const file = getLibraryFile(url.searchParams.get("key"));
     if (!file) {
       sendJson(response, 404, { error: "Audio file is not in a configured library path." });

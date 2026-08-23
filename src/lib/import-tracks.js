@@ -101,6 +101,7 @@ export const buildImportedTracks = (existingTracks, files) => {
   const occupiedIds = new Set(existingTracks.map((track) => track.id));
   const usedSourceKeys = new Set(existingTracks.flatMap((track) => track.candidates.map((candidate) => sourceKey(candidate.sourceRef))));
   const tracks = [];
+  const candidateAssignments = [];
   let skipped = 0;
 
   for (const file of files) {
@@ -109,6 +110,13 @@ export const buildImportedTracks = (existingTracks, files) => {
       continue;
     }
     const title = file.privateSourceId ? "Protected Track" : titleFromFilename(file.name);
+    const matchingTrack = file.privateSourceId ? null : [...existingTracks, ...tracks].find((track) => track.privacy !== "protected" && normalizedTrackTitle(track.title) === normalizedTrackTitle(title));
+    if (matchingTrack) {
+      if (tracks.includes(matchingTrack)) addFileCandidate(matchingTrack, file);
+      else candidateAssignments.push({ trackId: matchingTrack.id, file });
+      usedSourceKeys.add(file.key);
+      continue;
+    }
     const baseId = slugify(title);
     let id = baseId;
     let suffix = 2;
@@ -135,7 +143,8 @@ export const buildImportedTracks = (existingTracks, files) => {
     });
   }
 
-  return { tracks, skipped };
+  const candidateCount = candidateAssignments.length + tracks.reduce((total, track) => total + Math.max(0, track.candidates.length - 1), 0);
+  return { tracks, candidateAssignments, candidateCount, skipped };
 };
 
 export const addFileAsNewTrack = (album, file) => {
@@ -161,7 +170,7 @@ export const assignFileToAlbum = (album, file) => {
 
   if (!file.privateSourceId) {
     const fileTitle = titleFromFilename(file.name);
-    const matchingTrack = album.tracks.find((track) => normalizedTrackTitle(track.title) === normalizedTrackTitle(fileTitle));
+    const matchingTrack = album.tracks.find((track) => track.privacy !== "protected" && normalizedTrackTitle(track.title) === normalizedTrackTitle(fileTitle));
     if (matchingTrack) {
       const result = addFileCandidate(matchingTrack, file);
       if (result.action === "candidate" && album.status === "empty") album.status = "working";

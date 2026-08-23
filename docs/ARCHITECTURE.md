@@ -18,6 +18,9 @@ Local Node server (127.0.0.1)
   |-- audio index -------------> ignored data/audio-index-cache.json
   |   `-- optional watcher ----> debounced incremental metadata rescans
   |-- range media service -----> already-indexed source audio (read-only)
+  |-- visual media index ------> ignored data/visual-index-cache.json
+  |   `-- visual metadata -----> ignored data/visual-library-metadata.json
+  |-- visual range service ----> already-indexed video/image originals (read-only)
   |-- waveform service --------> compact in-memory peak arrays
   |-- analysis service --------> compact rebuildable mastering measurements
   |-- project asset service ---> configured-root images and lyric text (read-only)
@@ -80,7 +83,7 @@ Every feature must preserve these rules:
 7. Waveform analysis returns compact peak data, keeps its cache in memory, and
    never writes a sidecar beside audio.
 8. Machine-specific source paths belong only in ignored local configuration or
-   `PROJECT_SEQUENCER_AUDIO_PATHS`.
+   `PROJECT_SEQUENCER_AUDIO_PATHS` / `PROJECT_SEQUENCER_VISUAL_PATHS`.
 9. Sequence versions snapshot track IDs and membership only. Transition A/B
    variants and loudness-matched comparisons are preview instructions; they do
    not mutate track mastering or source-choice authority.
@@ -92,6 +95,11 @@ Every feature must preserve these rules:
 12. Undo/redo stores bounded project-state snapshots only. It never performs a
     filesystem inverse operation. Portable bundles contain JSON and checksums,
     never media bytes or absolute indexed-source paths.
+13. Visual scanner output and user-edited visual metadata are separate. The
+    rebuildable cache preserves the first-indexed timestamp while filesystem
+    creation/modification times and `ffprobe` technical fields describe the
+    current source. A rescan cannot replace titles, project relationships,
+    tags, or notes; neither store grants publication authority.
 
 ## Server modules
 
@@ -102,6 +110,8 @@ Every feature must preserve these rules:
 | `server/http-response.mjs` | Size-bounded JSON input, JSON output, MIME lookup, and range-file streaming |
 | `server/config-store.mjs` | Merge portable/local/environment configuration and atomically register or disconnect sources |
 | `server/audio-library.mjs` | Recursively discover supported audio, probe metadata, and maintain the rebuildable cache |
+| `server/visual-media-library.mjs` | Discover supported videos/images inside configured roots, probe technical metadata, and maintain the rebuildable cache |
+| `server/visual-metadata-store.mjs` | Atomically persist only editable visual titles, relationships, classifications, tags, and notes |
 | `server/audio-watch-service.mjs` | Optionally watch connected folders and debounce incremental metadata rescans |
 | `server/portable-project-bundle.mjs` | Hash indexed candidate sources and build JSON/checksum-only portable bundles |
 | `server/state-schema.mjs` | Validate the current state schema and apply explicit migrations from older versions |
@@ -132,13 +142,56 @@ baseline order references before disk state changes.
 | `src/hooks/useTransport.js` | Preview sources, queue playback, route live MASTER audio, suspend idle processing, expose transport state, and recover from media errors |
 | `src/hooks/useAppearance.js` | Resolve and apply persisted display preferences |
 | `src/components/*Workspace.jsx` | Own one user workflow and its local interaction state |
+| `src/components/VisualMediaLibrary.jsx` | Search, filter, preview, choose saved metadata columns, classify, and attach indexed visual media inside the Assets workspace |
 | `src/lib/project-commands.js` | Immutable commands for albums, tracks, candidates, assets, and sequence edits |
-| `src/lib/library-search.js` | Build the in-memory catalog index and define portable saved-filter records |
+| `src/lib/library-search.js` | Rank in-memory filename, path, album, and track matches and define portable saved-filter records |
+| `src/lib/audio-library-preferences.js` | Keep the unsaved per-project working query and bounded table widths in versioned device-only storage |
 | `src/lib/*.js` | Pure import, sequence, formatting, appearance, and mastering rules |
 | `src/dsp/*` | Opt-in shared processing contract and AudioWorklet adapter; not production authority yet |
-| `native/SharedDspEngine/*` | Swift contract-v2 kernel, golden tools, query-only probe, and isolated generated-fixture AudioUnit laboratory with muted/stress and double-opt-in audible modes; not production device authority |
+| `native/SharedDspEngine/*` | Swift contract-v2 kernel, golden tools, query-only probe, isolated generated-fixture AudioUnit laboratory, path-free VST3 discovery, disposable factory validation, and a bounded generated-fixture instance lab; all native plug-in results remain runtime-blocked and none of these tools is production device authority |
 | `desktop-resources/staged/*` | Ignored FFmpeg artifacts and optional verified native-audio executables copied into desktop builds |
 | `src/styles/*.css` | Tokens/base rules, shell chrome, workspace features, and responsive/motion rules |
+
+### Visual-library maintenance boundaries
+
+- `data/visual-index-cache.json` is rebuildable scan state, not project
+  authority. It is replaced atomically after a complete scan. Missing,
+  malformed, or structurally invalid cache data fails open to a new probe; the
+  authoritative editable metadata store still fails closed on corruption.
+- **Added** is the valid cached `firstIndexedAt` value. **Created** is the
+  filesystem birth timestamp and **Modified** is the filesystem modification
+  timestamp. Removing or repairing the ignored index cache restarts Added
+  tracking; it does not change either filesystem timestamp.
+- The Columns menu stores only validated column IDs under the versioned
+  `project-sequencer.visual-library.columns.v1` device preference. Preview and
+  Title are required. The preference never enters project state or cloud data.
+- The 857-item local library remains a normal DOM list so the complete listbox
+  relationship stays available to browser find and assistive technology. Rows
+  are memoized, offscreen row layout/paint is skipped with
+  `content-visibility: auto`, text search uses a deferred query, track-title
+  lookups use one album map, and shared date formatters are created once per
+  module.
+- Do not add virtualization based on item count alone. First capture a
+  repeatable production trace on target desktop and phone hardware. Consider
+  virtualization only if warm-cache search-to-results p95 exceeds 100 ms or
+  ordinary list scrolling repeatedly produces main-thread tasks longer than
+  50 ms. Keyboard selection, option position announcements, sticky headers,
+  internal scrolling, lazy media loading, browser find, and assistive-technology
+  navigation remain acceptance gates for that future change.
+
+### Audio-library search and table boundaries
+
+- The ranked index is memory-only and reads the existing indexed file record
+  plus album/track relationship labels. It does not read, copy, upload, or
+  rewrite source audio.
+- Named saved filters remain portable project settings. The unsaved working
+  query and bounded column widths use the versioned
+  `project-sequencer.audio-library-preferences.v1` device preference instead,
+  so workspace navigation does not erase the operator's place or add interface
+  state to album/cloud records.
+- Every desktop column exposes a pointer and keyboard separator. At compact
+  breakpoints the table keeps File, Album, Time, and Play visible and removes
+  the resize affordances rather than applying desktop pixel widths to a phone.
 
 Autosave uses a short debounce for editing comfort, then puts each snapshot on a
 single promise chain. A later save cannot be overtaken by an earlier request.
@@ -163,6 +216,24 @@ the context, keeping resume immediate while releasing real-time processing.
 Compact header metering samples fewer time-domain points and skips FFT reads in
 VU mode; the full frequency display retains its 2,048-point FFT. This graph is
 for responsive auditioning only—FFmpeg remains authoritative for every print.
+Documented album, selected-track, and numbered-track exports resolve a validated
+encoding contract before graph construction. WAV, AIFF, and FLAC use selected
+bit depth; MP3 and M4A/AAC use selected bitrate. The chosen supported sample
+rate drives source resampling, transition assembly, MASTER processing, and the
+final encoder rather than being applied only as a container-level conversion.
+For numbered-track delivery, FFmpeg assembles and processes the continuous
+album program once, then splits that printed output into sequence-numbered files.
+Natural/cut boundaries and deliberate gaps remain exact; crossfades split at
+their midpoint so concatenating the files gaplessly reconstructs the mastered
+program. Render-manifest schema 5 records the format, sample rate, bit depth or
+bitrate, every file, title, track number, edit, boundary, and MASTER print plan.
+Indexed source paths remain read-only.
+
+Native video controls use the browser's direct media path and never enter the
+shared mastering graph. Starting a video stops the shared album transport;
+starting shared audio pauses the active video. Focused video controls and
+editable/filter controls retain native Space and arrow behavior. Image previews
+do not alter transport state.
 
 ## HTTP and local security boundary
 
@@ -234,6 +305,9 @@ by media clients. Malformed, multiple, reversed, and out-of-bounds ranges return
 - Invalid imported JSON never replaces the open project.
 - `data/audio-index-cache.json` can be deleted and rebuilt; it is not authority
   for album decisions.
+- `data/visual-index-cache.json` can be deleted and rebuilt. User edits remain
+  separately in ignored `data/visual-library-metadata.json`; media bytes
+  remain at their configured source paths.
 
 Schema version 3 adds sequence versions, transition notebooks, explicit human
 approval, candidate comparison queues, and media-free album templates. The
@@ -296,8 +370,15 @@ original EQ, compressor, output, and limiter. Master monitoring now adds
 audition-only stereo/mono/Mid/Side matrices, a vectorscope, and phase
 correlation; monitor selection is never serialized into a master print.
 Basic remains the default after migration, and each path keeps independent
-state. The higher-fidelity shared DSP core and isolated native plug-in companion
-remain specified separately in
+state. The higher-fidelity shared DSP core and executable native plug-in
+companion remain specified separately. VST3 discovery reads bounded metadata
+without loading code; the explicit second slice can validate one module factory
+inside a disposable process with timeout/crash quarantine and signature/
+architecture preflight. It never creates an instance and cannot make a plug-in
+available. A separate generated-fixture lab can enumerate bounded parameters,
+round-trip in-memory state, record latency/tails, and process fixed zero-input
+blocks, but it stores neither state nor audio and remains disconnected from
+project, transport, and print authority. See
 [ADVANCED-MASTERING-AUDIO-PIPELINE-PLAN.md](./ADVANCED-MASTERING-AUDIO-PIPELINE-PLAN.md).
 The first executable shell and contract proof are documented in
 [NATIVE-DSP-POC.md](./NATIVE-DSP-POC.md) and

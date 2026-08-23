@@ -1,11 +1,12 @@
 # Advanced Mastering Equipment and Audio Pipeline Plan
 
-Plan date: 2026-08-11 · implementation and visual follow-up updated 2026-08-12
+Plan date: 2026-08-11 · implementation updated 2026-08-22
 
 Status: ownership-aware serial plug-in rack, spatial/creative built-ins,
 monitoring, Web Audio audition, authoritative FFmpeg prints, native Electron
-shell POC, and shared DSP contract POC implemented; analog-modelled native DSP
-and the isolated native VST3/AU host remain planned; not a release approval
+shell POC, shared DSP contract POC, metadata-only VST3 discovery, and disposable
+factory-validation infrastructure implemented; analog-modelled native DSP and
+executable VST3/AU rack hosting remain planned; not a release approval
 
 The follow-up analog faceplate and interaction brief for every new built-in is
 maintained in
@@ -68,9 +69,9 @@ Implemented in the schema-7 plug-in wave:
   ordered node list. A real short integration print exercises every new module
   while checksum verification proves the indexed source remains unchanged.
   The UI names this boundary instead of pretending a third-party processor is
-  active. Phase 5 still requires the isolated, signed native companion, SDK and
-  license review, crash recovery, latency compensation, state chunks, and a
-  generic fallback editor.
+  active. Phase 5 still requires the signed runtime companion, instance and
+  processing interfaces, crash recovery, latency compensation, state chunks,
+  and a generic fallback editor.
 - The built-in rack extends the proven Basic Web Audio/FFmpeg algorithms with
   two independently processed mid bands, per-EQ output trim, order,
   repetition, detector high-pass sidechain compression, continuously variable
@@ -105,6 +106,92 @@ Native/DSP POC checkpoint on `codex/native-dsp-poc`:
   remain outside this checkpoint. See
   [NATIVE-DSP-POC.md](./NATIVE-DSP-POC.md) and
   [SHARED-DSP-CONTRACT.md](./SHARED-DSP-CONTRACT.md).
+
+## Phase 5 discovery, factory, and instance-lab checkpoint — 2026-08-22
+
+The first VST3 production-host slice is implemented as a read-only SwiftPM
+library and two command-line products under `native/SharedDspEngine`:
+
+- `Vst3Discovery` resolves the standard macOS user, global, network, and
+  application VST3 roots in host priority order, plus explicitly approved roots.
+- `shared-vst3-scanner` reads optional `Contents/Resources/moduleinfo.json`
+  metadata and emits stable processor Class IDs, names, vendors, versions, and
+  subcategories in a versioned JSON report. Its declared mode is
+  `metadata-only-no-binary-load`; it never loads or executes a plug-in binary.
+- Bundle and metadata symlinks must remain inside their approved boundaries.
+  Metadata is limited to 1 MiB, control characters and path-like metadata are
+  removed, and no absolute bundle or root path enters the public report.
+- Root priority is authoritative. A repeated processor Class ID in a
+  lower-priority root is retained only as an unavailable shadowed duplicate.
+- The executable self-test passes seven fixture checks covering valid metadata,
+  controller exclusion, root priority, bundle and metadata symlink escapes,
+  oversized metadata, missing roots, and path suppression.
+- A read-only scan of this Mac found 48 global VST3 bundles and disclosed no
+  absolute paths. All 48 lack `moduleinfo.json`, so none are presented as ready:
+  native factory validation remains required for every installed bundle.
+
+Slice 5.2a adds the next native boundary without promoting any processor into
+the rack:
+
+- `shared-vst3-validator` launches `shared-vst3-validator-worker` once per
+  explicitly requested bundle. Binary loading requires `--allow-binary-load`;
+  unsigned test code requires the separate `--allow-unsigned` switch.
+- Static preflight resolves the bundle and executable inside an approved root,
+  fingerprints the executable, checks the current CPU architecture, and
+  verifies its code signature before loading.
+- The disposable worker follows Steinberg's macOS module-entry order, obtains
+  `GetPluginFactory`, and enumerates factory and processor-class metadata only.
+  It never calls `createInstance` and therefore exposes no parameters, state,
+  latency, editor, buses, or audio-processing path.
+- The coordinator bounds stdout/stderr, enforces a 100 ms to 120 s timeout,
+  classifies signals and malformed output, and marks crashes, hangs, and worker
+  failures quarantined. Public reports remain path-free.
+- Optional absolute bundle paths are written only to ignored
+  `data/vst3-validation-catalog.json`, which fails closed on malformed content
+  and is set to owner-only mode `0600`.
+- The minimal ABI-compatible factory declarations are derived from Steinberg's
+  MIT-licensed VST3 pluginterfaces and retained with the full notice in
+  `native/SharedDspEngine/THIRD_PARTY_NOTICES.md`.
+- A generated, ad-hoc-signed VST3 fixture proves processor/controller
+  filtering, disposable-process success, timeout, crash, malformed-output,
+  unsigned-code, path-suppression, catalog-permission, and root-containment
+  behavior in ten checks. Installed third-party binaries were not loaded by
+  this automated gate.
+
+The explicit success state is `factory-enumerated-runtime-blocked`. Discovery
+and factory metadata are infrastructure, not plug-in support: no installed VST3
+is available in the rack, and Web Audio/FFmpeg remain the live/print authority.
+
+Slice 5.2b adds a stricter generated-fixture instance laboratory behind two
+explicit native-code switches:
+
+- `shared-vst3-instance-lab` launches one
+  `shared-vst3-instance-lab-worker` with `--allow-binary-load` and
+  `--allow-instance-lab`. Normal scanning, startup, playback, and printing do
+  not invoke it.
+- The worker creates one processor and controller instance with a minimal host
+  context, enumerates at most 256 parameters, proves one writable normalized
+  parameter round-trip, and then discards the instance.
+- Component and controller state streams are each capped at 1 MiB. Only byte
+  counts, SHA-256 digests, and round-trip results enter the path-free report;
+  state payloads are never emitted or persisted.
+- The fixed offline probe accepts only one stereo input/output bus, 32-bit
+  samples, 48 kHz, and 64-frame blocks. It records reported latency and tail,
+  processes four zero-input blocks, rejects non-finite output, and saves no
+  audio.
+- The coordinator reuses the factory validator's bounded child output,
+  100 ms–120 s timeout, crash, malformed-output, containment, architecture,
+  and code-signature gates.
+- Twelve generated-fixture checks prove the host context, parameter identity,
+  bounded state, latency/tail values, offline lifecycle, finite zero-input
+  output, disposable worker, path suppression, 1 MiB rejection, containment,
+  invalid Class ID, and quarantine classifications.
+
+The success state is `instance-lab-passed-runtime-blocked`. This slice does not
+send automation queues, connect component/controller message interfaces, test a
+native editor, feed program audio, retain opaque state in a project, compensate
+latency, flush tails, or enable live/offline rack execution. Automated evidence
+still loads only the generated fixture—not installed third-party plug-ins.
 
 ## Faceplate control duty audit — 2026-08-12
 
@@ -634,8 +721,10 @@ Third-party audio plug-ins are executable native code and cannot be considered
 a complete security sandbox merely because they are in a child process.
 
 - Plug-in scanning is manual on first use and never blocks normal Basic startup.
-- Scan one plug-in per disposable process with a timeout and capture crash,
-  hang, architecture, code-signing, and validation results.
+- The metadata-only pass may inspect bounded `moduleinfo.json` files without
+  loading code. Any SDK factory or executable validation must scan one plug-in
+  per disposable process with a timeout and capture crash, hang, architecture,
+  code-signing, and validation results.
 - Keep catalog paths, quarantine results, and user allow/deny decisions in
   ignored machine-local data.
 - Resolve symlinks before accepting a user-added scan root.
@@ -817,10 +906,26 @@ format, cue, graph-hash, and manifest checks; cancelled jobs leave no partials.
 
 ### Phase 5 — VST3 production host
 
-- Implement standard-folder discovery plus user-approved roots.
-- Add disposable scanner, catalog/quarantine UI, stable identity, generic
-  parameters, state persistence, latency/tail handling, and native editor
-  windows.
+- **Slice 5.1 complete:** implement standard-folder discovery plus
+  user-approved roots, bounded metadata parsing, stable processor Class IDs,
+  priority-based duplicate handling, and path-free reports without binary
+  loading.
+- **Slice 5.2a complete:** add one-bundle-per-process factory enumeration,
+  timeout/crash/malformed-output quarantine, architecture/signature preflight,
+  executable fingerprints, path-free reports, an ignored owner-only local
+  catalog, and a generated signed fixture. Enumeration remains explicitly
+  runtime-blocked and no installed third-party plug-in is loaded by automation.
+- **Slice 5.2b complete:** add a generated-fixture instance laboratory with a
+  minimal host context, 256-parameter/1 MiB-state limits, component/controller
+  state digests and round-trips, latency/tail reporting, and four fixed offline
+  zero-input blocks. Success remains runtime-blocked and no installed
+  third-party plug-in is loaded by automation.
+- **Next:** explicitly opt in a small compatibility set and record failures
+  without promoting processors. Add host component/controller connection,
+  parameter-change queues, repeatable nonzero signal fixtures, new-instance
+  state restoration, and tail flushing before any rack integration.
+- Add catalog/quarantine UI and native editor windows only after the laboratory
+  contract is stable.
 - Hand native-plugin live playback to the companion while keeping transport and
   meters synchronized.
 - Add safe-mode restart and missing/version-changed plug-in recovery.
@@ -972,6 +1077,17 @@ The expansion is complete only when:
 - [Steinberg VST3 persistence FAQ](https://steinbergmedia.github.io/vst3_dev_portal/pages/FAQ/Persistence.html)
   — component/controller state order
 - [Steinberg VST3 plug-in locations](https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical%2BDocumentation/Locations%2BFormat/Plugin%2BLocations.html)
+- [Steinberg VST3 module architecture](https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical%2BDocumentation/VST%2BModule%2BArchitecture/Index.html)
+  and [module loading](https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical%2BDocumentation/VST%2BModule%2BArchitecture/Loading.html)
+  — module entry, factory acquisition, and unload order
+- [Steinberg audio-processor call sequence](https://steinbergmedia.github.io/vst3_dev_portal/pages/Technical%2BDocumentation/Workflow%2BDiagrams/Audio%2BProcessor%2BCall%2BSequence.html)
+  — initialize, setup, activation, processing, and teardown order
+- [Steinberg `IComponent`](https://github.com/steinbergmedia/vst3_pluginterfaces/blob/master/vst/ivstcomponent.h),
+  [`IEditController`](https://github.com/steinbergmedia/vst3_pluginterfaces/blob/master/vst/ivsteditcontroller.h),
+  and [`IAudioProcessor`](https://github.com/steinbergmedia/vst3_pluginterfaces/blob/master/vst/ivstaudioprocessor.h)
+  — state, parameter, latency, tail, and offline-processing interfaces
+- [Steinberg VST3 pluginterfaces](https://github.com/steinbergmedia/vst3_pluginterfaces)
+  — factory ABI and MIT license source used by the validation fixture
 - [Steinberg `IPlugView`](https://steinbergmedia.github.io/vst3_doc/base/classSteinberg_1_1IPlugView.html)
   — native platform editor attachment
 - [Apple `AVAudioUnitComponentManager`](https://developer.apple.com/documentation/AVFAudio/AVAudioUnitComponentManager)

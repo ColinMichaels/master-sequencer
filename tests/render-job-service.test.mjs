@@ -92,31 +92,56 @@ test("completed documented renders are rediscovered after restart and partial fi
     audioFile: "fallback.mp3",
     warnings: [],
   }));
-  const currentManifestDirectory = path.join(root, "2026-08-12", "schema-3-print");
+  const currentManifestDirectory = path.join(root, "2026-08-12", "schema-5-print");
   await mkdir(currentManifestDirectory, { recursive: true });
   await writeFile(path.join(currentManifestDirectory, "current.wav"), Buffer.alloc(16));
   await writeFile(path.join(currentManifestDirectory, "current-render-manifest.json"), JSON.stringify({
-    schemaVersion: 3,
-    renderId: "render-schema-3",
+    schemaVersion: 5,
+    renderId: "render-schema-5",
     createdAt: "2026-08-12T12:00:00.000Z",
     scope: "track",
     format: "wav",
+    audioSettings: { format: "wav", sampleRate: 96_000, bitDepth: 32, bitrateKbps: null },
     audioFile: "current.wav",
+    warnings: [],
+  }));
+  const numberedTracksDirectory = path.join(root, "2026-08-12", "schema-4-numbered-tracks");
+  await mkdir(numberedTracksDirectory, { recursive: true });
+  await writeFile(path.join(numberedTracksDirectory, "01 - First.wav"), Buffer.alloc(10));
+  await writeFile(path.join(numberedTracksDirectory, "02 - Second.wav"), Buffer.alloc(14));
+  await writeFile(path.join(numberedTracksDirectory, "numbered-render-manifest.json"), JSON.stringify({
+    schemaVersion: 4,
+    renderId: "render-schema-4",
+    createdAt: "2026-08-12T13:00:00.000Z",
+    scope: "tracks",
+    format: "wav",
+    audioFile: "01 - First.wav",
+    displayName: "2 numbered WAV track files",
+    audioFiles: [
+      { trackId: "first", trackNumber: 1, title: "First", fileName: "01 - First.wav" },
+      { trackId: "second", trackNumber: 2, title: "Second", fileName: "02 - Second.wav" },
+    ],
     warnings: [],
   }));
 
   const results = await discoverRenderResults(root);
-  assert.equal(results.length, 3);
+  assert.equal(results.length, 4);
   const documented = results.find((result) => result.id === "render-123");
   assert.equal(documented.size, 24);
   assert.equal(typeof results.find((result) => result.id === "render-fallback").createdAt, "string");
-  assert.equal(results.find((result) => result.id === "render-schema-3").size, 16);
+  assert.equal(results.find((result) => result.id === "render-schema-5").size, 16);
+  assert.equal(results.find((result) => result.id === "render-schema-5").audioSettings.sampleRate, 96_000);
+  const numbered = results.find((result) => result.id === "render-schema-4");
+  assert.equal(numbered.audioName, "2 numbered WAV track files");
+  assert.equal(numbered.size, 24);
+  assert.deepEqual(numbered.audioFiles.map((file) => file.audioName), ["01 - First.wav", "02 - Second.wav"]);
   await assert.rejects(() => readFile(path.join(directory, "orphan.part.wav")), { code: "ENOENT" });
   assert.equal((await readFile(path.join(directory, "artist.part.mix.wav"))).byteLength, 12);
 
   const service = createRenderJobService({ outputRoot: root, getLibraryFile: () => null });
   await service.initialize();
   assert.equal(service.get("render-123").recovered, true);
-  assert.equal(service.get("render-schema-3").recovered, true);
+  assert.equal(service.get("render-schema-5").recovered, true);
+  assert.equal(service.get("render-schema-4").recovered, true);
   assert.equal(service.result("render-123").manifestPath, path.join(directory, "album-render-manifest.json"));
 });

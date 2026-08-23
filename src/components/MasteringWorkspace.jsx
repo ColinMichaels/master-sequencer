@@ -13,6 +13,8 @@ import { RenderHistory } from "./RenderHistory.jsx";
 import { MasterBusControls, MasteringNumberField as NumberField, TrackLevelControl } from "./MasteringControls.jsx";
 import { MasteringReferenceAB } from "./MasteringReferenceAB.jsx";
 import { AdvancedMasteringRack } from "./AdvancedMasteringRack.jsx";
+import { MasteringDisclosure } from "./MasteringDisclosure.jsx";
+import { ContextActionMenu } from "./ContextActionMenu.jsx";
 import { createDefaultAdvancedMastering, normalizeAdvancedMastering, normalizeMasteringPath } from "../lib/advanced-mastering.js";
 import { handleOptionReset, handleOptionResetKey } from "../lib/option-reset.js";
 
@@ -56,6 +58,7 @@ export function MasteringWorkspace({ album, libraryMap, presets, renderingAvaila
   const missingCount = tracks.length - entries.length;
   const editedCount = tracks.filter((track) => track.mastering && Object.keys(track.mastering).length).length;
   const analysis = selectedFile ? analysisByKey[selectedFile.key] : null;
+  const analysisSummary = analyzingKey === selectedFile?.key ? "Analyzing…" : analysisError ? "Needs attention" : analysis ? "Measurements ready" : "Not analyzed";
   const delivery = album.delivery || {};
   const masterBus = useMemo(() => normalizeMasterBus(album.masterBus), [album.masterBus]);
   const masteringPath = normalizeMasteringPath(album.masteringPath);
@@ -196,7 +199,12 @@ export function MasteringWorkspace({ album, libraryMap, presets, renderingAvaila
             <div className="mastering-missing"><WarningIcon size={34}/><h3>{selectedTrack?.title || "No track selected"}</h3><p>This track needs a playable audition source before it can be trimmed, faded, previewed, or printed.</p></div>
           ) : (
             <>
-              <header><div><span>Track {tracks.indexOf(selectedTrack) + 1}</span><h2>{selectedTrack.title}</h2><p>{selectedFile.name} · source {formatDuration(selectedFile.duration, true)}</p></div><button type="button" className="text-button" onClick={resetMastering}><RefreshIcon /> Reset Edit</button></header>
+              <header><div><span>Track {tracks.indexOf(selectedTrack) + 1}</span><h2>{selectedTrack.title}</h2><p>{selectedFile.name} · source {formatDuration(selectedFile.duration, true)}</p></div><div className="mastering-editor-actions"><button type="button" className="text-button" onClick={resetMastering}><RefreshIcon /> Reset Edit</button><ContextActionMenu label={`Actions for ${selectedTrack.title}`} items={[
+                { id: "preview-start", label: "Preview edited start", description: "Print and play a short opening derivative", Icon: PlayIcon, disabled: !renderingAvailable || previewingTrackId === selectedTrack.id, onSelect: () => onPreview(selectedTrack.id, "start") },
+                { id: "preview-end", label: "Preview edited ending", description: "Print and play a short ending derivative", Icon: PlayIcon, disabled: !renderingAvailable || previewingTrackId === selectedTrack.id, onSelect: () => onPreview(selectedTrack.id, "end") },
+                { id: "print-track", label: "Print selected track", description: "Open documented audio print settings", Icon: ExportIcon, disabled: !renderingAvailable, onSelect: () => onOpenExport(selectedTrack.id) },
+                { id: "reset", label: "Reset track edit", description: "Return this track to its source timing", Icon: RefreshIcon, onSelect: resetMastering },
+              ]} /></div></header>
 
               <WaveformEditor
                 file={selectedFile}
@@ -215,11 +223,10 @@ export function MasteringWorkspace({ album, libraryMap, presets, renderingAvaila
                 onSeek={(time) => onSeekTrack(tracks.indexOf(selectedTrack), time)}
               />
 
-              <section className="technical-analysis">
-                <header><div><h3>Optional Technical Analysis</h3><p>Rebuildable measurements only. No source is normalized or changed.</p></div><button type="button" className="text-button" disabled={analyzingKey === selectedFile.key} onClick={analyzeSelected}>{analyzingKey === selectedFile.key ? "Analyzing…" : analysis ? "Analyze Again" : "Analyze Source"}</button></header>
-                {analysis && <dl><div><dt>Integrated</dt><dd>{analysis.measurements.integratedLoudness?.toFixed(1) ?? "—"} LUFS</dd></div><div><dt>True peak</dt><dd>{analysis.measurements.truePeak?.toFixed(1) ?? "—"} dBFS</dd></div><div><dt>Loudness range</dt><dd>{analysis.measurements.loudnessRange?.toFixed(1) ?? "—"} LU</dd></div><div><dt>DC offset</dt><dd>{analysis.measurements.dcOffset?.toFixed(6) ?? "—"}</dd></div><div><dt>Silence regions</dt><dd>{analysis.measurements.silenceBoundaries.length}</dd></div></dl>}
-                {analysisError && <p className="render-error" role="alert">{analysisError}</p>}
-              </section>
+              <MasteringDisclosure id="technical-analysis" className="technical-analysis" title="Optional Technical Analysis" description="Rebuildable measurements only. No source is normalized or changed." summary={analysisSummary} alert={analysisError}>
+                <div className="technical-analysis-actions"><button type="button" className="text-button" disabled={analyzingKey === selectedFile.key} onClick={analyzeSelected}>{analyzingKey === selectedFile.key ? "Analyzing…" : analysis ? "Analyze Again" : "Analyze Source"}</button></div>
+                {analysis ? <dl><div><dt>Integrated</dt><dd>{analysis.measurements.integratedLoudness?.toFixed(1) ?? "—"} LUFS</dd></div><div><dt>True peak</dt><dd>{analysis.measurements.truePeak?.toFixed(1) ?? "—"} dBFS</dd></div><div><dt>Loudness range</dt><dd>{analysis.measurements.loudnessRange?.toFixed(1) ?? "—"} LU</dd></div><div><dt>DC offset</dt><dd>{analysis.measurements.dcOffset?.toFixed(6) ?? "—"}</dd></div><div><dt>Silence regions</dt><dd>{analysis.measurements.silenceBoundaries.length}</dd></div></dl> : null}
+              </MasteringDisclosure>
 
               <TrackLevelControl value={settings.gainDb} onChange={(value) => updateMastering("gainDb", value)} />
 
@@ -248,8 +255,8 @@ export function MasteringWorkspace({ album, libraryMap, presets, renderingAvaila
                   })}
                 </div>
                 <div className="mastering-field-grid mastering-field-grid--ending">
-                  <NumberField label={settings.endMode === "crossfade" ? "Crossfade length" : "Ending fade length"} value={settings.endDuration.toFixed(2)} defaultValue={3} maximum={settings.duration - 0.05} step={0.1} disabled={!['fade', 'crossfade'].includes(settings.endMode)} onCommit={(value) => updateMastering("endDuration", value)} />
-                  <NumberField label="Silence after" value={settings.gapAfter.toFixed(2)} defaultValue={0} maximum={30} step={0.1} disabled={settings.endMode === "crossfade" || !hasNextPlayable} onCommit={(value) => updateMastering("gapAfter", value)} />
+                  {["fade", "crossfade"].includes(settings.endMode) ? <NumberField label={settings.endMode === "crossfade" ? "Crossfade length" : "Ending fade length"} value={settings.endDuration.toFixed(2)} defaultValue={3} maximum={settings.duration - 0.05} step={0.1} onCommit={(value) => updateMastering("endDuration", value)} /> : null}
+                  {settings.endMode !== "crossfade" && hasNextPlayable ? <NumberField label="Silence after" value={settings.gapAfter.toFixed(2)} defaultValue={0} maximum={30} step={0.1} onCommit={(value) => updateMastering("gapAfter", value)} /> : null}
                   <div className="ending-result"><span>Result</span><strong>{masteringSummary(settings)}</strong></div>
                 </div>
                 <button type="button" className="primary-button preview-ending-button" disabled={!renderingAvailable || previewingTrackId === selectedTrack.id} title={renderingAvailable ? "Print a short edited-ending preview" : "Rendered edit previews are unavailable in the browser"} onClick={() => onPreview(selectedTrack.id, "end")}><PlayIcon /> {previewingTrackId === selectedTrack.id ? "Printing Preview…" : renderingAvailable ? "Preview Edited Ending" : "Preview Unavailable"}</button>

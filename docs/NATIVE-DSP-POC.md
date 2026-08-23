@@ -1,6 +1,6 @@
 # Native Media and Shared DSP POC
 
-Plan date: 2026-08-12
+Plan date: 2026-08-12 · VST3 validation update 2026-08-22
 
 Status: runnable proof of concept on `codex/native-dsp-poc`; not a signed or
 customer-ready desktop release
@@ -272,6 +272,83 @@ This gate makes the engine observable and briefly audible without connecting
 indexed media. It is still a laboratory control, not the Pro production
 transport.
 
+### Gate 13 — metadata-only VST3 discovery foundation: passed 2026-08-22
+
+- The Swift package now contains a dependency-free `Vst3Discovery` library, a
+  path-free `shared-vst3-scanner` CLI, and a generated-fixture self-test.
+- Discovery is limited to standard macOS VST3 locations and explicitly approved
+  roots. Standard roots retain Steinberg's priority order; a lower-priority
+  duplicate processor Class ID remains unavailable.
+- The scanner reads only bounded optional `moduleinfo.json` metadata. It does not
+  load a module factory or executable, and its report declares
+  `metadata-only-no-binary-load` so the result cannot be mistaken for host
+  compatibility.
+- Root, bundle, and metadata symlink boundaries fail closed. Metadata over 1 MiB
+  is rejected, and public records contain sanitized labels and stable IDs rather
+  than absolute machine paths.
+- Seven fixture checks pass. A read-only standard-folder scan on this Mac found
+  48 global VST3 bundles, all without `moduleinfo.json`; zero processors are
+  ready from metadata and no paths were disclosed. This established the need
+  for the separate explicit factory-validation gate below.
+
+This gate does not make VST3 available in the rack. Every installed binary
+remains blocked until instance, audio, state, latency, recovery, and later
+runtime-host gates pass.
+
+### Gate 14 — disposable VST3 factory validation: passed 2026-08-22
+
+- A coordinator launches one short-lived worker for one explicitly selected
+  bundle; the normal scanner and application startup still load no plug-in
+  code.
+- Approved-root/executable containment, SHA-256 fingerprint, CPU architecture,
+  and code-signature preflight happen before the worker calls the mandatory
+  macOS module entry points and `GetPluginFactory`.
+- The worker enumerates factory and processor-class identity only and exits. It
+  never creates a processor or controller instance, processes audio, opens an
+  editor, reads parameters, or requests state/latency information.
+- The coordinator bounds child output and classifies timeout, signal crash,
+  malformed output, rejection, and nonzero failure. A factory success is named
+  `factory-enumerated-runtime-blocked`, not available.
+- Public reports contain stable IDs, fingerprints, and sanitized labels but no
+  absolute paths. The optional ignored private catalog retains the local bundle
+  path with mode `0600` and refuses to overwrite malformed catalog data.
+- The ABI subset is derived from the official MIT-licensed Steinberg
+  pluginterfaces; the complete license notice is tracked beside the package.
+- Ten generated-fixture checks pass, including a real disposable worker, an
+  ad-hoc-signed module factory, timeout, crash, unsigned rejection, malformed
+  output, containment, and catalog privacy. No installed third-party VST3
+  binary was loaded for this gate.
+
+This is a load-isolation and identity proof, not a runtime host. Parameters,
+state, latency, buses, audio processing, GUI, safe-mode recovery, and rack/print
+integration remain blocked.
+
+### Gate 15 — bounded VST3 instance laboratory: passed 2026-08-22
+
+- A second explicit coordinator/worker pair creates one generated-fixture
+  processor and controller instance per disposable process. It requires both
+  binary-load and instance-lab consent flags and inherits the approved-root,
+  signature, architecture, timeout, crash, and bounded-output gates.
+- The worker provides the mandatory minimal host application context, follows
+  the offline component lifecycle, and enumerates at most 256 parameters. One
+  writable normalized parameter is set, read back, and restored.
+- Component and controller state are independently capped at 1 MiB and
+  round-tripped in memory. Public JSON receives only byte counts and SHA-256
+  digests; it receives neither the state bytes nor an absolute path.
+- The audio proof is intentionally narrow: one 48 kHz stereo 32-bit setup,
+  64-frame blocks, four zero-input process calls, finite-output validation, and
+  reported latency/tail capture. It saves no audio and consumes no indexed
+  source.
+- Twelve generated-fixture checks pass, including a real disposable worker,
+  parameter/state/lifecycle evidence, latency/tail values, zero-input safety,
+  oversized-state rejection, Class ID/root rejection, and timeout/crash/
+  malformed-output classification.
+
+Success is `instance-lab-passed-runtime-blocked`. The gate does not prove
+automation queues, component/controller messaging, editor windows, program
+signal processing, new-instance project reload, latency compensation, tail
+flush, or compatibility with an installed third-party plug-in.
+
 ## Decision
 
 Build this as a branch of Project Sequencer, not a separate product fork.
@@ -311,6 +388,8 @@ Embedded local engine process (existing Node server, 127.0.0.1 only)
   |-- read-only access to explicitly registered audio
   |-- system FFmpeg + ffprobe
   |-- app-data exports/ derivatives
+  |-- manual metadata-only VST3 discovery (no binary loading)
+  |-- explicit disposable VST3 factory validation (no instances or audio)
   `-- optional fingerprinted Swift hardware tools
       |-- query-only default-output probe
       `-- explicit generated-fixture callback lab (never auto-started)
@@ -363,6 +442,13 @@ after the engine protocol, file lifecycle, and packaging risks are proven.
   fingerprint, engine instance ID, or raw child-process error.
 - Unit and smoke checks cover tool-path injection, parameter bounds, exact
   bypass, block-size determinism, ceiling behavior, and the two-channel host.
+- `native/SharedDspEngine/Sources/Vst3Discovery` owns the metadata-only VST3
+  root, identity, duplicate-priority, and sanitization contract. It has no Node,
+  browser, SDK, plug-in-execution, or project-state dependency.
+- `native/SharedDspEngine/Sources/Vst3Validation` owns static preflight,
+  one-bundle process coordination, factory-only identity reports, quarantine
+  classification, and the ignored private catalog. It is not imported by the
+  browser, Node server, production transport, or print path.
 
 ## Run the POC
 
@@ -386,6 +472,46 @@ npm run native:stage
 npm run desktop:smoke
 npm run desktop:pack
 ```
+
+The VST3 metadata, disposable-factory, and generated instance-lab slices can be
+verified independently:
+
+```bash
+cd native/SharedDspEngine
+swift run shared-vst3-scanner-self-test
+swift run shared-vst3-scanner --standard --pretty
+swift build
+swift run shared-vst3-validator-self-test
+swift run shared-vst3-instance-lab-self-test
+```
+
+Manual factory validation is an explicit native-code action and is not part of
+normal verification:
+
+```bash
+swift run shared-vst3-validator --allow-binary-load \
+  --approved-root approved /approved/vst3/root \
+  --bundle /approved/vst3/root/Example.vst3 --pretty
+```
+
+Add `--catalog ../../../data/vst3-validation-catalog.json` only when the ignored
+machine-local record is wanted. Do not use `--allow-unsigned` for installed
+plug-ins; it exists for controlled development fixtures.
+
+Manual instance validation is a separate explicit native-code action. It was
+not run against installed third-party plug-ins for this gate:
+
+```bash
+swift run shared-vst3-instance-lab --allow-binary-load --allow-instance-lab \
+  --approved-root approved /approved/vst3/root \
+  --bundle /approved/vst3/root/Example.vst3 --class-id PROCESSOR_CLASS_ID --pretty
+```
+
+The current development machine has a mismatched default Command Line Tools
+compiler/SDK pair. The 2026-08-22 evidence used the compatible installed macOS
+15.4 SDK and a workspace-local module cache. Repair or update Command Line Tools
+before adding these commands to release automation; the application does not
+change SDK selection at runtime.
 
 `desktop:pack` creates an unpacked development application under ignored
 `release/`. It is intentionally unsigned and depends on a system FFmpeg for
@@ -414,8 +540,11 @@ this checkpoint.
 - A true-peak oversampled limiter, loudness engine, final shared EQ/compressor,
   production-grade dynamics fixtures, or project-audio native callback routing
 - Security-scoped bookmarks required by a future Mac App Store sandboxed build
-- VST3/AU scanning, SDK integration, plug-in isolation, latency compensation,
-  state chunks, crash recovery, or quarantine
+- Installed VST3/AU compatibility evidence, parameter automation queues,
+  component/controller messaging, general bus layouts, nonzero program-signal
+  processing, new-instance project state restoration, latency compensation,
+  tail flushing, editor windows, safe-mode recovery, or rack integration.
+  Generated-fixture instance validation grants no execution availability.
 
 ## Recommended build sequence
 
@@ -458,6 +587,23 @@ this checkpoint.
     emergency stop, and path-free callback metrics for a muted check and a
     safety-limited audible preview. This is observable engine evidence, not
     project playback or permission to route indexed sources.
+13. **Complete:** VST3 metadata discovery covers standard
+    and approved roots, stable Class IDs, duplicate priority, bounded metadata,
+    symlink containment, and path-free reports without loading code.
+14. **Factory identity validation complete; instances remain blocked:** an
+    explicit one-bundle disposable worker now proves module/factory entry,
+    processor identity, timeout/crash quarantine, architecture/signature checks,
+    path-free reports, and an ignored owner-only catalog. Next use a small
+    opt-in compatibility set to prove parameters, bounded state, latency/tails,
+    and zero-input/offline processing in the disposable laboratory before any
+    rack or transport integration.
+15. **Generated instance laboratory complete; installed compatibility next:**
+    parameter identity and setter round-trip, 1 MiB-bounded component/controller
+    state, latency/tail reporting, and four offline zero-input blocks are proven
+    in a disposable worker. Next requires an explicit small installed-plug-in
+    compatibility set plus message connections, automation queues, nonzero
+    deterministic fixtures, new-instance restore, and tail flushing; failures
+    remain quarantined and no result grants rack availability.
 
 The promotion gate for shared DSP is measurable parity and recovery—not its UI
 appearance. It must survive buffer-size changes, sample-rate changes, device

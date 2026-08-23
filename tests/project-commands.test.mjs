@@ -59,9 +59,42 @@ test("deleting a track record removes stale version and transition references", 
   album.sequenceVersions = [{ id: "version", name: "Version", trackOrder: ["a", "b"] }];
   album.transitionNotebook = [{ id: "a--b", fromTrackId: "a", toTrackId: "b" }];
   assert.equal(deleteTrackRecord(album, "a"), true);
+  assert.deepEqual(album.tracks.map((track) => track.id), ["b"]);
+  assert.deepEqual(album.baselineTrackOrder, ["b"]);
   assert.deepEqual(album.sequenceVersions[0].trackOrder, ["b"]);
   assert.deepEqual(album.transitionNotebook, []);
   assert.equal(album.orderApproved, false);
+});
+
+test("bulk imports merge same-title files into one track candidate list", () => {
+  const album = project().albums[0];
+  const baseline = [...album.baselineTrackOrder];
+  const result = addTracksFromFiles(album, [
+    { key: "root::b-master.wav", rootId: "root", relativePath: "B (Master).wav", name: "B (Master).wav" },
+    { key: "root::b-demo.wav", rootId: "root", relativePath: "B (Demo).wav", name: "B (Demo).wav" },
+  ]);
+
+  assert.equal(result.tracks.length, 0);
+  assert.equal(result.candidateCount, 2);
+  assert.equal(result.candidateAssignments.length, 2);
+  assert.equal(result.candidateResults.length, 2);
+  assert.equal(album.tracks.length, 2);
+  assert.deepEqual(album.tracks.find((track) => track.id === "b").candidates.map((candidate) => candidate.sourceRef.relativePath), ["B (Master).wav", "B (Demo).wav"]);
+  assert.deepEqual(album.baselineTrackOrder, baseline);
+});
+
+test("bulk imports create one new track for repeated titles", () => {
+  const album = project().albums[0];
+  const result = addTracksFromFiles(album, [
+    { key: "root::new-master.wav", rootId: "root", relativePath: "New Song (Master).wav", name: "New Song (Master).wav" },
+    { key: "root::new-demo.wav", rootId: "root", relativePath: "New Song (Demo).wav", name: "New Song (Demo).wav" },
+  ]);
+
+  const imported = album.tracks.find((track) => track.title === "New Song");
+  assert.equal(result.tracks.length, 1);
+  assert.equal(result.candidateCount, 1);
+  assert.equal(imported.candidates.length, 2);
+  assert.deepEqual(album.baselineTrackOrder, ["a", "b", imported.id]);
 });
 
 test("track import, sequence membership, and baseline restoration preserve records", () => {

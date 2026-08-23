@@ -3,19 +3,57 @@ import { randomUUID } from "node:crypto";
 import { mkdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { calculateProgramTimeline, normalizeMasterBus, normalizeMastering } from "../src/lib/mastering.js";
-import { ADVANCED_PROCESSOR_TYPES, normalizeAdvancedMastering, normalizeMasteringPath, processorDefinition } from "../src/lib/advanced-mastering.js";
+import { ADVANCED_PROCESSOR_TYPES, normalizeAdvancedMastering, normalizeMasteringPath } from "../src/lib/advanced-mastering.js";
+import { assertMasteringPrintPlan, createMasteringPrintPlan } from "../src/lib/mastering-print-plan.js";
+import { audioExportSummary, resolveAudioExportSettings } from "../src/lib/audio-export-settings.js";
 import { validateDeliveryRequest } from "../src/lib/delivery-profiles.js";
 import { sourceKey } from "./audio-library.mjs";
 import { ffmpegExecutable } from "./tool-paths.mjs";
 
-const AUDIO_FORMATS = new Set(["wav", "mp3"]);
-const RENDER_SCOPES = new Set(["album", "track", "preview", "comparison"]);
+const RENDER_SCOPES = new Set(["album", "tracks", "track", "preview", "comparison"]);
 const PREVIEW_PARTS = new Set(["start", "end", "transition"]);
+const PCM_CODECS = {
+  wav: { 16: "pcm_s16le", 24: "pcm_s24le", 32: "pcm_s32le" },
+  aiff: { 16: "pcm_s16be", 24: "pcm_s24be", 32: "pcm_s32be" },
+};
+
+export const audioEncodingArguments = (audioSettings) => {
+  const { format, sampleRate, bitDepth, bitrateKbps } = audioSettings;
+  if (PCM_CODECS[format]) return ["-c:a", PCM_CODECS[format][bitDepth], "-ar", String(sampleRate)];
+  if (format === "flac") return [
+    "-c:a", "flac",
+    "-sample_fmt", bitDepth === 16 ? "s16" : "s32",
+    ...(bitDepth === 24 ? ["-bits_per_raw_sample", "24"] : []),
+    "-ar", String(sampleRate),
+  ];
+  if (format === "mp3") return ["-c:a", "libmp3lame", "-b:a", `${bitrateKbps}k`, "-ar", String(sampleRate), "-id3v2_version", "3"];
+  if (format === "m4a") return ["-c:a", "aac", "-b:a", `${bitrateKbps}k`, "-ar", String(sampleRate), "-movflags", "+faststart"];
+  throw new Error("The selected audio format cannot be encoded.");
+};
 
 const slugify = (value) => value
   .toLowerCase()
   .replace(/[^a-z0-9]+/g, "-")
   .replace(/^-|-$/g, "") || "audio";
+
+const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/g;
+const UNSAFE_FILENAME_CHARACTERS = /[\\/?%*:|"<>]/g;
+
+export const numberedTrackFilename = ({ trackNumber, totalTracks, title, format }) => {
+  const width = Math.max(2, String(Math.max(1, totalTracks)).length);
+  const prefix = String(trackNumber).padStart(width, "0");
+  const safeTitle = String(title || "Untitled Track")
+    .normalize("NFKC")
+    .replace(CONTROL_CHARACTERS, "")
+    .replace(UNSAFE_FILENAME_CHARACTERS, " - ")
+    .replace(/\s+/g, " ")
+    .replace(/(?:\s+-\s+){2,}/g, " - ")
+    .trim()
+    .slice(0, 120)
+    .replace(/(?:\s+-)+\s*$/g, "")
+    .replace(/[. ]+$/g, "") || "Untitled Track";
+  return `${prefix} - ${safeTitle}.${format}`;
+};
 
 const seconds = (value) => Number(value.toFixed(6)).toString();
 
@@ -120,13 +158,13 @@ const resolveCandidateEntry = (track, candidateId, getLibraryFile) => {
   } : null;
 };
 
-const segmentFilter = (entry, index, hasNext, forceFadeForCrossfade = false) => {
+const segmentFilter = (entry, index, hasNext, forceFadeForCrossfade = false, sampleRate = 48_000) => {
   const settings = normalizeMastering(entry.mastering, entry.sourceDuration, { hasNext });
   const filters = [
     `atrim=start=${seconds(settings.trimStart)}:end=${seconds(settings.trimEnd)}`,
     "asetpts=PTS-STARTPTS",
-    "aresample=48000",
-    "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo",
+    `aresample=${sampleRate}`,
+    `aformat=sample_fmts=fltp:sample_rates=${sampleRate}:channel_layouts=stereo`,
   ];
   if (settings.fadeIn > 0) filters.push(`afade=t=in:st=0:d=${seconds(settings.fadeIn)}`);
   if (settings.endMode === "fade" || (forceFadeForCrossfade && settings.endMode === "crossfade")) {
@@ -232,10 +270,11 @@ const ambienceImpulseExpression = (decaySeconds, offset = 0) => {
   return `if(eq(n,0),1,0.055*exp(-6*t/${seconds(decaySeconds)})*(${tones}))`;
 };
 
-export const buildAdvancedMasteringFilters = (advancedMastering = {}) => {
+export const buildAdvancedMasteringFilters = (advancedMastering = {}, sampleRate = 48_000) => {
   const settings = normalizeAdvancedMastering(advancedMastering);
   const filters = [];
   if (settings.bypass) return { settings, filters };
+  assertMasteringPrintPlan(createMasteringPrintPlan({ masteringPath: "advanced", advancedMastering: settings }));
   for (const [index, node] of settings.nodes.entries()) {
     if (node.bypass || node.unavailable) continue;
     const parameters = node.parameters;
@@ -250,7 +289,7 @@ export const buildAdvancedMasteringFilters = (advancedMastering = {}) => {
     } else if (node.typeId === ADVANCED_PROCESSOR_TYPES.output) {
       if (parameters.outputGainDb !== 0) filters.push(`volume=${seconds(parameters.outputGainDb)}dB`);
     } else if (node.typeId === ADVANCED_PROCESSOR_TYPES.limiter) {
-      if (parameters.oversample > 1) filters.push(`aresample=${48_000 * parameters.oversample}`);
+      if (parameters.oversample > 1) filters.push(`aresample=${Math.min(384_000, sampleRate * parameters.oversample)}`);
       const limiterFilter = [
         `alimiter=limit=${decibelsToAmplitude(parameters.ceilingDbfs)}`,
         `attack=${seconds(parameters.attackMs)}`,
@@ -265,7 +304,7 @@ export const buildAdvancedMasteringFilters = (advancedMastering = {}) => {
         const independentMix = seconds(1 - parameters.stereoLinkPercent / 100);
         filters.push(`asplit=2[${tag}_linked_in][${tag}_independent_in];[${tag}_linked_in]${limiterFilter},volume=${linkedMix}[${tag}_linked_limited];[${tag}_independent_in]channelsplit=channel_layout=stereo[${tag}_left][${tag}_right];[${tag}_left]${limiterFilter}[${tag}_left_limited];[${tag}_right]${limiterFilter}[${tag}_right_limited];[${tag}_left_limited][${tag}_right_limited]join=inputs=2:channel_layout=stereo,volume=${independentMix}[${tag}_independent_limited];[${tag}_linked_limited][${tag}_independent_limited]amix=inputs=2:normalize=0`);
       }
-      if (parameters.oversample > 1) filters.push("aresample=48000");
+      if (parameters.oversample > 1) filters.push(`aresample=${sampleRate}`);
     } else if (node.typeId === ADVANCED_PROCESSOR_TYPES.stereoField) {
       const midGain = decibelsToAmplitude(parameters.depthDb);
       const sideGain = decibelsToAmplitude(parameters.widthDb);
@@ -295,7 +334,7 @@ export const buildAdvancedMasteringFilters = (advancedMastering = {}) => {
         const irLeft = ambienceImpulseExpression(parameters.decaySeconds, parameters.model === "plate" ? 23 : 0);
         const irRight = ambienceImpulseExpression(parameters.decaySeconds, parameters.model === "chamber" ? 17 : 11);
         const rightDelay = Math.max(0, Math.round(parameters.preDelayMs + (parameters.widthPercent - 100) * 0.08));
-        filters.push(`asplit=2[${tag}_dry][${tag}_program];aevalsrc=exprs='${irLeft}|${irRight}':s=48000:d=${seconds(parameters.decaySeconds)}[${tag}_ir];[${tag}_dry]volume=${seconds(dry)}[${tag}_dry_out];[${tag}_program]adelay=delays=${seconds(parameters.preDelayMs)}|${seconds(rightDelay)},highpass=f=${seconds(parameters.lowCutHz)}:p=2,lowpass=f=${seconds(parameters.dampingHz)}:p=2[${tag}_prepared];[${tag}_prepared][${tag}_ir]afir=dry=0:wet=1:gtype=peak:irfmt=input:maxir=${seconds(parameters.decaySeconds)},volume=${seconds(wet)}[${tag}_wet_out];[${tag}_dry_out][${tag}_wet_out]amix=inputs=2:normalize=0`);
+        filters.push(`asplit=2[${tag}_dry][${tag}_program];aevalsrc=exprs='${irLeft}|${irRight}':s=${sampleRate}:d=${seconds(parameters.decaySeconds)}[${tag}_ir];[${tag}_dry]volume=${seconds(dry)}[${tag}_dry_out];[${tag}_program]adelay=delays=${seconds(parameters.preDelayMs)}|${seconds(rightDelay)},highpass=f=${seconds(parameters.lowCutHz)}:p=2,lowpass=f=${seconds(parameters.dampingHz)}:p=2[${tag}_prepared];[${tag}_prepared][${tag}_ir]afir=dry=0:wet=1:gtype=peak:irfmt=input:maxir=${seconds(parameters.decaySeconds)},volume=${seconds(wet)}[${tag}_wet_out];[${tag}_dry_out][${tag}_wet_out]amix=inputs=2:normalize=0`);
       }
     } else if (node.typeId === ADVANCED_PROCESSOR_TYPES.transientShaper) {
       if (parameters.attackDb !== 0 || parameters.sustainDb !== 0 || parameters.outputGainDb !== 0) {
@@ -316,11 +355,11 @@ export const buildAdvancedMasteringFilters = (advancedMastering = {}) => {
   return { settings, filters };
 };
 
-export const buildRenderGraph = (entries, { singleTrack = false, masterBus = {}, masteringPath = "basic", advancedMastering = {} } = {}) => {
+export const buildRenderGraph = (entries, { singleTrack = false, masterBus = {}, masteringPath = "basic", advancedMastering = {}, sampleRate = 48_000 } = {}) => {
   if (!entries.length) throw new Error("No playable audio is available to render.");
   const filters = [];
   const normalized = entries.map((entry, index) => {
-    const segment = segmentFilter(entry, index, !singleTrack && index < entries.length - 1, singleTrack);
+    const segment = segmentFilter(entry, index, !singleTrack && index < entries.length - 1, singleTrack, sampleRate);
     filters.push(segment.filter);
     return { ...entry, settings: segment.settings };
   });
@@ -334,7 +373,7 @@ export const buildRenderGraph = (entries, { singleTrack = false, masterBus = {},
       const overlap = Math.min(currentEntry.settings.endDuration, currentEntry.settings.duration - 0.05, nextEntry.settings.duration - 0.05);
       filters.push(`[${current}][t${index + 1}]acrossfade=d=${seconds(overlap)}:c1=qsin:c2=qsin[${output}]`);
     } else if (currentEntry.settings.gapAfter > 0) {
-      filters.push(`anullsrc=r=48000:cl=stereo,atrim=duration=${seconds(currentEntry.settings.gapAfter)}[gap${index}]`);
+      filters.push(`anullsrc=r=${sampleRate}:cl=stereo,atrim=duration=${seconds(currentEntry.settings.gapAfter)}[gap${index}]`);
       filters.push(`[${current}][gap${index}][t${index + 1}]concat=n=3:v=0:a=1[${output}]`);
     } else {
       filters.push(`[${current}][t${index + 1}]concat=n=2:v=0:a=1[${output}]`);
@@ -342,12 +381,48 @@ export const buildRenderGraph = (entries, { singleTrack = false, masterBus = {},
     current = output;
   }
   const activePath = normalizeMasteringPath(masteringPath);
-  const master = activePath === "advanced" ? buildAdvancedMasteringFilters(advancedMastering) : buildMasterBusFilters(masterBus);
+  const masteringPrintPlan = assertMasteringPrintPlan(createMasteringPrintPlan({ masterBus, masteringPath: activePath, advancedMastering }));
+  const master = activePath === "advanced" ? buildAdvancedMasteringFilters(advancedMastering, sampleRate) : buildMasterBusFilters(masterBus);
   if (master.filters.length) {
     filters.push(`[${current}]${master.filters.join(",")}[mastered]`);
     current = "mastered";
   }
-  return { filterComplex: filters.join(";"), outputLabel: current, normalized, masteringPath: activePath, masterBus: normalizeMasterBus(masterBus), advancedMastering: normalizeAdvancedMastering(advancedMastering) };
+  return { filterComplex: filters.join(";"), outputLabel: current, normalized, masteringPath: activePath, masterBus: normalizeMasterBus(masterBus), advancedMastering: normalizeAdvancedMastering(advancedMastering), masteringPrintPlan };
+};
+
+export const createIndividualTrackSegments = (timeline) => timeline.map((entry, index) => {
+  const previous = timeline[index - 1];
+  const next = timeline[index + 1];
+  const programStart = !previous
+    ? 0
+    : previous.overlap > 0
+      ? entry.outputStart + previous.overlap / 2
+      : entry.outputStart;
+  const programEnd = !next
+    ? entry.outputEnd
+    : entry.overlap > 0
+      ? next.outputStart + entry.overlap / 2
+      : next.outputStart;
+  return {
+    ...entry,
+    trackNumber: index + 1,
+    programStart,
+    programEnd,
+    fileDuration: Math.max(0.05, programEnd - programStart),
+    startsInsideCrossfade: Boolean(previous?.overlap),
+    endsInsideCrossfade: Boolean(entry.overlap),
+  };
+});
+
+const buildIndividualTrackOutputGraph = (graph, segments) => {
+  const branches = [];
+  const inputs = segments.map((_, index) => `delivery_track_input_${index}`);
+  if (segments.length === 1) branches.push(`[${graph.outputLabel}]anull[${inputs[0]}]`);
+  else branches.push(`[${graph.outputLabel}]asplit=${segments.length}${inputs.map((label) => `[${label}]`).join("")}`);
+  for (const [index, segment] of segments.entries()) {
+    branches.push(`[${inputs[index]}]atrim=start=${seconds(segment.programStart)}:end=${seconds(segment.programEnd)},asetpts=PTS-STARTPTS[delivery_track_${index}]`);
+  }
+  return `${graph.filterComplex};${branches.join(";")}`;
 };
 
 const formatCueTime = (time) => {
@@ -356,18 +431,26 @@ const formatCueTime = (time) => {
   return `${minutes.toString().padStart(2, "0")}:${remainder.toFixed(3).padStart(6, "0")}`;
 };
 
-const createCueSheet = ({ album, timeline, masteringPath, masterBus, advancedMastering, audioName, format, createdAt, warnings }) => {
+const createCueSheet = ({ album, timeline, masteringPath, masterBus, masteringPrintPlan, audioName, audioFiles = [], audioSettings, createdAt, warnings }) => {
   const masterSummary = masteringPath === "advanced"
-    ? advancedMastering.bypass
-      ? "Premium rack bypassed"
-      : `Premium rack: ${advancedMastering.nodes.map((node) => `${processorDefinition(node.typeId)?.name || node.typeId}${node.bypass ? " (bypassed)" : ""}`).join(" → ") || "direct input to output"}`
+    ? masteringPrintPlan.summary
     : masterBus.bypass ? "bypassed" : `EQ ${masterBus.eq.enabled ? "on" : "off"} · compressor ${masterBus.compressor.enabled ? "on" : "off"} · output ${formatDb(masterBus.outputGainDb)} · limiter ${masterBus.limiter.enabled ? `${masterBus.limiter.ceilingDbfs} dBFS` : "off"}`;
   const lines = [
     `${album.artist} — ${album.title}`,
     `Rendered: ${createdAt}`,
     `Audio: ${audioName}`,
-    `Format: ${format === "wav" ? "WAV · 24-bit PCM · 48 kHz" : "MP3 · 320 kbps · 48 kHz"}`,
+    `Format: ${audioExportSummary(audioSettings)}`,
     `${masteringPath === "advanced" ? "MASTER path" : "MASTER bus"}: ${masterSummary}`,
+    ...(masteringPath === "advanced" && masteringPrintPlan.inactiveProcessors.length
+      ? [`Rack out of circuit: ${masteringPrintPlan.inactiveProcessors.map((processor) => `${processor.label} (${processor.reason})`).join(" · ")}`]
+      : []),
+    ...(audioFiles.length
+      ? [
+        "",
+        "DELIVERY FILES",
+        ...audioFiles.map((file) => `${String(file.trackNumber).padStart(2, "0")}. ${file.audioName} · program ${formatCueTime(file.programStart)} → ${formatCueTime(file.programEnd)}`),
+      ]
+      : []),
     "",
     "PROGRAM CUES",
   ];
@@ -410,13 +493,19 @@ export const buildPreviewEntries = (entries, selectedIndex, previewPart) => {
   return [previewSelected, { ...next, mastering: { ...next.mastering, trimStart: nextSettings.trimStart, trimEnd: nextPreviewEnd, fadeIn: nextSettings.fadeIn } }];
 };
 
-export const renderAudio = async ({ album, scope, trackId, candidateId = "", format, previewPart = "end", deliveryProfileId = "", getLibraryFile, outputRoot, signal, timeoutMs, onProgress = () => {} }) => {
+export const renderAudio = async ({ album, scope, trackId, candidateId = "", format, sampleRate, bitDepth, bitrateKbps, previewPart = "end", deliveryProfileId = "", getLibraryFile, outputRoot, signal, timeoutMs, onProgress = () => {} }) => {
   throwIfCancelled(signal);
   if (!album?.id || !Array.isArray(album.tracks)) throw new Error("Choose a valid album to render.");
   if (!RENDER_SCOPES.has(scope)) throw new Error("Choose a valid render scope.");
-  if (!AUDIO_FORMATS.has(format)) throw new Error("Choose WAV or MP3 output.");
   if (scope === "preview" && !PREVIEW_PARTS.has(previewPart)) throw new Error("Choose a valid preview type.");
-  const delivery = validateDeliveryRequest({ profileId: deliveryProfileId, format, scope });
+  const previewDerivative = ["preview", "comparison"].includes(scope);
+  const resolvedAudio = resolveAudioExportSettings(previewDerivative
+    ? { format: "mp3", sampleRate: 48_000, bitrateKbps: 192 }
+    : { format, sampleRate, bitDepth, bitrateKbps });
+  if (!resolvedAudio.ok) throw new Error(resolvedAudio.issues.join(" "));
+  const audioSettings = resolvedAudio.settings;
+  const renderFormat = audioSettings.format;
+  const delivery = validateDeliveryRequest({ profileId: deliveryProfileId, scope });
   if (!delivery.ok) throw new Error(delivery.issues.join(" "));
 
   const sequence = album.tracks.filter((track) => track.inSequence !== false);
@@ -431,10 +520,11 @@ export const renderAudio = async ({ album, scope, trackId, candidateId = "", for
     : null;
   if (scope === "comparison" && !comparisonEntry) throw new Error("Choose an indexed comparison candidate.");
   if (!playable.length && scope !== "comparison") throw new Error("This album has no playable sequenced tracks.");
+  if (scope === "tracks" && missing.length) throw new Error(`Every sequenced track needs an indexed audition source before separate tracks can be printed. Missing: ${missing.join(", ")}.`);
 
   const selectedIndex = playable.findIndex((entry) => entry.track.id === trackId);
   let entries;
-  if (scope === "album") entries = playable;
+  if (["album", "tracks"].includes(scope)) entries = playable;
   else if (scope === "preview") entries = buildPreviewEntries(playable, selectedIndex, previewPart);
   else if (scope === "comparison") entries = [comparisonEntry];
   else {
@@ -442,58 +532,108 @@ export const renderAudio = async ({ album, scope, trackId, candidateId = "", for
     entries = [playable[selectedIndex]];
   }
 
-  const previewDerivative = ["preview", "comparison"].includes(scope);
-  const renderFormat = previewDerivative ? "mp3" : format;
-  const singleTrack = entries.length === 1;
-  const graph = buildRenderGraph(entries, { singleTrack, masterBus: album.masterBus, masteringPath: album.masteringPath, advancedMastering: album.advancedMastering });
+  const singleTrack = scope !== "tracks" && entries.length === 1;
+  const graph = buildRenderGraph(entries, { singleTrack, masterBus: album.masterBus, masteringPath: album.masteringPath, advancedMastering: album.advancedMastering, sampleRate: audioSettings.sampleRate });
   const timeline = calculateProgramTimeline(entries);
+  const individualTrackSegments = scope === "tracks" ? createIndividualTrackSegments(timeline) : [];
   const expectedDuration = timeline.at(-1)?.outputEnd || 0;
   const createdAt = new Date().toISOString();
   const id = randomUUID();
   const day = createdAt.slice(0, 10);
   const time = createdAt.slice(11, 19).replaceAll(":", "");
   const previewName = previewPart === "start" ? "start" : previewPart === "transition" ? "transition" : "ending";
-  const scopeName = scope === "album" ? "album-program" : scope === "track" ? slugify(entries[0].track.title) : scope === "comparison" ? "matched-comparison-preview" : `${previewName}-preview`;
+  const scopeName = scope === "album" ? "album-program" : scope === "tracks" ? "numbered-tracks" : scope === "track" ? slugify(entries[0].track.title) : scope === "comparison" ? "matched-comparison-preview" : `${previewName}-preview`;
   const directory = previewDerivative
     ? path.join(outputRoot, ".previews", id)
     : path.join(outputRoot, day, `${slugify(album.title)}-${scopeName}-${time}-${id.slice(0, 6)}`);
   onProgress(5, "preparing");
   await mkdir(directory, { recursive: true });
-  const audioName = `${slugify(album.artist)}-${slugify(album.title)}-${scopeName}.${renderFormat}`;
-  const audioPath = path.join(directory, audioName);
-  const temporaryPath = path.join(directory, `${path.basename(audioName, `.${renderFormat}`)}.part.${renderFormat}`);
+  const audioName = scope === "tracks"
+    ? `${individualTrackSegments.length} numbered ${renderFormat.toUpperCase()} track files`
+    : `${slugify(album.artist)}-${slugify(album.title)}-${scopeName}.${renderFormat}`;
+  const individualAudioFiles = individualTrackSegments.map((segment) => {
+    const fileName = numberedTrackFilename({ trackNumber: segment.trackNumber, totalTracks: individualTrackSegments.length, title: segment.track.title, format: renderFormat });
+    return {
+      trackId: segment.track.id,
+      trackNumber: segment.trackNumber,
+      title: segment.track.title,
+      audioName: fileName,
+      audioPath: path.join(directory, fileName),
+      temporaryPath: path.join(directory, `${path.basename(fileName, `.${renderFormat}`)}.part.${renderFormat}`),
+      programStart: segment.programStart,
+      programEnd: segment.programEnd,
+      duration: segment.fileDuration,
+      startsInsideCrossfade: segment.startsInsideCrossfade,
+      endsInsideCrossfade: segment.endsInsideCrossfade,
+    };
+  });
+  const audioPath = scope === "tracks" ? individualAudioFiles[0].audioPath : path.join(directory, audioName);
+  const temporaryPath = scope === "tracks" ? individualAudioFiles[0].temporaryPath : path.join(directory, `${path.basename(audioName, `.${renderFormat}`)}.part.${renderFormat}`);
 
   try {
     const argumentsList = ["-hide_banner", "-loglevel", "error", "-y"];
     entries.forEach((entry) => argumentsList.push("-i", entry.file.absolutePath));
-    const filterComplex = scope === "comparison"
+    const filterComplex = scope === "tracks"
+      ? buildIndividualTrackOutputGraph(graph, individualTrackSegments)
+      : scope === "comparison"
       ? `${graph.filterComplex};[${graph.outputLabel}]loudnorm=I=-18:TP=-2:LRA=11[matched]`
       : graph.filterComplex;
     const outputLabel = scope === "comparison" ? "matched" : graph.outputLabel;
-    argumentsList.push("-filter_complex", filterComplex, "-map", `[${outputLabel}]`, "-vn");
-    if (renderFormat === "wav") argumentsList.push("-c:a", "pcm_s24le", "-ar", "48000");
-    else argumentsList.push("-c:a", "libmp3lame", "-b:a", previewDerivative ? "192k" : "320k", "-ar", "48000", "-id3v2_version", "3");
-    argumentsList.push("-metadata", `artist=${album.artist}`, "-metadata", `album=${album.title}`, "-metadata", `title=${scope === "album" ? `${album.title} — Album Program` : entries[0].track.title}`, temporaryPath);
+    argumentsList.push("-filter_complex", filterComplex);
+    const appendAudioOutput = ({ label, title, trackNumber = 0, totalTracks = 0, filePath }) => {
+      argumentsList.push("-map", `[${label}]`, "-vn");
+      argumentsList.push(...audioEncodingArguments(audioSettings));
+      argumentsList.push("-metadata", `artist=${album.artist}`, "-metadata", `album=${album.title}`, "-metadata", `title=${title}`);
+      if (trackNumber > 0) argumentsList.push("-metadata", `track=${trackNumber}/${totalTracks}`);
+      argumentsList.push(filePath);
+    };
+    if (scope === "tracks") {
+      individualAudioFiles.forEach((file, index) => appendAudioOutput({
+        label: `delivery_track_${index}`,
+        title: file.title,
+        trackNumber: file.trackNumber,
+        totalTracks: individualAudioFiles.length,
+        filePath: file.temporaryPath,
+      }));
+    } else {
+      appendAudioOutput({
+        label: outputLabel,
+        title: scope === "album" ? `${album.title} — Album Program` : entries[0].track.title,
+        filePath: temporaryPath,
+      });
+    }
     onProgress(10, "rendering");
-    await runFfmpeg(argumentsList, { signal, timeoutMs, expectedDuration, onProgress });
+    const renderExpectedDuration = scope === "tracks" ? Math.max(...individualAudioFiles.map((file) => file.duration)) : expectedDuration;
+    await runFfmpeg(argumentsList, { signal, timeoutMs, expectedDuration: renderExpectedDuration, onProgress });
     throwIfCancelled(signal);
-    await rename(temporaryPath, audioPath);
+    if (scope === "tracks") await Promise.all(individualAudioFiles.map((file) => rename(file.temporaryPath, file.audioPath)));
+    else await rename(temporaryPath, audioPath);
     onProgress(92, "documenting");
 
-    const warnings = missing.length && scope === "album" ? [`Skipped missing audio: ${missing.join(", ")}.`] : [];
+    const warnings = [
+      ...(missing.length && scope === "album" ? [`Skipped missing audio: ${missing.join(", ")}.`] : []),
+      ...(scope === "tracks" && timeline.some((entry) => entry.overlap > 0)
+        ? ["Crossfades were divided at their midpoint so playing the numbered files gaplessly rebuilds the continuous mastered program."]
+        : []),
+    ];
+    const completedAudioFiles = scope === "tracks"
+      ? await Promise.all(individualAudioFiles.map(async (file) => ({ ...file, size: (await stat(file.audioPath)).size })))
+      : [];
     let cuePath = "";
     let manifestPath = "";
     if (!previewDerivative) {
-      cuePath = path.join(directory, `${path.basename(audioName, `.${renderFormat}`)}-cue-sheet.txt`);
-      manifestPath = path.join(directory, `${path.basename(audioName, `.${renderFormat}`)}-render-manifest.json`);
-      await writeFile(cuePath, createCueSheet({ album, timeline, masteringPath: graph.masteringPath, masterBus: graph.masterBus, advancedMastering: graph.advancedMastering, audioName, format: renderFormat, createdAt, warnings }));
+      const documentationBaseName = scope === "tracks" ? `${slugify(album.artist)}-${slugify(album.title)}-numbered-tracks` : path.basename(audioName, `.${renderFormat}`);
+      cuePath = path.join(directory, `${documentationBaseName}-cue-sheet.txt`);
+      manifestPath = path.join(directory, `${documentationBaseName}-render-manifest.json`);
+      await writeFile(cuePath, createCueSheet({ album, timeline, masteringPath: graph.masteringPath, masterBus: graph.masterBus, masteringPrintPlan: graph.masteringPrintPlan, audioName, audioFiles: completedAudioFiles, audioSettings, createdAt, warnings }));
       await writeFile(manifestPath, `${JSON.stringify({
-        schemaVersion: 3,
+        schemaVersion: 5,
         renderId: id,
         createdAt,
         album: { id: album.id, artist: album.artist, title: album.title },
         scope,
         format: renderFormat,
+        audioSettings,
         delivery: {
           profileId: delivery.profile?.id || "",
           profileName: delivery.profile?.name || "Unprofiled print",
@@ -501,14 +641,33 @@ export const renderAudio = async ({ album, scope, trackId, candidateId = "", for
           masterApproved: Boolean(album.delivery?.masterApproved),
           readyToPublish: Boolean(album.delivery?.readyToPublish),
         },
-        audioFile: audioName,
+        audioFile: scope === "tracks" ? completedAudioFiles[0].audioName : audioName,
+        ...(scope === "tracks" ? {
+          displayName: audioName,
+          audioFiles: completedAudioFiles.map((file) => ({
+            trackId: file.trackId,
+            trackNumber: file.trackNumber,
+            title: file.title,
+            fileName: file.audioName,
+            size: file.size,
+            programStart: file.programStart,
+            programEnd: file.programEnd,
+            duration: file.duration,
+            startsInsideCrossfade: file.startsInsideCrossfade,
+            endsInsideCrossfade: file.endsInsideCrossfade,
+          })),
+          boundaryPolicy: "crossfade-midpoint",
+        } : {}),
         warnings,
         masterBus: graph.masterBus,
         masteringPath: graph.masteringPath,
+        masteringPrintPlan: graph.masteringPrintPlan,
         advancedMastering: graph.advancedMastering,
-        tracks: timeline.map((entry) => ({
+        tracks: timeline.map((entry, index) => ({
           id: entry.track.id,
           title: entry.track.title,
+          trackNumber: index + 1,
+          ...(scope === "tracks" ? { audioFile: completedAudioFiles[index].audioName } : {}),
           candidateId: entry.candidate.id,
           sourceRef: entry.candidate.sourceRef,
           trimStart: entry.settings.trimStart,
@@ -524,9 +683,9 @@ export const renderAudio = async ({ album, scope, trackId, candidateId = "", for
       }, null, 2)}\n`);
     }
     throwIfCancelled(signal);
-    const fileStat = await stat(audioPath);
+    const fileStat = scope === "tracks" ? { size: completedAudioFiles.reduce((total, file) => total + file.size, 0) } : await stat(audioPath);
     onProgress(100, "completed");
-    return { id, scope, format: renderFormat, audioPath, cuePath, manifestPath, outputDirectory: directory, audioName, size: fileStat.size, warnings, createdAt, derivativeLabel: scope === "comparison" ? "Loudness-matched preview derivative" : "" };
+    return { id, scope, format: renderFormat, audioSettings, audioPath, audioFiles: completedAudioFiles, cuePath, manifestPath, outputDirectory: directory, audioName, size: fileStat.size, warnings, createdAt, derivativeLabel: scope === "comparison" ? "Loudness-matched preview derivative" : "", masteringPrintPlan: graph.masteringPrintPlan };
   } catch (error) {
     await rm(directory, { recursive: true, force: true });
     throw error;

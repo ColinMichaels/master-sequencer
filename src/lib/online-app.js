@@ -703,6 +703,17 @@ export const createOnlineAppApi = ({ storage, sourcePicker = pickBrowserAudioSou
     return libraryPayload();
   },
   libraryStatus: async () => libraryPayload(),
+  visualLibrary: async () => ({
+    capability: "local-only",
+    items: [],
+    roots: [],
+    scan: null,
+    scanning: false,
+    message: "The Video & Graphics Library uses configured local folders. Open this project in the local Project Sequencer app to index and preview visual media.",
+  }),
+  rescanVisualLibrary: onlineCapabilityError,
+  updateVisualMetadata: onlineCapabilityError,
+  revealVisualMedia: onlineCapabilityError,
   portableBundle: onlineCapabilityError,
   registerSource: onlineCapabilityError,
   chooseSources,
@@ -726,6 +737,7 @@ export const createOnlineAppApi = ({ storage, sourcePicker = pickBrowserAudioSou
   removeSource: removeBrowserSource,
   removeRoot: removeBrowserSource,
   mediaUrl,
+  visualMediaUrl: () => "",
   assetUrl: () => "",
   };
 };

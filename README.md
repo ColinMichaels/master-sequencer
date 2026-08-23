@@ -90,19 +90,37 @@ Free web / Pro native boundary, current limitations, and packaging roadmap.
   precision limiting. Any plug-in can be inserted, duplicated, bypassed, removed, and
   drag-repatched in any serial order; the same saved order drives live audition
   and the documented FFmpeg print;
-  preview edited starts and endings; then print a selected track or
-  continuous album program as 24-bit/48 kHz WAV or 320 kbps MP3. Run optional
+  preview edited starts and endings; then print a selected track, a continuous
+  album program, or correctly numbered `01 - Track Name` individual files as
+  WAV, AIFF, FLAC, MP3, or M4A/AAC. Every documented export scope exposes
+  format-aware sample-rate and quality controls: PCM/lossless files choose bit
+  depth, while MP3 and M4A choose bitrate. Numbered-track prints apply trims, fades,
+  track levels, and the active Basic/Premium MASTER path to the continuous
+  program before splitting it at documented track boundaries. Run optional
   rebuildable true-peak, loudness, DC-offset, and silence analysis; navigate a
   chaptered trim preview without reprinting the full program; validate prints
   against delivery profiles while recording master approval and publish
   readiness separately; and compare or reveal documented render history without
   deleting derivatives.
-- **Assets:** attach album artwork and track-specific visual references, choose
-  an album cover, and associate both Suno prompt lyrics and clean DistroKid
-  lyrics with the exact audio candidate they describe.
-- **Audio Library:** search every discovered source, filter by root/format/use,
-  save and restore indexed searches/facets, preview files, add a file as a
-  candidate, or create a new track from it. Incremental rescan status shows
+- **Native plug-in boundary:** metadata-only VST3 discovery and explicit
+  one-bundle disposable factory validation are available as native development
+  tools. Even a successful factory report remains runtime-blocked: installed
+  VST3 instances, parameters, editors, audio processing, and rack/print use are
+  not enabled.
+- **Assets:** switch between the existing Project Assets mode and a native
+  Video & Graphics Library without adding another primary workspace. Project
+  Assets keeps album artwork, track visuals, cover selection, and candidate
+  lyric attachments. The visual library searches indexed videos and images,
+  previews originals in place, edits separate descriptive metadata, and
+  attaches safe references to the active album or selected track without
+  copying media.
+- **Audio Library:** relevance-search every discovered source by filename,
+  path, album, or track relationship; partial terms, reordered words, and small
+  typos remain useful matches. The working query and accessible resizable
+  column widths stay on this device when switching workspaces, while named
+  saved searches/facets remain explicit portable project records. The table
+  lists Album separately from Used By, and files can still be previewed, added
+  as candidates, or used to create new tracks. Incremental rescan status shows
   reused versus reprobed metadata and explicitly reports offline/reconnected
   roots.
 - **Settings:** click a file-path or folder-path control to open the native
@@ -170,12 +188,19 @@ definition version so included processors and future user-owned VST3/AU
 instances share one add/remove/reorder/bypass contract. Unresolved external
 instances remain visible, state-preserved, unavailable, and bypassed. Premium
 limiter prints can run at 1x, 2x, 4x, or 8x sample rate before
-returning to 48 kHz; the UI explicitly identifies the live device-rate audition
+returning to the selected export rate; the UI explicitly identifies the live device-rate audition
 and final print distinction. Stereo, mono-sum, Mid-only, Side-only, vectorscope,
 and correlation monitoring are audition-only and never enter a print. External
 VST3/AU execution is not simulated: the rack reserves a visible ownership-aware
-native-host boundary, and actual third-party binaries remain blocked until the
-isolated signed desktop companion is implemented.
+native-host boundary. A read-only Swift scanner now discovers standard or
+explicitly approved VST3 roots and can parse optional path-free module metadata,
+but it never loads plug-in code. A separate explicit disposable worker can
+validate module/factory identity with signature, architecture, timeout, and
+crash gates. A generated-fixture-only instance lab also proves bounded
+parameter/state/latency/tail and fixed zero-input offline lifecycle behavior.
+Both success states remain runtime-blocked. Actual third-party compatibility
+and rack execution remain blocked until the explicit compatibility matrix and
+isolated signed desktop runtime companion are implemented.
 
 The functional controls for the seven new spatial, color, repair, ambience,
 transient, and creative processors are complete. Their planned analog-style
@@ -243,6 +268,62 @@ filesystem watching can be enabled with `"watchAudioRoots": true` in the ignored
 local configuration. It is off in the portable default; manual rescans remain
 available, and disconnected roots report Offline or Reconnected explicitly.
 
+## Configure visual-media paths
+
+Add machine-specific visual collections to the same ignored
+`config/sequencer.local.json` file. Absolute paths must never be placed in the
+tracked `config/sequencer.config.json` default:
+
+```json
+{
+  "visualRoots": [
+    {
+      "id": "promotional-media",
+      "label": "Promotional Media",
+      "path": "/absolute/path/to/visuals",
+      "mediaTypes": ["video", "image"]
+    }
+  ]
+}
+```
+
+The platform-delimited `PROJECT_SEQUENCER_VISUAL_PATHS` environment variable
+can supply additional read-only roots for a local session. The scanner accepts
+MP4, MOV, M4V, WebM, PNG, JPG/JPEG, and WebP. It skips hidden and dependency or
+generated-internal directories by default, never follows symlinked directories,
+and serves a file only after that exact root-relative file has entered the
+current index.
+
+`ffprobe` supplies dimensions, video duration, video/audio codecs, container,
+bitrate, frame rate, pixel format, channels, sample rate, and size. The scanner
+also records filesystem creation and modification timestamps and preserves the
+first time each file was added to the local visual index. Those technical
+values are rebuildable; **Added**, **Created**, and **Modified** remain distinct
+in the interface. The media table starts with Added and Modified visible, offers
+the other indexed fields through its Columns menu, and saves that column choice
+as a versioned device-only display preference. The ignored index cache is
+published atomically; malformed cache JSON is discarded and rebuilt. Because
+**Added** belongs to that rebuildable cache, deleting or repairing the cache
+starts first-index tracking again without affecting the source or editable
+metadata. Display title,
+album/track relationship, format, platform, readiness, collection,
+member/subject tags, freeform tags, and notes are user metadata kept in a
+separate ignored store so a rescan cannot replace the edits. Attach to Album or
+Attach to Track writes only the existing configured-root/relative-path asset
+reference plus an opaque visual index key; it never copies media and portable
+exports reject or strip machine-local path fields.
+
+Visual roots are a current-local capability. A missing or disconnected root is
+reported by the local inventory and can be retried with **Rescan** after the
+folder is available again. The hosted build does not claim access, request an
+upload, or simulate local files; it shows an explicit local-only state. A
+future browser-handle implementation must expose a visible permission/reconnect
+gesture and may not upload device media automatically.
+
+This feature is a catalog, preview, metadata, and attachment surface. It is not
+a nonlinear editor, graphics editor, publisher, uploader, or replacement for a
+dedicated video-production application.
+
 ## Local data
 
 | File | Purpose |
@@ -253,6 +334,8 @@ available, and disconnected roots report Offline or Reconnected explicitly.
 | `data/sequencer-projects.json` | Ignored saved-project index and active-project pointer |
 | `data/projects/*.json` | Ignored per-project snapshots used for switching and recovery |
 | `data/audio-index-cache.json` | Ignored, rebuildable `ffprobe` cache |
+| `data/visual-index-cache.json` | Ignored, rebuildable visual `ffprobe` cache |
+| `data/visual-library-metadata.json` | Ignored user-edited visual titles, relationships, tags, and notes |
 | `config/sequencer.config.json` | Portable server and scanner defaults |
 | `config/sequencer.local.json` | Ignored machine-specific file and folder paths |
 | `exports/YYYY-MM-DD/` | Ignored rendered audio, cue sheets, and manifests |
@@ -269,7 +352,11 @@ previews and lyric files are served only from those configured local folders.
 Timing and fade settings are instructions stored on the track record. Audio
 printing reads the indexed source and creates a new derivative under
 `exports/YYYY-MM-DD/`; it never rewrites the source. Every non-preview print
-includes a text cue sheet and JSON render manifest beside the WAV or MP3.
+includes a text cue sheet and JSON render manifest beside the WAV, AIFF, FLAC,
+MP3, or M4A file.
+Separate-track prints create one sequence-numbered file per playable song,
+embed artist/album/title/track metadata, fail if any sequenced source is
+missing, and remain discoverable as one documented render after restart.
 Prints run as cancellable jobs with visible phase and progress, a bounded
 process timeout, and cleanup of incomplete files. Completed manifests are
 rediscovered after restart so documented results remain available. If current
