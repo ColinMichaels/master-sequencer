@@ -15,6 +15,7 @@ Local Node server (127.0.0.1)
   |                              |-> ignored last-known-good snapshot
   |                              `-> ignored saved-project index + data/projects/*.json
   |-- configuration store -----> ignored config/sequencer.local.json
+  |                              `-> audio, lyric, and visual root registrations
   |-- audio index -------------> ignored data/audio-index-cache.json
   |   `-- optional watcher ----> debounced incremental metadata rescans
   |-- range media service -----> already-indexed source audio (read-only)
@@ -24,6 +25,7 @@ Local Node server (127.0.0.1)
   |-- waveform service --------> compact in-memory peak arrays
   |-- analysis service --------> compact rebuildable mastering measurements
   |-- project asset service ---> configured-root images and lyric text (read-only)
+  |                              `-> bounded lyric-folder discovery and portable refs
   |-- render-job service ------> bounded FFmpeg queue and result discovery
   `-- audio renderer ----------> ignored exports/YYYY-MM-DD derivatives
 ```
@@ -41,7 +43,7 @@ profiles under development:
 | Profile | UI | Project documents | Media and processing |
 | --- | --- | --- | --- |
 | Current local web app | React in a browser | Ignored local JSON through Node | Indexed local sources, Web Audio audition, FFmpeg print |
-| Free hosted web | Same React workspace | Planned account/cloud documents plus local recovery | Browser-approved local files, Web Audio/AudioWorklet, no audio upload by default |
+| Free hosted web | Same React workspace | Device-local browser documents now; account/cloud documents remain planned | Browser-approved local files, Web Audio/AudioWorklet, no audio upload by default |
 | Pro native POC | Same built React workspace in Electron | OS application-data JSON now; account sync later | Embedded loopback Node engine, persistent local paths, system FFmpeg now, shared/native DSP later |
 
 ### Single frontend rule
@@ -83,7 +85,8 @@ Every feature must preserve these rules:
 7. Waveform analysis returns compact peak data, keeps its cache in memory, and
    never writes a sidecar beside audio.
 8. Machine-specific source paths belong only in ignored local configuration or
-   `PROJECT_SEQUENCER_AUDIO_PATHS` / `PROJECT_SEQUENCER_VISUAL_PATHS`.
+   `PROJECT_SEQUENCER_AUDIO_PATHS` / `PROJECT_SEQUENCER_LYRICS_PATHS` /
+   `PROJECT_SEQUENCER_VISUAL_PATHS`.
 9. Sequence versions snapshot track IDs and membership only. Transition A/B
    variants and loudness-matched comparisons are preview instructions; they do
    not mutate track mastering or source-choice authority.
@@ -100,6 +103,9 @@ Every feature must preserve these rules:
     creation/modification times and `ffprobe` technical fields describe the
     current source. A rescan cannot replace titles, project relationships,
     tags, or notes; neither store grants publication authority.
+14. Linked-tab playback is project-scoped and same-origin. One tab owns audio;
+    followers receive only bounded display/transport state and never receive a
+    source key, path, URL, media object, browser handle, or audio byte.
 
 ## Server modules
 
@@ -121,7 +127,7 @@ Every feature must preserve these rules:
 | `server/technical-analysis.mjs` | Run optional bounded FFmpeg loudness/peak/DC/silence analysis and cache compact rebuildable measurements |
 | `server/render-job-service.mjs` | Queue one bounded render at a time, report progress, cancel work, clean partials, and discover completed results after restart |
 | `server/audio-renderer.mjs` | Normalize edit instructions, build FFmpeg graphs, enforce timeout/cancellation, and atomically publish documented derivatives |
-| `server/project-assets.mjs` | Convert selected images/lyrics into safe configured-root references |
+| `server/project-assets.mjs` | Convert selected images/lyrics into safe configured-root references and scan bounded lyric folders without reading contents or following symlinks |
 | `server/native-picker.mjs` | Register paths selected by the native macOS picker without copying files |
 | `server/tool-paths.mjs` | Resolve injected FFmpeg/ffprobe executables for local and packaged runtimes |
 | `server/shared-dsp-host.mjs` | Node adapter for the versioned shared-DSP portability prototype |
@@ -140,6 +146,8 @@ baseline order references before disk state changes.
 | `src/App.jsx` | Compose workspaces, defer secondary workspace chunks, and coordinate cross-workspace actions |
 | `src/hooks/useProjectData.js` | Bootstrap state/library data, serialize autosaves, rescan sources, and manage imports |
 | `src/hooks/useTransport.js` | Preview sources, queue playback, route live MASTER audio, suspend idle processing, expose transport state, and recover from media errors |
+| `src/hooks/useLinkedTransport.js` | Coordinate one audio owner and display-only followers across same-project browser tabs without changing the audio graph |
+| `src/hooks/useFullscreen.js` | Mirror the browser Fullscreen API and expose a user-gesture-safe toggle |
 | `src/hooks/useAppearance.js` | Resolve and apply persisted display preferences |
 | `src/components/*Workspace.jsx` | Own one user workflow and its local interaction state |
 | `src/components/VisualMediaLibrary.jsx` | Search, filter, preview, choose saved metadata columns, classify, and attach indexed visual media inside the Assets workspace |
@@ -165,8 +173,8 @@ baseline order references before disk state changes.
 - The Columns menu stores only validated column IDs under the versioned
   `project-sequencer.visual-library.columns.v1` device preference. Preview and
   Title are required. The preference never enters project state or cloud data.
-- The 857-item local library remains a normal DOM list so the complete listbox
-  relationship stays available to browser find and assistive technology. Rows
+- The previously validated 857-item local catalog remains a normal DOM list so
+  the complete listbox relationship stays available to browser find and assistive technology. Rows
   are memoized, offscreen row layout/paint is skipped with
   `content-visibility: auto`, text search uses a deferred query, track-title
   lookups use one album map, and shared date formatters are created once per
@@ -192,6 +200,19 @@ baseline order references before disk state changes.
 - Every desktop column exposes a pointer and keyboard separator. At compact
   breakpoints the table keeps File, Album, Time, and Play visible and removes
   the resize affordances rather than applying desktop pixel widths to a phone.
+
+### Lyric-folder matching boundaries
+
+- Selecting a folder registers only a machine-local root when the folder is not
+  already covered by an audio root. Portable defaults and project state never
+  receive the absolute folder path.
+- Folder discovery accepts only `.md` and `.txt`, skips hidden entries and
+  symlinks, caps the scan at 2,000 supported files, and creates configured-root
+  references without reading lyric contents.
+- Client matching uses exact normalized title equality. DistroKid and clean-
+  lyric markers choose the clean slot; all other exact matches choose the
+  prompt/working slot. Ambiguous titles, duplicate files, missing candidates,
+  protected-title mismatches, and occupied slots fail safe for manual review.
 
 Autosave uses a short debounce for editing comfort, then puts each snapshot on a
 single promise chain. A later save cannot be overtaken by an earlier request.
@@ -228,6 +249,13 @@ their midpoint so concatenating the files gaplessly reconstructs the mastered
 program. Render-manifest schema 5 records the format, sample rate, bit depth or
 bitrate, every file, title, track number, edit, boundary, and MASTER print plan.
 Indexed source paths remain read-only.
+
+`useLinkedTransport` wraps that transport rather than creating a second audio
+engine. A project-scoped `BroadcastChannel` elects the most recent playback
+initiator as owner; followers route play/pause, seek, and stop commands to that
+owner and mirror sanitized track/time state. Opening a linked tab is a visible
+user gesture. Closing or losing the owner releases the channel so another tab
+can take ownership by starting playback.
 
 Native video controls use the browser's direct media path and never enter the
 shared mastering graph. Starting a video stops the shared album transport;

@@ -76,10 +76,14 @@
 .header-stat-badge { position: absolute; top: 3px; right: 3px; display: grid; min-width: 17px; height: 17px; padding: 0 0.22rem; place-items: center; border: 1px solid var(--ink); border-radius: 999px; background: var(--lime); color: var(--ink); font-size: 0.54rem; font-weight: 950; line-height: 1; }
 .header-stat-button.is-warning .header-stat-badge { background: var(--orange); }
 .header-summary button[data-tooltip]::after { right: 0; left: auto; transform: none; }
-.screen-settings-shell { position: relative; width: 46px; justify-self: end; }
-.screen-settings-trigger { position: relative; display: grid; width: 46px; height: 46px; padding: 0; place-items: center; border: 1px solid var(--line-soft); background: transparent; color: var(--bone-muted); cursor: pointer; }
-.screen-settings-trigger:hover, .screen-settings-trigger.is-open { border-color: var(--lime); background: rgb(var(--lime-rgb) / 7%); color: var(--lime); }
+.screen-header-actions { display: grid; grid-template-columns: 46px 46px; justify-self: end; }
+.screen-settings-shell { position: relative; width: 46px; }
+.screen-settings-trigger, .screen-fullscreen-trigger { position: relative; display: grid; width: 46px; height: 46px; padding: 0; place-items: center; border: 1px solid var(--line-soft); background: transparent; color: var(--bone-muted); cursor: pointer; }
+.screen-settings-trigger { border-left: 0; }
+.screen-settings-trigger:hover, .screen-settings-trigger.is-open, .screen-fullscreen-trigger:hover, .screen-fullscreen-trigger.is-active { border-color: var(--lime); background: rgb(var(--lime-rgb) / 7%); color: var(--lime); }
+.screen-fullscreen-trigger:disabled { cursor: not-allowed; opacity: 0.42; }
 .screen-settings-trigger[data-tooltip]::after { right: 0; left: auto; transform: none; }
+.screen-fullscreen-trigger[data-tooltip]::after { right: auto; left: 50%; }
 .screen-settings-menu { position: absolute; z-index: 95; top: calc(100% + 0.55rem); right: 0; width: min(310px, calc(100vw - 1.8rem)); border: 1px solid var(--lime); background: var(--ink-raised); box-shadow: 0 18px 50px rgb(0 0 0 / 52%); }
 .screen-settings-menu > header { display: flex; min-height: 50px; align-items: center; justify-content: space-between; padding: 0.55rem 0.65rem; border-bottom: 1px solid var(--line); }
 .screen-settings-menu > header span, .screen-settings-text-size > span, .screen-settings-option > span { display: grid; min-width: 0; gap: 0.12rem; }

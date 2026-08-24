@@ -32,6 +32,13 @@ test("native lyric picker treats cancellation as a normal empty choice", async (
   assert.deepEqual(await chooseProjectAssetPaths({ kind: "lyrics", platform: "darwin", run }), []);
 });
 
+test("native lyrics-folder picker returns the selected folder without copying it", async () => {
+  const calls = [];
+  const run = async (...args) => { calls.push(args); return { stdout: "/Songs/Album 2/\n" }; };
+  assert.deepEqual(await chooseProjectAssetPaths({ kind: "lyrics-folder", platform: "darwin", run }), ["/Songs/Album 2/"]);
+  assert.match(calls[0][1][1], /choose folder/i);
+});
+
 test("Finder reveal receives only a server-resolved completed-render path", async () => {
   const calls = [];
   assert.deepEqual(await revealInFinder({ filePath: "/safe/exports/render.wav", platform: "darwin", run: async (...args) => { calls.push(args); } }), { revealed: true });

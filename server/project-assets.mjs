@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { realpath, stat } from "node:fs/promises";
+import { readdir, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 
 export const VISUAL_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".avif", ".svg"]);
@@ -52,4 +52,27 @@ export const createProjectAssetReferences = async ({ selectedPaths, roots, kind,
     });
   }
   return references;
+};
+
+export const scanProjectLyricFolder = async ({ folderPath, roots, maxFiles = 2_000, readDirectory = readdir }) => {
+  const selectedFolder = path.resolve(folderPath);
+  const details = await stat(selectedFolder);
+  if (!details.isDirectory()) throw invalidAsset("Choose a lyrics folder.");
+  const selectedFiles = [];
+  const pending = [selectedFolder];
+  while (pending.length) {
+    const current = pending.pop();
+    const entries = await readDirectory(current, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name.startsWith(".") || entry.isSymbolicLink()) continue;
+      const entryPath = path.join(current, entry.name);
+      if (entry.isDirectory()) pending.push(entryPath);
+      else if (entry.isFile() && LYRIC_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
+        selectedFiles.push(entryPath);
+        if (selectedFiles.length > maxFiles) throw invalidAsset(`Choose a lyrics folder with ${maxFiles.toLocaleString()} files or fewer.`);
+      }
+    }
+  }
+  selectedFiles.sort((left, right) => left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" }));
+  return createProjectAssetReferences({ selectedPaths: selectedFiles, roots, kind: "lyrics" });
 };

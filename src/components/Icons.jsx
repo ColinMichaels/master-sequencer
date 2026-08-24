@@ -37,6 +37,10 @@ export const GridIcon = (props) => <Icon {...props}><rect x="4" y="4" width="6" 
 export const FilterIcon = (props) => <Icon {...props}><path d="M4 6h16M7 12h10M10 18h4" stroke="currentColor" strokeWidth="1.8"/></Icon>;
 export const CopyIcon = (props) => <Icon {...props}><rect x="8" y="8" width="11" height="12" stroke="currentColor" strokeWidth="1.6"/><path d="M16 8V5H5v11h3" stroke="currentColor" strokeWidth="1.6"/></Icon>;
 export const ExternalLinkIcon = (props) => <Icon {...props}><path d="M14 4h6v6M20 4l-9 9" stroke="currentColor" strokeWidth="1.7"/><path d="M18 13v6H5V6h6" stroke="currentColor" strokeWidth="1.6"/></Icon>;
+export const FullscreenIcon = ({ active = false, ...props }) => active
+  ? <Icon {...props}><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" /></Icon>
+  : <Icon {...props}><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="square" /></Icon>;
+export const LinkedTabsIcon = (props) => <Icon {...props}><rect x="3" y="5" width="14" height="12" stroke="currentColor" strokeWidth="1.6"/><path d="M7 5V3h14v12h-4M6 9h3M11 9h3" stroke="currentColor" strokeWidth="1.6"/><path d="m8 20 2-2 2 2m0-2 2-2 2 2" stroke="currentColor" strokeWidth="1.5"/></Icon>;
 export const DocumentIcon = (props) => <Icon {...props}><path d="M6 3h8l4 4v14H6V3Z" stroke="currentColor" strokeWidth="1.6"/><path d="M14 3v5h5M9 12h6M9 16h6" stroke="currentColor" strokeWidth="1.5"/></Icon>;
 export const WarningIcon = (props) => <Icon {...props}><path d="M12 3 2.7 20h18.6L12 3Z" stroke="currentColor" strokeWidth="1.6" /><path d="M12 9v5m0 3v.2" stroke="currentColor" strokeWidth="1.8" /></Icon>;
 export const CheckIcon = (props) => <Icon {...props}><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.6" /><path d="m7.5 12 3 3 6-7" stroke="currentColor" strokeWidth="1.8" /></Icon>;

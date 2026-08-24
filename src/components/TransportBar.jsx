@@ -5,7 +5,7 @@ import { TransportWaveform } from "./TransportWaveform.jsx";
 
 const PLAYBACK_STYLE_HOLD_MS = 450;
 
-export function TransportBar({ playbackButtonRef, audioRefs, audioHandlers, activeDeck, current, status, activeAlbum, visual, playing, currentTime, mediaDuration, liveMasteringLabel, afterTrackMode, resetArmed, onTogglePlayback, onSeek, onPlaySequence, onAfterTrackModeChange, onResetOrder, onExport }) {
+export function TransportBar({ playbackButtonRef, audioRefs, audioHandlers, activeDeck, current, status, activeAlbum, visual, playing, currentTime, mediaDuration, liveMasteringLabel, linkedPlayback, afterTrackMode, resetArmed, onTogglePlayback, onSeek, onPlaySequence, onAfterTrackModeChange, onResetOrder, onExport }) {
   const [modeMenuOpen, setModeMenuOpen] = useState(false);
   const [holdingControl, setHoldingControl] = useState("");
   const holdTimerRef = useRef(null);
@@ -132,6 +132,7 @@ export function TransportBar({ playbackButtonRef, audioRefs, audioHandlers, acti
     <footer className="transport-bar" aria-keyshortcuts="ArrowUp ArrowDown">
       <div className="transport-copy">
         <strong>{current?.trackTitle || "Ready to audition"}</strong>
+        {linkedPlayback?.peerCount ? <small className={`transport-link-state is-${linkedPlayback.role}`}>{linkedPlayback.role === "owner" ? `Audio owner · ${linkedPlayback.peerCount} linked tab${linkedPlayback.peerCount === 1 ? "" : "s"}` : linkedPlayback.role === "follower" ? "Following audio from linked tab" : `${linkedPlayback.peerCount} linked tab${linkedPlayback.peerCount === 1 ? "" : "s"} ready`}</small> : null}
         <span className="sr-only" role="status" aria-live="polite" data-transport-status>{status}</span>
         <span className="sr-only">Up Arrow selects the previous playable track. Down Arrow selects the next playable track.</span>
         <span className="sr-only" id="playback-style-instructions">Hold this playback control, or press Down Arrow while it is focused, to choose the playback style used after each track.</span>

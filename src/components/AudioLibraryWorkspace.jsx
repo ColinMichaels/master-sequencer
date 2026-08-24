@@ -286,12 +286,6 @@ export function AudioLibraryWorkspace({ projectId = "", state, activeAlbum, libr
           <ul>{roots.map((root) => <li key={root.id}><span>{root.label}<small>{root.path}</small></span><div className="source-connection"><strong className={root.connected ? "is-connected" : "is-offline"}>{root.connectionState === "reconnected" ? "Reconnected" : root.connectionState === "permission-required" ? "Access needed" : root.connected ? "Connected" : "Offline"}</strong>{onlineApp && root.kind === "browser-persistent" && !root.connected ? <button type="button" className="icon-button" disabled={scanning} aria-label={`Reconnect ${root.label}`} title={`Reconnect ${root.label}`} onClick={() => onReconnectSource(root.id)}><RefreshIcon /></button> : null}</div></li>)}</ul>
           <p>{onlineApp ? "Remembered sources reconnect automatically after reload. If the browser pauses access, use Reconnect once—there is no need to find the folder again. Audio is never uploaded or copied." : "Audio remains in its original location."}</p>
         </section>
-        <dl className="scan-summary">
-          <div><dt>{library.length}</dt><dd>Files</dd></div>
-          <div><dt>{formats.length}</dt><dd>Formats</dd></div>
-          <div><dt>{roots.length}</dt><dd>Paths</dd></div>
-          <div><dt>{library.filter((file) => !usageMap.has(file.key)).length}</dt><dd>Unassigned</dd></div>
-        </dl>
         <section className="selected-file">
           <header className="selected-file-heading"><h2>Selected File</h2>{selectedFile ? <ContextActionMenu label={`Actions for ${displayName(selectedFile)}`} items={[
             { id: "preview", label: "Preview selected file", description: "Play the indexed source without changing it", Icon: PlayIcon, onSelect: () => onPreviewFile(selectedFile, displayName(selectedFile)) },

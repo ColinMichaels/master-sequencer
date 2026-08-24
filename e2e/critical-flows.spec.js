@@ -302,6 +302,47 @@ test("primary workspaces keep repeated tab headings visually compact", async ({ 
   }
 });
 
+test("Assets auto-matches a lyrics folder without overwriting existing candidate attachments", async ({ page, request }) => {
+  const lyricAssets = [
+    { id: "alpha-working", rootId: "test-root", relativePath: "01-alpha-tone.md", name: "01-alpha-tone.md", extension: "md", kind: "lyrics" },
+    { id: "alpha-clean", rootId: "test-root", relativePath: "01-alpha-tone_distrokid.md", name: "01-alpha-tone_distrokid.md", extension: "md", kind: "lyrics" },
+    { id: "protected-unmatched", rootId: "test-root", relativePath: "06-secret-song_distrokid.md", name: "06-secret-song_distrokid.md", extension: "md", kind: "lyrics" },
+  ];
+  await page.route("**/api/project-assets/lyrics-folder", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ cancelled: false, folder: { name: "Album 2 Lyrics", fileCount: lyricAssets.length }, assets: lyricAssets }),
+  }));
+
+  await page.getByRole("button", { name: "Assets", exact: true }).click();
+  await page.getByRole("button", { name: "Choose Lyrics Folder" }).click();
+  await expect(page.getByText("2 lyric files attached to 1 track.")).toBeVisible();
+  await expect(page.getByText(/1 unmatched filename is hidden/)).toBeVisible();
+  await expect(page.getByText("01-alpha-tone_distrokid.md").first()).toBeVisible();
+  await expect(page.locator("[data-project-save-status]")).toContainText("Saved locally");
+
+  let bootstrap = await (await request.get("/api/bootstrap")).json();
+  let candidate = bootstrap.state.albums[0].tracks.find((track) => track.id === "alpha").candidates.find((item) => item.id === "alpha-a");
+  expect(candidate.lyricRefs.sunoPrompt.relativePath).toBe("01-alpha-tone.md");
+  expect(candidate.lyricRefs.distrokid.relativePath).toBe("01-alpha-tone_distrokid.md");
+
+  await page.getByRole("button", { name: "Choose Lyrics Folder" }).click();
+  await expect(page.getByText("No new lyric files were attached.")).toBeVisible();
+  await expect(page.getByText("2 already-filled slots were preserved.")).toBeVisible();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("button", { name: "Choose Lyrics Folder" })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
+
+  await page.reload();
+  await page.getByRole("button", { name: "Assets", exact: true }).click();
+  await expect(page.getByText("01-alpha-tone.md").first()).toBeVisible();
+  await expect(page.getByText("01-alpha-tone_distrokid.md").first()).toBeVisible();
+  bootstrap = await (await request.get("/api/bootstrap")).json();
+  candidate = bootstrap.state.albums[0].tracks.find((track) => track.id === "alpha").candidates.find((item) => item.id === "alpha-a");
+  expect(Object.keys(candidate.lyricRefs).sort()).toEqual(["distrokid", "sunoPrompt"]);
+});
+
 test("the header master meter opens Mastering without hijacking its view controls", async ({ page }) => {
   const navigation = page.getByRole("navigation", { name: "Project views" });
   const headerMeter = page.getByTestId("header-master-meter");
@@ -838,6 +879,53 @@ test("quick display settings stay behind one far-right gear menu", async ({ page
   await expect(page.getByRole("heading", { name: "Screen Appearance" })).toBeVisible();
 });
 
+test("full-screen control follows the browser fullscreen state", async ({ page }) => {
+  await page.evaluate(() => {
+    let fullscreenElement = null;
+    Object.defineProperty(document, "fullscreenElement", { configurable: true, get: () => fullscreenElement });
+    document.documentElement.requestFullscreen = async function requestFullscreen() {
+      fullscreenElement = this;
+      document.dispatchEvent(new Event("fullscreenchange"));
+    };
+    document.exitFullscreen = async () => {
+      fullscreenElement = null;
+      document.dispatchEvent(new Event("fullscreenchange"));
+    };
+  });
+
+  const fullscreen = page.getByRole("button", { name: "Enter full screen" });
+  await expect(fullscreen).toBeVisible();
+  await expect(fullscreen).toHaveAttribute("aria-pressed", "false");
+  await fullscreen.click();
+  await expect(page.getByRole("button", { name: "Exit full screen" })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Exit full screen" }).click();
+  await expect(fullscreen).toHaveAttribute("aria-pressed", "false");
+});
+
+test("linked tabs share one transport while only the owner tab plays audio", async ({ page, context }) => {
+  await page.getByRole("button", { name: "Open settings menu" }).click();
+  const newPagePromise = context.waitForEvent("page");
+  await page.getByRole("dialog", { name: "Quick Settings" }).getByRole("button", { name: "Open linked tab" }).click();
+  const linkedPage = await newPagePromise;
+  await linkedPage.waitForLoadState("domcontentloaded");
+  await expect(linkedPage.getByRole("table", { name: "Fixture Album track order" })).toBeVisible();
+
+  await page.locator(".transport-actions").getByRole("button", { name: "Play available tracks", exact: true }).click();
+  await expect(page.locator(".transport-link-state")).toContainText("Audio owner");
+  await expect(linkedPage.locator(".transport-copy strong")).toHaveText("Alpha Tone");
+  await expect(linkedPage.locator(".transport-link-state")).toHaveText("Following audio from linked tab");
+  await expect(linkedPage.locator(".transport-playback-toggle")).toHaveAttribute("aria-label", "Pause playback");
+  await expect.poll(() => linkedPage.locator("audio").evaluateAll((audios) => audios.filter((audio) => !audio.paused).length)).toBe(0);
+  await expect.poll(() => page.locator("audio").evaluateAll((audios) => audios.filter((audio) => !audio.paused).length)).toBeGreaterThan(0);
+
+  await linkedPage.locator(".transport-playback-toggle").click();
+  await expect(page.locator(".transport-playback-toggle")).toHaveAttribute("aria-label", "Resume playback");
+  await expect(linkedPage.locator(".transport-playback-toggle")).toHaveAttribute("aria-label", "Resume playback");
+  await expect.poll(() => page.locator("audio").evaluateAll((audios) => audios.filter((audio) => !audio.paused).length)).toBe(0);
+
+  await linkedPage.close();
+});
+
 test("Analog Studio keeps its warm wood while Dusty Studio saves the faded room", async ({ page }) => {
   const navigation = page.getByRole("navigation", { name: "Project views" });
   await navigation.getByRole("button", { name: "Settings", exact: true }).click();
@@ -1287,6 +1375,12 @@ test("an unconfigured installation explains the complete album workflow", async 
 test("library filters are functional and primary workspaces do not overflow a phone viewport", async ({ page }) => {
   await page.getByRole("button", { name: "Audio Library" }).click();
   await expect(page.getByText("4 of 4 discovered files")).toBeVisible();
+  await expect(page.locator(".scan-summary")).toHaveCount(0);
+  const sourceSummaryBox = await page.locator(".source-summary").boundingBox();
+  const selectedFileBox = await page.locator(".selected-file").boundingBox();
+  expect(sourceSummaryBox).not.toBeNull();
+  expect(selectedFileBox).not.toBeNull();
+  expect(selectedFileBox.y - (sourceSummaryBox.y + sourceSummaryBox.height)).toBeLessThanOrEqual(20);
   const rows = page.locator(".audio-table-body .audio-row");
   await page.getByLabel("Filter by usage").selectOption("unassigned");
   await expect(rows).toHaveCount(1);
@@ -1408,7 +1502,7 @@ test("phone layout removes redundant counters and keeps sequence controls separa
   await expect(page.locator(".library-heading p")).toBeHidden();
   await expect(page.getByRole("button", { name: /^Saved filters/ })).toBeVisible();
   await expect(page.locator(".saved-filter-bar")).toBeHidden();
-  await expect(page.locator(".scan-summary")).toBeHidden();
+  await expect(page.locator(".scan-summary")).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
 });
 

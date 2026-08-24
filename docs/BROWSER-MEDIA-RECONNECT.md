@@ -42,6 +42,21 @@ removed or the page closes.
 - A missing or moved file reports as unavailable and can be retried.
 - Cloud sync must continue to reject browser handles; they remain device-local.
 
+## Linked-tab playback
+
+Linked tabs do not share browser file handles or audio objects. Tabs opened from
+Quick Settings or Command Search coordinate through a project-scoped,
+same-origin `BroadcastChannel`; exactly one owner tab plays audio and follower
+tabs send bounded play/pause, seek, or stop commands. The shared snapshot is an
+explicit allowlist of display labels, project/album/track IDs, playback time,
+duration, route flags, and playing state. It excludes source keys, paths, URLs,
+blob references, media bytes, status text, and browser handles.
+
+This is a transport-control convenience layer around the existing Web Audio
+path, not a second audio engine or sample-accurate network clock. If the owner
+closes or becomes stale, a remaining tab can become owner by starting playback.
+
 Automated coverage lives in `tests/online-app.test.mjs`,
 `tests/browser-media-registry.test.mjs`, and
-`e2e-online/device-audio.spec.js`.
+`e2e-online/device-audio.spec.js`; linked-message sanitization and ownership are
+covered by `tests/linked-playback.test.mjs` and `e2e/critical-flows.spec.js`.

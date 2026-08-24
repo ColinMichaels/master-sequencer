@@ -15,6 +15,9 @@ await Promise.all([
   generateSineWave(path.join(audioRoot, "Alternate Mix.mp3"), { duration: 1.2, frequency: 440 }),
   generateSineWave(path.join(audioRoot, "Hidden Coda.wav"), { duration: 1.0, frequency: 550 }),
   generateSineWave(path.join(audioRoot, "Loose Sketch.mp3"), { duration: 0.9, frequency: 660 }),
+  writeFile(path.join(audioRoot, "01-alpha-tone.md"), "Working lyric fixture\n"),
+  writeFile(path.join(audioRoot, "01-alpha-tone_distrokid.md"), "Clean lyric fixture\n"),
+  writeFile(path.join(audioRoot, "06-secret-song_distrokid.md"), "Protected lyric fixture\n"),
   generateTestVideo(path.join(visualRoot, "Alpha Tone - Full Master.mp4")),
   generateTestImage(path.join(visualRoot, "Fixture Campaign Feed Square.png")),
 ]);
@@ -28,6 +31,7 @@ await writeFile(baseConfigPath, JSON.stringify({
   port: 4197,
   audioRoots: [{ id: "test-root", label: "Generated fixtures", path: audioRoot }],
   audioFiles: [],
+  lyricRoots: [],
   visualRoots: [{ id: "fixture-visuals", label: "Fixture Visuals", path: visualRoot, mediaTypes: ["video", "image"] }],
   privateSourceAliases: [{ id: "fixture-private-a", rootId: "test-root", relativePath: "Hidden Coda.wav" }],
   ignoreDirectories: [],

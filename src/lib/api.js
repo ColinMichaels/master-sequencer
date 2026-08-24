@@ -73,6 +73,7 @@ const localApi = {
   chooseSources: (kind) => jsonFetch("/api/sources/pick", { method: "POST", body: JSON.stringify({ kind }) }),
   reconnectSource: () => jsonFetch("/api/rescan", { method: "POST" }),
   chooseProjectAssets: (kind) => jsonFetch("/api/project-assets/pick", { method: "POST", body: JSON.stringify({ kind }) }),
+  chooseLyricsFolder: () => jsonFetch("/api/project-assets/lyrics-folder", { method: "POST" }),
   renderAudio,
   startRenderJob,
   getRenderJob,

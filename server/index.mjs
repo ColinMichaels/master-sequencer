@@ -5,14 +5,14 @@ import path from "node:path";
 import { createApiRouter } from "./api-router.mjs";
 import { scanAudioLibrary, sourceKey } from "./audio-library.mjs";
 import { createAudioWatchService } from "./audio-watch-service.mjs";
-import { addAudioSource, loadConfig, projectRoot, removeAudioSource } from "./config-store.mjs";
+import { addAudioSource, addLyricRoot, loadConfig, projectRoot, removeAudioSource } from "./config-store.mjs";
 import { ENGINE_AUTH_HEADER, engineRequestIsAuthorized } from "./engine-auth.mjs";
 import { BASE_SECURITY_HEADERS, isStateChangingMethod, requestHostIsAllowed, requestOriginIsAllowed } from "./http-utils.mjs";
 import { contentTypeFor, sendJson, streamFile } from "./http-response.mjs";
 import { createNativeAudioService } from "./native-audio-service.mjs";
 import { createNativeAudioLabService } from "./native-audio-lab-service.mjs";
 import { chooseAudioPaths, chooseProjectAssetPaths, revealInFinder } from "./native-picker.mjs";
-import { createProjectAssetReferences } from "./project-assets.mjs";
+import { createProjectAssetReferences, scanProjectLyricFolder } from "./project-assets.mjs";
 import { createPortableProjectBundle } from "./portable-project-bundle.mjs";
 import { createRenderJobService } from "./render-job-service.mjs";
 import { createStateStore } from "./state-store.mjs";
@@ -214,6 +214,20 @@ const responsePayloadForPaths = async (selectedPaths) => {
   };
 };
 
+const chooseLyricsFolderAssets = async () => {
+  const selectedPaths = await chooseProjectAssetPaths({ kind: "lyrics-folder" });
+  if (!selectedPaths.length) return { cancelled: true, assets: [], folder: null };
+  const folderPath = path.resolve(selectedPaths[0]);
+  await addLyricRoot({ path: folderPath });
+  config = await loadConfig();
+  const assets = await scanProjectLyricFolder({ folderPath, roots: [...config.audioRoots, ...config.lyricRoots] });
+  return {
+    cancelled: false,
+    assets,
+    folder: { name: path.basename(folderPath), fileCount: assets.length },
+  };
+};
+
 const handleApi = createApiRouter({
   stateStore,
   renderJobs,
@@ -247,6 +261,7 @@ const handleApi = createApiRouter({
   removeAudioSource,
   chooseAudioPaths,
   chooseProjectAssetPaths,
+  chooseLyricsFolderAssets,
   createProjectAssetReferences,
   revealRenderResult: async (renderId) => {
     const result = renderJobs.result(renderId);

@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
-import { DocumentIcon, GearIcon, MoonIcon, PaletteIcon, SearchIcon, SunIcon } from "./Icons.jsx";
+import { DocumentIcon, GearIcon, LinkedTabsIcon, MoonIcon, PaletteIcon, SearchIcon, SunIcon } from "./Icons.jsx";
 import { adjustTextScale, TEXT_SCALES, textScaleLabel } from "../lib/appearance.js";
 
-export function ScreenControls({ appearance, resolvedMode, onChange, onOpenSettings, onOpenCommands, onOpenHelp, onOpenShortcuts }) {
+export function ScreenControls({ appearance, resolvedMode, linkedPlayback, onChange, onOpenSettings, onOpenCommands, onOpenHelp, onOpenShortcuts }) {
   const [open, setOpen] = useState(false);
   const shellRef = useRef(null);
   const triggerRef = useRef(null);
@@ -56,6 +56,11 @@ export function ScreenControls({ appearance, resolvedMode, onChange, onOpenSetti
         <button type="button" className="screen-settings-option" onClick={() => onChange({ mode: lightTarget ? "light" : "dark" })} aria-label={`Use ${lightTarget ? "light" : "dark"} mode`}>
           {lightTarget ? <SunIcon /> : <MoonIcon />}
           <span><strong>{lightTarget ? "Light" : "Dark"} mode</strong><small>Currently showing {resolvedMode} mode</small></span>
+        </button>
+        <button type="button" className="screen-settings-option" disabled={!linkedPlayback?.supported} onClick={() => { setOpen(false); linkedPlayback?.openLinkedTab?.(); }}>
+          <LinkedTabsIcon />
+          <span><strong>Open linked tab</strong><small>{!linkedPlayback?.supported ? "This browser does not support linked transport" : linkedPlayback.peerCount ? `${linkedPlayback.peerCount} other tab${linkedPlayback.peerCount === 1 ? "" : "s"} connected · ${linkedPlayback.role === "owner" ? "audio plays here" : linkedPlayback.role === "follower" ? "following their transport" : "ready"}` : "One tab plays audio; both tabs control the same transport"}</small></span>
+          <em>↗</em>
         </button>
         <button type="button" className="screen-settings-option" onClick={() => openModalFromMenu(onOpenCommands)} aria-keyshortcuts="Meta+K Control+K">
           <SearchIcon />

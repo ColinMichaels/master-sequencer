@@ -1,6 +1,6 @@
 # Quality Review and Roadmap
 
-Review date: 2026-08-23
+Review date: 2026-08-24
 
 ## Conclusion
 
@@ -26,6 +26,31 @@ risk reduction and user value rather than feature count.
 - Maintainability under likely future album-review features
 
 ## Changes completed in this pass
+
+### 2026-08-24 release-candidate consolidation and retrospective
+
+- Browser full screen is a visible header action and remains available through
+  Command Search. Linked tabs wrap the existing transport instead of replacing
+  the audio engine: one project-scoped owner produces audio while followers
+  mirror sanitized state and route bounded controls.
+- Audio Library relevance search now covers filename, path, album, and track
+  relationships; the working query and all eight accessible column widths are
+  device-local and survive workspace changes. Album and Used By are separate,
+  and the redundant scan-statistics block was removed from the inspector.
+- Assets can register a machine-local lyrics folder and auto-attach safe exact
+  title matches. DistroKid / clean-lyrics filename markers select the clean
+  slot; existing attachments, duplicate matches, ambiguous track titles,
+  protected-title mismatches, and missing candidates fail safe for review.
+- The maintenance pass keeps the cross-tab channel stable while album records
+  change, removes shared mutable regular-expression state from lyric matching,
+  and reconciles README, architecture, browser-media, and quality documentation.
+- The final gate passes all 269 unit/integration/FFmpeg checks, the production
+  build, all 85 local rendered-browser workflows, and all 5 hosted-mode
+  boundaries. Browser inspection also confirmed the desktop app identity,
+  fullscreen state, one-owner/multi-follower audio behavior, Audio Library search,
+  Assets auto-match affordance, and a clean console. The local suite's Vite
+  diagnostic WebSocket reported port 24678 already in use; the 85 tests and app
+  server still passed.
 
 ### 2026-08-23 integrated work-in-progress completion
 
@@ -264,9 +289,9 @@ risk reduction and user value rather than feature count.
 | Waveforms | Strong | Bounded FFmpeg output, compact response, memory-only cache |
 | Render safety | Strong | Queued jobs, progress, cancellation, timeout, partial cleanup, restart discovery, cue sheets, and manifests |
 | Privacy | Strong | Opaque protected aliases and default masking; operator can explicitly reveal |
-| Accessibility | Good | Semantic tables and controls, keyboard markers, focus-managed dialogs, 120% text/reduced-motion coverage, a serious/critical WCAG 2 A/AA gate, and roving listbox navigation for the current 857-item visual library; physical macOS VoiceOver is an accepted non-blocking limitation |
+| Accessibility | Good | Semantic tables and controls, keyboard markers, focus-managed dialogs, 120% text/reduced-motion coverage, a serious/critical WCAG 2 A/AA gate, and roving listbox navigation validated with an 857-item visual library; physical macOS VoiceOver is an accepted non-blocking limitation |
 | Responsive UI | Strong | Automated primary-workspace overflow checks at 390 px plus Browser/IAB inspection |
-| Automated coverage | Strong | 254 domain/server/FFmpeg checks, production build, 81 local rendered workflows, and 5 hosted-mode boundaries |
+| Automated coverage | Strong | 269 domain/server/FFmpeg checks, production build, 85 local rendered workflows, and 5 hosted-mode boundaries |
 | Maintainability | Strong | API routing, schema/migrations, project commands, search, delivery rules, and style layers are separated |
 | Native plug-ins | Instance-lab foundation | Path-free discovery, factory validation, and generated-fixture parameter/state/latency/tail/offline lifecycle are proven in disposable workers; installed compatibility, automation, editors, program audio, restoration, compensation, and prints remain blocked |
 

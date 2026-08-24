@@ -64,6 +64,7 @@ export const createApiRouter = ({
   removeAudioSource,
   chooseAudioPaths,
   chooseProjectAssetPaths,
+  chooseLyricsFolderAssets,
   createProjectAssetReferences,
   revealRenderResult,
   revealVisualMedia,
@@ -228,8 +229,13 @@ export const createApiRouter = ({
       sendJson(response, 200, { cancelled: true, assets: [] });
       return true;
     }
-    const assets = await createProjectAssetReferences({ selectedPaths, roots: getConfig().audioRoots, kind });
+    const roots = kind === "lyrics" ? [...getConfig().audioRoots, ...(getConfig().lyricRoots || [])] : getConfig().audioRoots;
+    const assets = await createProjectAssetReferences({ selectedPaths, roots, kind });
     sendJson(response, 201, { cancelled: false, assets });
+    return true;
+  }
+  if (request.method === "POST" && url.pathname === "/api/project-assets/lyrics-folder") {
+    sendJson(response, 200, await chooseLyricsFolderAssets());
     return true;
   }
   if (request.method === "POST" && url.pathname === "/api/renders") {
@@ -343,10 +349,13 @@ export const createApiRouter = ({
     return true;
   }
   if (["GET", "HEAD"].includes(request.method) && url.pathname === "/api/asset") {
-    const root = getConfig().audioRoots.find((item) => item.id === url.searchParams.get("rootId"));
     const relativePath = url.searchParams.get("path") || "";
+    const extension = path.extname(relativePath).toLowerCase();
+    const allowedRoots = LYRIC_EXTENSIONS.has(extension)
+      ? [...getConfig().audioRoots, ...(getConfig().lyricRoots || [])]
+      : getConfig().audioRoots;
+    const root = allowedRoots.find((item) => item.id === url.searchParams.get("rootId"));
     const requestedPath = root ? path.resolve(root.path, relativePath) : "";
-    const extension = path.extname(requestedPath).toLowerCase();
     if (!root || !isWithinRoot(root.path, requestedPath) || (!VISUAL_EXTENSIONS.has(extension) && !LYRIC_EXTENSIONS.has(extension))) {
       sendJson(response, 404, { error: "Asset is not available from a configured library path." });
       return true;

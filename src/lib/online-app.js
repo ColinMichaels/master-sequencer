@@ -719,6 +719,7 @@ export const createOnlineAppApi = ({ storage, sourcePicker = pickBrowserAudioSou
   chooseSources,
   reconnectSource,
   chooseProjectAssets: onlineCapabilityError,
+  chooseLyricsFolder: onlineCapabilityError,
   renderAudio: onlineCapabilityError,
   startRenderJob: onlineCapabilityError,
   getRenderJob: onlineCapabilityError,

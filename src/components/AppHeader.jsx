@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { CheckIcon, ImageIcon, MasteringIcon, MusicIcon, ReviewIcon, SequenceIcon, SettingsIcon, WarningIcon, WaveIcon } from "./Icons.jsx";
+import { CheckIcon, FullscreenIcon, ImageIcon, MasteringIcon, MusicIcon, ReviewIcon, SequenceIcon, SettingsIcon, WarningIcon, WaveIcon } from "./Icons.jsx";
 import { MasterOutputMeters } from "./MasterOutputMeters.jsx";
 import { ScreenControls } from "./ScreenControls.jsx";
 
@@ -29,7 +29,7 @@ const summaryDefinitions = [
   { id: "approvals", label: "Track approvals", Icon: CheckIcon, view: "review", action: "Open Track Review", detail: "Tracks with an approved master candidate" },
 ];
 
-export function AppHeader({ activeView, onViewChange, onViewIntent = () => {}, album, playableCount, approvalCount, appearance, resolvedMode, onAppearanceChange, onOpenAppearance, onOpenCommands, onOpenHelp, onOpenShortcuts, commandHistory, meteringRef, meteringAvailable, playing, monitorLabel, monitorRouting, masterEffectsActive = false }) {
+export function AppHeader({ activeView, onViewChange, onViewIntent = () => {}, album, playableCount, approvalCount, appearance, resolvedMode, fullscreen, linkedPlayback, onAppearanceChange, onOpenAppearance, onOpenCommands, onOpenHelp, onOpenShortcuts, commandHistory, meteringRef, meteringAvailable, playing, monitorLabel, monitorRouting, masterEffectsActive = false }) {
   const [expandedStat, setExpandedStat] = useState("");
   const summaryRef = useRef(null);
   const trackCount = album?.tracks.length || 0;
@@ -121,7 +121,10 @@ export function AppHeader({ activeView, onViewChange, onViewIntent = () => {}, a
             </div>
           </section>}
         </div>
-        <ScreenControls appearance={appearance} resolvedMode={resolvedMode} onChange={onAppearanceChange} onOpenSettings={onOpenAppearance} onOpenCommands={onOpenCommands} onOpenHelp={onOpenHelp} onOpenShortcuts={onOpenShortcuts} />
+        <div className="screen-header-actions">
+          <button type="button" className={`screen-fullscreen-trigger ${fullscreen?.isFullscreen ? "is-active" : ""}`} disabled={!fullscreen?.supported} onClick={fullscreen?.toggleFullscreen} aria-label={fullscreen?.isFullscreen ? "Exit full screen" : "Enter full screen"} aria-pressed={Boolean(fullscreen?.isFullscreen)} data-tooltip={fullscreen?.isFullscreen ? "Exit full screen" : "Full screen"}><FullscreenIcon active={fullscreen?.isFullscreen} size={21} /></button>
+          <ScreenControls appearance={appearance} resolvedMode={resolvedMode} linkedPlayback={linkedPlayback} onChange={onAppearanceChange} onOpenSettings={onOpenAppearance} onOpenCommands={onOpenCommands} onOpenHelp={onOpenHelp} onOpenShortcuts={onOpenShortcuts} />
+        </div>
       </div>
     </header>
   );

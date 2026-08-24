@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { createProjectAssetReferences } from "../server/project-assets.mjs";
+import { createProjectAssetReferences, scanProjectLyricFolder } from "../server/project-assets.mjs";
 
 test("visual files become portable configured-root references", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "project-sequencer-assets-"));
@@ -25,6 +25,24 @@ test("Markdown lyric files become candidate-ready references", async () => {
   const [reference] = await createProjectAssetReferences({ selectedPaths: [lyrics], roots: [{ id: "songs", path: root }], kind: "lyrics" });
   assert.equal(reference.relativePath, "song-distrokid.md");
   assert.equal(reference.kind, "lyrics");
+});
+
+test("lyrics folders are scanned recursively without reading hidden files or following symlinks", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "project-sequencer-lyric-folder-"));
+  const albumFolder = path.join(root, "Album 2");
+  const nestedFolder = path.join(albumFolder, "current-sequence");
+  await mkdir(albumFolder);
+  await mkdir(nestedFolder);
+  await writeFile(path.join(nestedFolder, "01-return-address.md"), "Working lyrics");
+  await writeFile(path.join(nestedFolder, "01-return-address_distrokid.txt"), "Clean lyrics");
+  await writeFile(path.join(nestedFolder, "cover.jpg"), "not lyrics");
+  await writeFile(path.join(albumFolder, ".private.md"), "hidden");
+  await symlink(nestedFolder, path.join(albumFolder, "linked-sequence"));
+  const references = await scanProjectLyricFolder({ folderPath: albumFolder, roots: [{ id: "songs", path: root }] });
+  assert.deepEqual(references.map((reference) => reference.relativePath), [
+    "Album 2/current-sequence/01-return-address_distrokid.txt",
+    "Album 2/current-sequence/01-return-address.md",
+  ]);
 });
 
 test("project assets stay inside configured roots and supported formats", async () => {

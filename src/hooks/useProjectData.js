@@ -273,6 +273,20 @@ export const useProjectData = () => {
     }
   }, []);
 
+  const chooseLyricsFolder = useCallback(async () => {
+    setPickingAssets(true);
+    setError("");
+    try {
+      const payload = await api.chooseLyricsFolder();
+      return { ok: true, cancelled: Boolean(payload.cancelled), assets: payload.assets || [], folder: payload.folder || null };
+    } catch (reason) {
+      setError(reason.message);
+      return { ok: false, cancelled: false, assets: [], folder: null };
+    } finally {
+      setPickingAssets(false);
+    }
+  }, []);
+
   const replaceState = useCallback(async (nextState) => {
     window.clearTimeout(saveTimer.current);
     setSaveStatus("Validating imported project…");
@@ -436,6 +450,7 @@ export const useProjectData = () => {
     chooseSources,
     reconnectSource,
     chooseProjectAssets,
+    chooseLyricsFolder,
     addRoot,
     removeRoot,
     startNativeAudioLab,

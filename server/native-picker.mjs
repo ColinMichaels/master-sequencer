@@ -31,6 +31,11 @@ set selectedFile to choose file with prompt "Choose a lyric file for Project Seq
 return POSIX path of selectedFile
 `;
 
+const LYRICS_FOLDER_SCRIPT = `
+set selectedFolder to choose folder with prompt "Choose a lyrics folder for Project Sequencer"
+return POSIX path of selectedFolder
+`;
+
 export const parsePickedPaths = (stdout = "") => stdout
   .split(/\r?\n/)
   .map((entry) => entry.trim())
@@ -55,14 +60,15 @@ export const chooseAudioPaths = async ({ kind, platform = process.platform, run 
 };
 
 export const chooseProjectAssetPaths = async ({ kind, platform = process.platform, run = execFileAsync } = {}) => {
-  if (!new Set(["visuals", "lyrics"]).has(kind)) throw new Error("Choose visual assets or one lyric file.");
+  if (!new Set(["visuals", "lyrics", "lyrics-folder"]).has(kind)) throw new Error("Choose visual assets, one lyric file, or one lyrics folder.");
   if (platform !== "darwin") {
     const error = new Error("Native visual and lyric file selection is available on macOS.");
     error.statusCode = 501;
     throw error;
   }
   try {
-    const { stdout } = await run("osascript", ["-e", kind === "visuals" ? VISUALS_SCRIPT : LYRICS_SCRIPT]);
+    const script = kind === "visuals" ? VISUALS_SCRIPT : kind === "lyrics-folder" ? LYRICS_FOLDER_SCRIPT : LYRICS_SCRIPT;
+    const { stdout } = await run("osascript", ["-e", script]);
     return parsePickedPaths(stdout);
   } catch (error) {
     if (isCancellation(error)) return [];

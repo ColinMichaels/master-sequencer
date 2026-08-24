@@ -110,9 +110,12 @@ Free web / Pro native boundary, current limitations, and packaging roadmap.
 - **Assets:** switch between the existing Project Assets mode and a native
   Video & Graphics Library without adding another primary workspace. Project
   Assets keeps album artwork, track visuals, cover selection, and candidate
-  lyric attachments. The visual library searches indexed videos and images,
-  previews originals in place, edits separate descriptive metadata, and
-  attaches safe references to the active album or selected track without
+  lyric attachments. A local **Choose Lyrics Folder** action scans Markdown and
+  text files in place, attaches only exact normalized title matches, recognizes
+  DistroKid / clean-lyrics filename markers, and leaves occupied or ambiguous
+  slots untouched for manual review. The visual library searches indexed videos
+  and images, previews originals in place, edits separate descriptive metadata,
+  and attaches safe references to the active album or selected track without
   copying media.
 - **Audio Library:** relevance-search every discovered source by filename,
   path, album, or track relationship; partial terms, reordered words, and small
@@ -142,6 +145,13 @@ count badges; selecting one opens a detailed album snapshot with direct links
 to the relevant workspace. The Sequence workspace uses the full content area.
 Project edits also have a bounded 100-step undo/redo history. Undo changes only
 the local project record; it never reverses a filesystem operation.
+
+A header control enters or exits browser full screen. **Open linked tab** is
+available in Quick Settings and Command Search: tabs for the same saved project
+share play, pause, seek, and display state through a same-origin browser channel,
+while exactly one owner tab produces audio. This coordination layer does not
+duplicate, rewrite, or replace the Web Audio engine, and its messages exclude
+source paths, URLs, media bytes, and device handles.
 
 The seven primary views also use the number row or numeric keypad shortcuts
 1–7, with Mastering assigned to 2. The browser title follows
@@ -267,6 +277,23 @@ Rescans always reuse cached metadata for unchanged files. Optional debounced
 filesystem watching can be enabled with `"watchAudioRoots": true` in the ignored
 local configuration. It is off in the portable default; manual rescans remain
 available, and disconnected roots report Offline or Reconnected explicitly.
+
+## Configure lyrics folders
+
+The Assets workspace can register a selected lyrics folder in the ignored
+`config/sequencer.local.json` file. A folder already covered by an audio root
+reuses that root; otherwise Project Sequencer adds a separate `lyricRoots`
+entry. The optional platform-delimited `PROJECT_SEQUENCER_LYRICS_PATHS`
+environment variable supplies read-only lyric roots for the current machine.
+
+Folder matching scans `.md` and `.txt` files recursively without following
+symlinks or entering hidden folders. Leading sequence numbers and common sheet
+labels are ignored when comparing a filename to a track title. Files marked
+`DistroKid`, `clean lyrics`, or `lyrics only` target the clean-lyrics slot;
+other exact matches target the prompt/working-lyrics slot. The selected master
+candidate is preferred, then the audition candidate, then the first candidate.
+Existing attachments are never overwritten, duplicate matches are reported for
+review, and the lyric file contents are not read during matching.
 
 ## Configure visual-media paths
 

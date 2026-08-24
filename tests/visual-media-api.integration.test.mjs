@@ -32,7 +32,7 @@ class MockResponse extends Writable {
 
 const requestFor = (method, headers = {}) => Object.assign(Readable.from([]), { method, headers });
 
-const routerFor = ({ visualFile, updateVisualMetadata = async () => null } = {}) => createApiRouter({
+const routerFor = ({ visualFile, updateVisualMetadata = async () => null, config = { audioRoots: [], lyricRoots: [] }, chooseLyricsFolderAssets = async () => ({ cancelled: true, assets: [], folder: null }) } = {}) => createApiRouter({
   stateStore: {},
   renderJobs: {},
   waveformService: {},
@@ -42,7 +42,7 @@ const routerFor = ({ visualFile, updateVisualMetadata = async () => null } = {})
   getVisualLibrary: () => ({ files: visualFile ? [visualFile] : [], roots: [], scan: { discoveredFiles: visualFile ? 1 : 0 } }),
   getVisualLibraryFile: (key) => key === visualFile?.key ? visualFile : null,
   getVisualLibraryFileById: (id) => id === visualFile?.id ? visualFile : null,
-  getConfig: () => ({ audioRoots: [] }),
+  getConfig: () => config,
   isScanning: () => false,
   isVisualScanning: () => false,
   nativeAudioConfigured: false,
@@ -60,10 +60,37 @@ const routerFor = ({ visualFile, updateVisualMetadata = async () => null } = {})
   removeAudioSource: async () => {},
   chooseAudioPaths: async () => [],
   chooseProjectAssetPaths: async () => [],
+  chooseLyricsFolderAssets,
   createProjectAssetReferences: async () => [],
   revealRenderResult: async () => null,
   revealVisualMedia: async (key) => key === visualFile?.key ? { revealed: true } : null,
   createPortableBundle: async () => ({}),
+});
+
+test("configured lyric roots serve supported text files without granting visual access", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "project-sequencer-lyric-api-"));
+  await writeFile(path.join(root, "song.md"), "Safe lyric fixture");
+  await writeFile(path.join(root, "cover.webp"), "not available as a lyric asset");
+  const config = { audioRoots: [], lyricRoots: [{ id: "lyrics", path: root }] };
+  const lyricResponse = new MockResponse();
+  await routerFor({ config })(requestFor("GET"), lyricResponse, new URL("http://127.0.0.1/api/asset?rootId=lyrics&path=song.md"));
+  await finished(lyricResponse);
+  assert.equal(lyricResponse.statusCode, 200);
+  assert.equal(lyricResponse.body().toString(), "Safe lyric fixture");
+
+  const visualResponse = new MockResponse();
+  await routerFor({ config })(requestFor("GET"), visualResponse, new URL("http://127.0.0.1/api/asset?rootId=lyrics&path=cover.webp"));
+  await finished(visualResponse);
+  assert.equal(visualResponse.statusCode, 404);
+});
+
+test("lyrics-folder endpoint returns only the server-resolved portable scan payload", async () => {
+  const payload = { cancelled: false, folder: { name: "Album Lyrics", fileCount: 1 }, assets: [{ rootId: "lyrics", relativePath: "song.md" }] };
+  const response = new MockResponse();
+  await routerFor({ chooseLyricsFolderAssets: async () => payload })(requestFor("POST"), response, new URL("http://127.0.0.1/api/project-assets/lyrics-folder"));
+  await finished(response);
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(JSON.parse(response.body()), payload);
 });
 
 test("indexed visual videos stream through /api/media with byte-range and MIME support", async () => {

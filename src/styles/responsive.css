@@ -85,9 +85,9 @@
   .header-meter-link { inset: 0; }
   .header-meter-controls { display: none; }
   .header-spectrum { height: 30px; }
-  .screen-settings-shell { grid-column: 3; }
-  .screen-settings-shell, .screen-settings-trigger { width: 40px; }
-  .screen-settings-trigger { height: 40px; }
+  .screen-header-actions { grid-column: 3; grid-template-columns: 40px 40px; }
+  .screen-settings-shell, .screen-settings-trigger, .screen-fullscreen-trigger { width: 40px; }
+  .screen-settings-trigger, .screen-fullscreen-trigger { height: 40px; }
   /* Detailed album counts are available inside their workspaces and crowd the phone header. */
   .header-summary-shell { display: none; }
   .album-rail { display: block; padding: 0.45rem 0.5rem; border-right: 0; border-bottom: 1px solid var(--line); overflow: visible; }
@@ -316,7 +316,6 @@
   .audio-table-head > span:nth-child(5)::after { content: "Time"; }
   .audio-table-head > span:nth-child(7)::after { content: "Play"; }
   .audio-row .icon-button { width: 36px; height: 36px; }
-  .scan-summary { display: none; }
   .selected-file > label { grid-template-columns: 1fr; gap: 0.25rem; }
   .root-list li { grid-template-columns: 34px minmax(0, 1fr) auto; }
   .root-list em { display: none; }
@@ -345,6 +344,11 @@
   .track-assets-heading { display: grid !important; }
   .track-assets-heading label { width: 100%; min-width: 0; }
   .visual-asset-list--track, .lyric-slots { grid-template-columns: 1fr; }
+  .lyric-folder-import { grid-template-columns: 1fr; }
+  .lyric-folder-import > button { width: 100%; }
+  .lyric-folder-result { grid-column: 1; }
+  .lyric-folder-match-list li { grid-template-columns: 1fr; }
+  .lyric-folder-match-list li > small { text-align: left; }
   .lyric-attachment { border-top: 1px solid var(--line-soft); border-left: 0; }
   .lyric-attachment:first-child { border-top: 0; }
   .lyric-file-row { grid-template-columns: 1fr; }
@@ -460,8 +464,9 @@
   .command-history { grid-template-columns: 34px 34px; }
   .command-history button { min-height: 34px; }
   .header-master-meter { height: 38px; }
-  .screen-settings-shell, .screen-settings-trigger { width: 38px; }
-  .screen-settings-trigger { height: 38px; }
+  .screen-header-actions { grid-template-columns: 38px 38px; }
+  .screen-settings-shell, .screen-settings-trigger, .screen-fullscreen-trigger { width: 38px; }
+  .screen-settings-trigger, .screen-fullscreen-trigger { height: 38px; }
 
   .album-rail.is-collapsed {
     min-height: 42px;

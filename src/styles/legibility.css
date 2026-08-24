@@ -110,7 +110,6 @@ button[data-tooltip]::after,
 .source-summary li strong,
 .watch-status span,
 .watch-status strong,
-.scan-summary dd,
 .selected-file-identity small,
 .selected-file-identity span,
 .selected-file > label {

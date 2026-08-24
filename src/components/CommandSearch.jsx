@@ -30,6 +30,11 @@ export function CommandSearch({ commands, onClose }) {
   };
   const runCommand = (command) => {
     if (!command || command.disabled) return;
+    if (command.requiresUserActivation) {
+      command.onSelect();
+      onClose();
+      return;
+    }
     onClose();
     requestAnimationFrame(command.onSelect);
   };

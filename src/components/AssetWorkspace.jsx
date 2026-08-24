@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api.js";
 import { DocumentIcon, ImageIcon, LockIcon, MusicIcon, PlusIcon, TrashIcon, VideoIcon } from "./Icons.jsx";
+import { LyricFolderImporter } from "./LyricFolderImporter.jsx";
 import { VisualMediaLibrary } from "./VisualMediaLibrary.jsx";
 
 const referenceKey = (reference) => reference ? `${reference.rootId}::${reference.relativePath}` : "";
@@ -51,7 +52,7 @@ function LyricAttachment({ kind, label, description, attachment, protectedAsset,
   );
 }
 
-export function AssetWorkspace({ album, revealPrivateFilenames, picking, sourcePickingAvailable = true, audioPlaying = false, onAlbumChange, onPickAssets, onTrackFocus, onVideoPlay }) {
+export function AssetWorkspace({ album, revealPrivateFilenames, picking, sourcePickingAvailable = true, audioPlaying = false, onAlbumChange, onPickAssets, onChooseLyricsFolder, onTrackFocus, onVideoPlay }) {
   const [mode, setMode] = useState("project");
   const [selectedTrackId, setSelectedTrackId] = useState(album.tracks[0]?.id || "");
   useEffect(() => {
@@ -159,6 +160,7 @@ export function AssetWorkspace({ album, revealPrivateFilenames, picking, sourceP
 
             <section className="candidate-lyrics-section">
               <div className="subsection-heading"><div><h3>Lyrics by Audio Candidate</h3><p>Attach the exact lyric sources associated with each audio version.</p></div></div>
+              <LyricFolderImporter album={album} picking={picking} sourcePickingAvailable={sourcePickingAvailable} revealPrivateFilenames={revealPrivateFilenames} onAlbumChange={onAlbumChange} onChooseFolder={onChooseLyricsFolder} />
               {track.candidates.length ? <div className="candidate-asset-list">{track.candidates.map((candidate) => (
                 <article className="candidate-asset-record" key={candidate.id}>
                   <header><MusicCandidateLabel candidate={candidate} protectedAsset={trackProtected} /></header>

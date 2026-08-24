@@ -53,6 +53,7 @@ export const loadConfig = async () => {
   const configuredRoots = Array.isArray(local.audioRoots) ? local.audioRoots : base.audioRoots || [];
   const configuredFiles = Array.isArray(local.audioFiles) ? local.audioFiles : base.audioFiles || [];
   const configuredVisualRoots = Array.isArray(local.visualRoots) ? local.visualRoots : base.visualRoots || [];
+  const configuredLyricRoots = Array.isArray(local.lyricRoots) ? local.lyricRoots : base.lyricRoots || [];
   const envRoots = (process.env.PROJECT_SEQUENCER_AUDIO_PATHS || "")
     .split(path.delimiter)
     .map((entry) => entry.trim())
@@ -90,7 +91,22 @@ export const loadConfig = async () => {
       seenVisualRoots.add(key);
       return true;
     });
-  const merged = { ...base, ...local, audioRoots, audioFiles, visualRoots };
+  const envLyricRoots = (process.env.PROJECT_SEQUENCER_LYRICS_PATHS || "")
+    .split(path.delimiter)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry, index) => ({ id: `environment-lyrics-${index + 1}`, label: path.basename(entry), path: entry }));
+  const seenLyricRoots = new Set();
+  const lyricRoots = [...configuredLyricRoots, ...envLyricRoots]
+    .filter((root) => root && typeof root.id === "string" && root.id && typeof root.path === "string" && root.path)
+    .map((root) => ({ ...root, path: expandPath(root.path) }))
+    .filter((root) => {
+      const key = `${root.id}:${root.path}`;
+      if (seenLyricRoots.has(key)) return false;
+      seenLyricRoots.add(key);
+      return true;
+    });
+  const merged = { ...base, ...local, audioRoots, audioFiles, visualRoots, lyricRoots };
   const requestedPort = Number(process.env.PROJECT_SEQUENCER_PORT);
   const port = Number.isInteger(requestedPort) && requestedPort >= 1 && requestedPort <= 65_535
     ? requestedPort
@@ -141,6 +157,36 @@ export const addAudioSource = async ({ path: requestedPath, label }) => {
 };
 
 export const addAudioRoot = async (details) => (await addAudioSource(details)).source;
+
+export const addLyricRoot = async ({ path: requestedPath, label }) => {
+  if (!requestedPath || typeof requestedPath !== "string") throw new Error("Choose a lyrics folder path.");
+  const resolvedPath = expandPath(requestedPath.trim());
+  const sourceStat = await stat(resolvedPath);
+  if (!sourceStat.isDirectory()) throw new Error("The selected lyrics path must be a folder.");
+
+  return withConfigMutation(async () => {
+    const config = await loadConfig();
+    const availableRoots = [...config.audioRoots, ...config.lyricRoots];
+    const exact = availableRoots.find((root) => root.path === resolvedPath);
+    if (exact) return { source: exact, added: false, covered: true };
+    const coveringRoot = availableRoots.find((root) => isPathInside(root.path, resolvedPath));
+    if (coveringRoot) return { source: coveringRoot, added: false, covered: true };
+
+    const local = await readJson(localConfigPath);
+    const localLyricRoots = Array.isArray(local.lyricRoots)
+      ? local.lyricRoots
+      : config.lyricRoots.filter((root) => !root.id.startsWith("environment-lyrics-"));
+    const allIds = new Set([...config.audioRoots, ...config.audioFiles, ...config.visualRoots, ...config.lyricRoots].map((source) => source.id));
+    const baseId = `lyrics-${slugify(label || path.basename(resolvedPath))}`;
+    let id = baseId;
+    let suffix = 2;
+    while (allIds.has(id)) id = `${baseId}-${suffix++}`;
+    const source = { id, label: label?.trim() || path.basename(resolvedPath), path: resolvedPath };
+    local.lyricRoots = [...localLyricRoots, source];
+    await writeLocalConfig(local);
+    return { source, added: true, covered: false };
+  });
+};
 
 export const removeAudioSource = async (sourceId) => withConfigMutation(async () => {
   const local = await readJson(localConfigPath);
